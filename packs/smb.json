@@ -1,0 +1,72 @@
+{
+  "label": "SMB Optimization",
+  "variant": "smb-reviews-v1",
+  "about": "Local businesses. Google reviews are the opening angle (the 3-Problem Method's Gap); the other checks are the systems you sell next.",
+  "pages": [
+    "contact",
+    "review",
+    "testimonial",
+    "book",
+    "appointment",
+    "schedule",
+    "quote",
+    "estimate",
+    "about"
+  ],
+  "checks": [
+    {
+      "id": "review_link",
+      "missing": "No Google review request",
+      "label": "Asks customers for a Google review",
+      "type": "present",
+      "look_for": [
+        "writereview|g\\.co/kgs|g\\.page/|goo\\.gl/maps|maps\\.app\\.goo\\.gl|google\\.[a-z.]+/maps|placeid=|business\\.google|search\\?[^\\\"' ]*(kgmid|ludocid)"
+      ],
+      "weight": 3,
+      "gap_line": "your website never asks happy customers to leave a Google review"
+    },
+    {
+      "id": "reviews_shown",
+      "missing": "No reviews shown",
+      "label": "Shows reviews or testimonials",
+      "type": "present",
+      "look_for": [
+        "elfsight|trustindex|birdeye|podium|nicejob|embedsocial|reviewsonmywebsite|grade\\.us|widget\\.trustpilot|sociablekit|shapo|wprevpro|wp-google-reviews|brb-|grw-|ti-widget|google reviews?|customer reviews|what our (customers|clients|patients) say|testimonials?|★|5[- ]star reviews?|\\d[\\d,]*\\+? reviews|rated \\d(\\.\\d)? (out of|stars)"
+      ],
+      "weight": 2,
+      "gap_line": "your website doesn't show a single review or testimonial"
+    },
+    {
+      "id": "online_booking",
+      "label": "Online booking or quote request",
+      "missing": "No online booking or quote",
+      "type": "present",
+      "look_for": [
+        "book (online|now|an appointment|your|a)|schedule (online|now|an appointment|a)|request (an )?appointment|appointment request|calendly|acuityscheduling|squareup\\.com/appointments|vagaro|mindbody|zocdoc|localmed|nexhealth|housecallpro|servicetitan|jobber|getjobber|schedulicity|booksy|fresha|setmore|simplybook|get (a|your) (free )?(quote|estimate)|request (a )?(quote|estimate)|free (quote|estimate)"
+      ],
+      "weight": 2,
+      "gap_line": "there's no way to book or request a quote online, only a phone number"
+    },
+    {
+      "id": "text_chat",
+      "missing": "No text or chat",
+      "label": "Text or chat option",
+      "type": "present",
+      "look_for": [
+        "podium|nicejob|birdeye|tidio|intercom|livechat|drift\\.com|crisp\\.chat|tawk\\.to|hs-scripts|zendesk|leadconnector|msgsndr|smartsupp|chatra|olark|freshchat|sms:|text us|textus|weave"
+      ],
+      "weight": 1,
+      "gap_line": "visitors can't text or chat with you from the website"
+    },
+    {
+      "id": "fresh_site",
+      "label": "Site looks up to date",
+      "missing": "Old copyright year (© {year})",
+      "type": "stale",
+      "years": 1,
+      "weight": 1,
+      "gap_line": "the footer of your website still says © {year}, which makes the site look unattended"
+    }
+  ],
+  "opener": "Hi {business} team, quick one. I was looking at local businesses in {city} and noticed {gap_line}. That's usually where new customers quietly go to a competitor. I wrote down what I'd fix first; want me to send it over?"
+}

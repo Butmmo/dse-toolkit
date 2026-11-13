@@ -1,0 +1,6 @@
+# Your own data never goes to GitHub
+my-lists/
+data/
+bridge/.env
+bridge/logs/
+__pycache__/

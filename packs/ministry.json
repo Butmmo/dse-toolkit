@@ -1,0 +1,89 @@
+{
+  "label": "Digital Ministry Systems",
+  "variant": "ministry-warm-v1",
+  "about": "Your own parish and warm-network churches only (no cold lists). Use it to prepare the audit you present to leadership.",
+  "pages": [
+    "give",
+    "giving",
+    "donate",
+    "tithe",
+    "event",
+    "calendar",
+    "register",
+    "newsletter",
+    "subscribe",
+    "watch",
+    "live",
+    "sermon",
+    "mass",
+    "service",
+    "connect"
+  ],
+  "checks": [
+    {
+      "id": "online_giving",
+      "missing": "No online giving",
+      "label": "Online giving",
+      "type": "present",
+      "look_for": [
+        "give online|online giving|donate|tithe\\.ly|pushpay|givelify|faith ?direct|easytithe|subsplash|paypal\\.com/donate|planning center giving|ourvirtualparish|onrealm"
+      ],
+      "weight": 3,
+      "gap_line": "there's no way to give online from the website"
+    },
+    {
+      "id": "event_signup",
+      "missing": "No online event sign-up",
+      "label": "Event sign-up online",
+      "type": "present",
+      "look_for": [
+        "register (now|online|here)|sign[- ]?up|rsvp|eventbrite|signupgenius|planning center|church center|ministryplatform|flocknote|registration form"
+      ],
+      "weight": 2,
+      "gap_line": "members can't sign up for events online, so every registration is on paper or by phone"
+    },
+    {
+      "id": "email_list",
+      "missing": "No email/text updates sign-up",
+      "label": "Email or text updates sign-up",
+      "type": "present",
+      "look_for": [
+        "newsletter|subscribe|mailing list|join our (email|list)|flocknote|mailchimp|constant ?contact|text (to )?join|get updates"
+      ],
+      "weight": 2,
+      "gap_line": "there's no way to sign up for parish news by email or text"
+    },
+    {
+      "id": "watch_online",
+      "missing": "Services not online",
+      "label": "Services or sermons online",
+      "type": "present",
+      "look_for": [
+        "livestream|live stream|watch (live|online|now)|youtube\\.com|vimeo\\.com|sermons?|homil(y|ies)|podcast"
+      ],
+      "weight": 1,
+      "gap_line": "services and homilies aren't available online for members who can't attend"
+    },
+    {
+      "id": "service_times",
+      "missing": "Service times hard to find",
+      "label": "Service / Mass times listed",
+      "type": "present",
+      "look_for": [
+        "mass times|service times|worship times|sunday (mass|service|worship)"
+      ],
+      "weight": 1,
+      "gap_line": "service times are hard to find on the website"
+    },
+    {
+      "id": "fresh_site",
+      "label": "Site looks up to date",
+      "missing": "Old copyright year (© {year})",
+      "type": "stale",
+      "years": 1,
+      "weight": 1,
+      "gap_line": "the footer of your website still says © {year}, which makes the site look unattended"
+    }
+  ],
+  "opener": "Hi {business}, I've been looking at how our parishes in {city} reach members online and noticed {gap_line}. I've put together a short, practical note on fixing it; would it be useful if I shared it with you?"
+}

@@ -1,0 +1,71 @@
+{
+  "label": "CareBridge",
+  "variant": "carebridge-response-v1",
+  "about": "Home care agencies and assisted living. Response time to family enquiries is the angle; confirm it with the mystery-shop tracker before outreach.",
+  "pages": [
+    "contact",
+    "inquir",
+    "enquir",
+    "tour",
+    "schedule",
+    "consult",
+    "admission",
+    "get-started"
+  ],
+  "checks": [
+    {
+      "id": "enquiry_form",
+      "missing": "No online enquiry form",
+      "label": "Online enquiry or care-request form",
+      "type": "present",
+      "look_for": [
+        "<form|request (care|information|a consultation|a tour)|schedule a (tour|visit|consultation)|free (in-home )?(assessment|consultation)|get started"
+      ],
+      "weight": 2,
+      "gap_line": "families can't send an enquiry from your website, only call"
+    },
+    {
+      "id": "fast_reply",
+      "missing": "No reply-time promise",
+      "label": "Promises a fast reply",
+      "type": "present",
+      "look_for": [
+        "within (an|one|1|2|two|24|twenty[- ]four) hours?|same[- ]day|within minutes|24/7|available around the clock|call us any ?time"
+      ],
+      "weight": 3,
+      "gap_line": "your website doesn't tell families how quickly someone will get back to them"
+    },
+    {
+      "id": "slow_promise",
+      "missing": "Promises a slow reply",
+      "label": "No slow reply promise",
+      "type": "absent",
+      "look_for": [
+        "within (2|3|two|three|48|72) (business )?(days|hours)|in (2|3) business days"
+      ],
+      "weight": 3,
+      "gap_line": "your contact page says \"{quote}\", and families comparing agencies rarely wait that long"
+    },
+    {
+      "id": "text_chat",
+      "missing": "No text or chat",
+      "label": "Text or chat option",
+      "type": "present",
+      "look_for": [
+        "podium|nicejob|birdeye|tidio|intercom|livechat|drift\\.com|crisp\\.chat|tawk\\.to|hs-scripts|zendesk|leadconnector|msgsndr|smartsupp|chatra|olark|freshchat|sms:|text us|textus|weave"
+      ],
+      "weight": 1,
+      "gap_line": "families can't text or chat with you from the website"
+    },
+    {
+      "id": "fresh_site",
+      "label": "Site looks up to date",
+      "missing": "Old copyright year (© {year})",
+      "type": "stale",
+      "years": 1,
+      "weight": 1,
+      "gap_line": "the footer of your website still says © {year}, which makes the site look unattended"
+    }
+  ],
+  "opener": "Hi {business} team, I've been looking at home care providers around {city} and noticed {gap_line}. When a family is choosing care, the first agency to reply usually wins. I put together a short note on closing that gap; want me to send it?"
+}

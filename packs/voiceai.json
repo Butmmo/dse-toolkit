@@ -1,0 +1,70 @@
+{
+  "label": "AI Voice Receptionist",
+  "variant": "voiceai-missed-calls-v1",
+  "about": "Local service businesses that live on the phone. Missed and after-hours calls are the angle.",
+  "pages": [
+    "contact",
+    "hours",
+    "emergency",
+    "book",
+    "appointment",
+    "schedule",
+    "about"
+  ],
+  "checks": [
+    {
+      "id": "after_hours",
+      "missing": "No after-hours answering",
+      "label": "Answers after hours / 24-7",
+      "type": "present",
+      "look_for": [
+        "24/7|24 hours|24-hour|after[- ]hours|emergency (service|line|calls?)|answering service|we answer every call|always (open|available)"
+      ],
+      "weight": 3,
+      "gap_line": "nothing on your website says calls are answered after hours, so evening and weekend callers likely hit voicemail"
+    },
+    {
+      "id": "online_booking",
+      "label": "Online booking",
+      "missing": "No online booking",
+      "type": "present",
+      "look_for": [
+        "book (online|now|an appointment|your|a)|schedule (online|now|an appointment|a)|request (an )?appointment|appointment request|calendly|acuityscheduling|squareup\\.com/appointments|vagaro|mindbody|zocdoc|localmed|nexhealth|housecallpro|servicetitan|jobber|getjobber|schedulicity|booksy|fresha|setmore|simplybook|get (a|your) (free )?(quote|estimate)|request (a )?(quote|estimate)|free (quote|estimate)"
+      ],
+      "weight": 2,
+      "gap_line": "customers can only book by phone, so every missed call is a missed booking"
+    },
+    {
+      "id": "text_chat",
+      "missing": "No text or chat",
+      "label": "Text or chat option",
+      "type": "present",
+      "look_for": [
+        "podium|nicejob|birdeye|tidio|intercom|livechat|drift\\.com|crisp\\.chat|tawk\\.to|hs-scripts|zendesk|leadconnector|msgsndr|smartsupp|chatra|olark|freshchat|sms:|text us|textus|weave"
+      ],
+      "weight": 2,
+      "gap_line": "there's no text or chat option for people who can't get through on the phone"
+    },
+    {
+      "id": "ai_receptionist",
+      "missing": "Already has an AI receptionist",
+      "label": "Not already using an AI receptionist",
+      "type": "absent",
+      "look_for": [
+        "ai receptionist|virtual receptionist|smith\\.ai|ruby\\.com|abby connect|answerconnect|goodcall|rosie\\.ai|myaifrontdesk"
+      ],
+      "weight": 0,
+      "gap_line": "you already use {quote}"
+    },
+    {
+      "id": "fresh_site",
+      "label": "Site looks up to date",
+      "missing": "Old copyright year (© {year})",
+      "type": "stale",
+      "years": 1,
+      "weight": 1,
+      "gap_line": "the footer of your website still says © {year}, which makes the site look unattended"
+    }
+  ],
+  "opener": "Hi {business} team, quick one. I was looking at service businesses in {city} and noticed {gap_line}. Most of those callers ring the next company on the list. I mapped what an answer-every-call setup would look like for you; want me to send it?"
+}

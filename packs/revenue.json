@@ -1,0 +1,70 @@
+{
+  "label": "Revenue Recovery Engine",
+  "variant": "revenue-flows-v1",
+  "about": "Online shops (find them in the Meta Ad Library: brands paying for ads have budget). Checks what the shop's own site shows about email/SMS capture.",
+  "pages": [
+    "subscribe",
+    "newsletter",
+    "rewards",
+    "contact"
+  ],
+  "max_pages": 2,
+  "checks": [
+    {
+      "id": "is_store",
+      "missing": "Not an online store",
+      "label": "Is an online store",
+      "type": "present",
+      "look_for": [
+        "cdn\\.shopify|myshopify|shopify\\.theme|woocommerce|bigcommerce|add to cart|add-to-cart|/cart"
+      ],
+      "weight": 0,
+      "gap_line": "this doesn't look like an online store"
+    },
+    {
+      "id": "email_tool",
+      "missing": "No email marketing tool",
+      "label": "Email marketing tool installed",
+      "type": "present",
+      "look_for": [
+        "klaviyo|mailchimp|omnisend|drip\\.com|sendlane|attentive|postscript|privy|justuno|smsbump|brevo|sendinblue|activecampaign|convertkit|shopify-email"
+      ],
+      "weight": 3,
+      "gap_line": "I couldn't find any email marketing tool on your store, so abandoned carts and first-time buyers likely get no follow-up"
+    },
+    {
+      "id": "signup_offer",
+      "missing": "No sign-up or welcome offer",
+      "label": "Email sign-up or welcome offer",
+      "type": "present",
+      "look_for": [
+        "newsletter|subscribe|sign up for|join (our|the) (list|club|vip)|\\d+% off (your )?first|welcome offer|get \\d+% off|exclusive offers"
+      ],
+      "weight": 2,
+      "gap_line": "there's no email sign-up or welcome offer for first-time visitors"
+    },
+    {
+      "id": "sms_capture",
+      "missing": "No SMS sign-up",
+      "label": "SMS sign-up",
+      "type": "present",
+      "look_for": [
+        "attentive|postscript|smsbump|text (us|to join)|sms (sign ?up|marketing|alerts)|msg (&|and) data rates"
+      ],
+      "weight": 1,
+      "gap_line": "there's no SMS sign-up, which is often a brand's best-converting channel"
+    },
+    {
+      "id": "reviews_app",
+      "missing": "No product reviews",
+      "label": "Product reviews shown",
+      "type": "present",
+      "look_for": [
+        "judge\\.me|judgeme|yotpo|okendo|loox|stamped\\.io|reviews\\.io|trustpilot|★|customer reviews"
+      ],
+      "weight": 1,
+      "gap_line": "product pages don't show customer reviews"
+    }
+  ],
+  "opener": "Hi {business} team, I came across your store and noticed {gap_line}. For a brand already paying for traffic, that's usually the cheapest revenue left on the table. I mapped the three flows I'd set up first; want me to send them?"
+}
