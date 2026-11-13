@@ -2,6 +2,8 @@
 
 Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to type the commands").
 
+  python dse.py engines                                 your engines (made in Citadel: HQ Tools → My engines)
+  python dse.py daily tampa-dentists [--days 3]         next dated send lists for one engine (find, check, dedupe, draft)
   python dse.py kinds                                   business types the lead finder knows, by path
   python dse.py packs                                   website-check packs (one per path)
   python dse.py build dentist,plumber                   once per business type: download its US business data
@@ -23,7 +25,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import mystery, places, podcasts
+from dse import engines, mystery, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -57,6 +59,9 @@ def main():
     pc = sub.add_parser("podcasts"); pc.add_argument("terms"); pc.add_argument("--genre", default="business")
     pc.add_argument("--max", type=int, default=60); pc.add_argument("--max-silent", type=int, default=180); pc.add_argument("--out", default="")
     m = sub.add_parser("mystery"); m.add_argument("action", choices=["new", "score"]); m.add_argument("csv")
+    sub.add_parser("engines")
+    dl = sub.add_parser("daily"); dl.add_argument("engine"); dl.add_argument("--start"); dl.add_argument("--days", type=int, default=1)
+    dl.add_argument("--per-day", type=int); dl.add_argument("--fast", action="store_true")
     a = ap.parse_args()
 
     if a.cmd == "kinds":
@@ -87,6 +92,10 @@ def main():
         chk.check_file(a.pack, src, render=not a.fast)
     elif a.cmd == "podcasts":
         podcasts.find(a.terms, a.genre, a.max, a.max_silent, a.out)
+    elif a.cmd == "engines":
+        engines.list_engines()
+    elif a.cmd == "daily":
+        engines.daily(a.engine, a.start, a.days, a.per_day, render=not a.fast)
     elif a.cmd == "mystery":
         (mystery.new if a.action == "new" else mystery.score)(a.csv)
 

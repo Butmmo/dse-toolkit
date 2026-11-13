@@ -1,13 +1,14 @@
-"""DSE Toolkit runner: runs DSE Toolkit tools for jobs queued from DBI Citadel's HQ Tools page.
+"""HQ Tools runner: runs this PC's tools for jobs queued from DBI Citadel's HQ Tools page.
+(One file for both DFamocious-HQ/_tools/bridge and dse-toolkit/bridge: keep the two copies identical.)
 
-Same runner as HQ's _tools/bridge (keep them in step). Standard-library Python only.
+Design: websites/dbi-citadel-job-bridge.md. Standard-library Python only.
 
-    python bridge/runner.py setup --url URL --key KEY   # once: token + settings, prints the PC code
-    python bridge/runner.py setup --new                  # a fresh PC code (the old one stops working)
-    python bridge/runner.py check          # test the connection (one heartbeat)
-    python bridge/runner.py                # run forever (install.ps1 starts this at log-on)
-    python bridge/runner.py --once         # run at most one job, then stop
-    python bridge/runner.py dry pipeline.run engine=b "cities=Tampa FL" start=2026-11-20
+    python _tools/bridge/runner.py setup --url URL --key KEY   # once: token + settings, prints the PC code
+    python _tools/bridge/runner.py setup --new                  # a fresh PC code (the old one stops working)
+    python _tools/bridge/runner.py check          # test the connection (one heartbeat)
+    python _tools/bridge/runner.py                # run forever (install.ps1 starts this at log-on)
+    python _tools/bridge/runner.py --once         # run at most one job, then stop
+    python _tools/bridge/runner.py dry pipeline.run engine=b "cities=Tampa FL" start=2026-11-20
                                                   # check values, print the command, run nothing
 
 Safety rules (do not loosen):
@@ -38,9 +39,13 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-VERSION = "1.0"
+VERSION = "1.1"
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent                          # dse-toolkit (the runner lives in dse-toolkit/bridge/)
+# The same file runs in two places: DFamocious-HQ/_tools/bridge/ (HQ) and dse-toolkit/bridge/ (every member's PC).
+ROOT = HERE.parent if (HERE.parent / "dse.py").exists() else HERE.parents[1]
+IS_TOOLKIT = ROOT == HERE.parent
+TASK = "DSE Toolkit runner" if IS_TOOLKIT else "DFamocious-HQ bridge runner"
+RUNNER_CMD = "bridge/runner.py" if IS_TOOLKIT else "_tools/bridge/runner.py"
 ENV_FILE = Path(os.environ.get("HQ_BRIDGE_ENV", HERE / ".env"))
 CATALOG_FILE = Path(os.environ.get("HQ_BRIDGE_CATALOG", HERE / "catalog.json"))
 LOG_DIR = HERE / "logs"
@@ -75,12 +80,37 @@ def load_env() -> dict:
 
 
 def load_catalog() -> dict:
-    return json.loads(CATALOG_FILE.read_text(encoding="utf-8"))
+    return resolve_fields(json.loads(CATALOG_FILE.read_text(encoding="utf-8")))
+
+
+def engine_choices() -> list[dict]:
+    """This PC's engines (engines/<slug>/engine.json, written by the engines sync), for "choices_from": "engines"."""
+    out = []
+    for p in sorted((ROOT / "engines").glob("*/engine.json")):
+        try:
+            cfg = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if not cfg.get("archived"):
+            out.append({"value": p.parent.name, "label": f"{cfg.get('name') or p.parent.name} ({cfg.get('path', '?')})"})
+    return out
+
+
+def resolve_fields(cat: dict) -> dict:
+    """Fill dynamic choice lists (engines) into the catalog, for both the published forms and the value checks."""
+    eng = None
+    for t in cat["tools"].values():
+        for f in t.get("fields", []):
+            if f.get("choices_from") == "engines":
+                eng = engine_choices() if eng is None else eng
+                f["choices"] = eng
+    return cat
 
 
 def public_catalog(cat: dict) -> dict:
     """What Citadel sees: labels and form fields only (no scripts or argument templates)."""
     keep = ("label", "group", "help", "fields", "timeout_min")
+    resolve_fields(cat)
     return {"version": cat.get("version", 1),
             "tools": {k: {f: t[f] for f in keep if f in t} for k, t in cat["tools"].items()}}
 
@@ -91,7 +121,7 @@ class Api:
     def __init__(self, env: dict):
         missing = [k for k in ("HQ_SUPABASE_URL", "HQ_SUPABASE_KEY", "HQ_RUNNER_TOKEN") if not env.get(k)]
         if missing:
-            sys.exit(f"Missing in {ENV_FILE}: {', '.join(missing)}. Run: python bridge/runner.py setup")
+            sys.exit(f"Missing in {ENV_FILE}: {', '.join(missing)}. Run: python {RUNNER_CMD} setup")
         self.url = env["HQ_SUPABASE_URL"].rstrip("/")
         self.key = env["HQ_SUPABASE_KEY"]
         self.token = env["HQ_RUNNER_TOKEN"]
@@ -219,7 +249,7 @@ def check_value(field: dict, value):
             raise Bad(f"{name}: not one of the files the form offers ({field['glob']})")
         full = (ROOT / s).resolve()
         if ROOT.resolve() not in full.parents or not full.is_file():
-            raise Bad(f"{name}: outside the toolkit folder")
+            raise Bad(f"{name}: outside this folder")
         return s
     raise Bad(f"{name}: unknown field type {kind}")
 
@@ -429,7 +459,7 @@ def cmd_setup(args: list[str]):
     else:
         token = secrets.token_urlsafe(48)
         lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else [
-            "# HQ bridge runner settings. Never share or upload this file.",
+            "# HQ Tools runner settings. Never share or upload this file.",
             "# Citadel's Supabase project URL and its publishable (anon) key: the same two values",
             "# as VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Vercel. NOT the service-role key.",
             "HQ_SUPABASE_URL=",
@@ -444,7 +474,7 @@ def cmd_setup(args: list[str]):
     print("In DBI Citadel: HQ Tools, then 'Connect a PC', paste the code, name the PC.")
     env = load_env()
     if env.get("HQ_SUPABASE_URL") and env.get("HQ_SUPABASE_KEY"):
-        print("After pressing Connect in Citadel, type this here and press Enter: python bridge/runner.py check")
+        print(f"After pressing Connect in Citadel, type this here and press Enter: python {RUNNER_CMD} check")
     else:
         print("Citadel's connection values are missing. Copy the full 'setup --url ... --key ...' line from the "
               "HQ Tools page (Connect a PC) and run it here instead.")
@@ -485,7 +515,34 @@ def single_instance():
             fcntl.flock(_LOCK.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         sys.exit("Another bridge runner is already running on this PC. Stop it first "
-                 "(Stop-ScheduledTask -TaskName 'DSE Toolkit runner').")
+                 f"(Stop-ScheduledTask -TaskName '{TASK}').")
+
+
+def start_periodic(cat: dict):
+    """Background helpers from catalog.json "periodic" (e.g. the Send Desk sync every 60 s). Each is a Python
+    script inside this folder, run as its own process on a timer, so a long tool job never holds it up."""
+    for spec in cat.get("periodic", []):
+        script = (ROOT / spec.get("script", "")).resolve()
+        every = max(30, int(spec.get("every_s", 60)))
+        if ROOT.resolve() not in script.parents or script.suffix != ".py" or not script.is_file():
+            say(f"periodic helper skipped (not a script in this folder): {spec.get('script')}")
+            continue
+
+        def run_forever(script=script, every=every):
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HQ_BRIDGE_ENV": str(ENV_FILE)}
+            while True:
+                try:
+                    r = subprocess.run([sys.executable, "-u", str(script)], cwd=str(ROOT), capture_output=True,
+                                       timeout=300, env=env, stdin=subprocess.DEVNULL)
+                    out = (r.stdout + r.stderr).decode("utf-8", "replace").strip()
+                    if r.returncode != 0 or (out and "0 phone taps logged" not in out):
+                        say(out.splitlines()[-1] if out else f"{script.name} exited {r.returncode}")
+                except Exception as e:
+                    say(f"{script.name}: {e}")
+                time.sleep(every)
+
+        threading.Thread(target=run_forever, daemon=True, name=f"periodic-{script.stem}").start()
+        say(f"periodic helper on: {script.relative_to(ROOT).as_posix()} every {every}s")
 
 
 def loop(once=False):
@@ -502,6 +559,8 @@ def loop(once=False):
                      "Run setup and paste its code in Citadel > HQ Tools > Connect a PC. Retrying in 30 s.")
         raise
     say(f"runner '{api.runner_id}' v{VERSION} online with {len(cat['tools'])} tools; checking every {POLL_S}s")
+    if not once:
+        start_periodic(cat)
     last_files_json, last_full = json.dumps(files, sort_keys=True), time.time()
     wait = POLL_S
     while True:

@@ -129,7 +129,7 @@ def contacts_from(html: str) -> dict:
     m = re.search(r"instagram\.com/(?!p/|reel|explore|accounts|stories)([A-Za-z0-9._]{2,30})", html)
     if m:
         out["instagram"] = "https://instagram.com/" + m.group(1)
-    m = re.search(r"facebook\.com/(?!sharer|tr\?|plugins|dialog)([A-Za-z0-9._-]{3,60})", html)
+    m = re.search(r"facebook\.com/(pages/[^\"'<>\s?#]{3,120}|profile\.php\?id=\d+|(?!sharer|tr\?|plugins|dialog|pages|share|login|events|groups)[A-Za-z0-9._-]{3,60})", html)
     if m:
-        out["facebook"] = "https://facebook.com/" + m.group(1)
+        out["facebook"] = "https://facebook.com/" + m.group(1).rstrip("/")
     return out

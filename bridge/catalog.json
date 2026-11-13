@@ -2,6 +2,83 @@
   "version": 1,
   "note": "DSE Toolkit tools for the HQ Tools page. The runner only runs these; it never sends, posts or pays.",
   "tools": {
+    "dse.daily": {
+      "label": "My engine: next send lists",
+      "group": "My engines",
+      "help": "Builds the engine's next dated send lists: finds new leads (or checks your seed websites), checks what each one is missing, drops anyone already on your lists, picks each lead's channel within your daily caps, and drafts the opener in your wording. They appear in the Send Desk.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "daily"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--start",
+          "field": "start"
+        },
+        {
+          "opt": "--days",
+          "field": "days"
+        },
+        {
+          "opt": "--per-day",
+          "field": "per_day"
+        },
+        {
+          "flag": "--fast",
+          "field": "fast"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "start",
+          "label": "First day (empty = tomorrow)",
+          "type": "date"
+        },
+        {
+          "name": "days",
+          "label": "Days",
+          "type": "int",
+          "min": 1,
+          "max": 7,
+          "default": 1
+        },
+        {
+          "name": "per_day",
+          "label": "Leads per day (empty = the engine's setting)",
+          "type": "int",
+          "min": 1,
+          "max": 60
+        },
+        {
+          "name": "fast",
+          "label": "Fast (skip the hidden browser)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 90,
+      "outputs": [
+        {
+          "glob": "engines/*/send-lists/*.csv",
+          "upload": true
+        },
+        {
+          "glob": "engines/*/send-lists/drafts/*.csv",
+          "upload": true
+        }
+      ]
+    },
     "dse.list": {
       "label": "Leads + problem check (the daily one)",
       "group": "Find clients",
@@ -693,5 +770,12 @@
       "timeout_min": 90,
       "outputs": []
     }
-  }
+  },
+  "periodic": [
+    {
+      "script": "bridge/engines_sync.py",
+      "every_s": 60,
+      "what": "My engines: settings from Citadel onto this PC, progress back"
+    }
+  ]
 }

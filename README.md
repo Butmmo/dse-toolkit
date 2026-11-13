@@ -71,7 +71,25 @@ The lead finder uses **Foursquare's free open business data**. It doesn't scrape
 
 Keep the PC switched on and online while jobs run. Jobs you start while it's off wait until it's back.
 
-## Daily use
+## Your engines (the main way to use the toolkit)
+An **engine** is one outreach business of yours: for example "Tampa dentists" on SMB, or "Business podcasts" on Broadcast. It records:
+- who you target and where
+- your brand and name
+- which channels to use, and how many a day
+- your first-message wording
+
+1. In Citadel, open **HQ Tools → My engines → New engine**. Pick your path, and its template fills most of it in. Choose cities (or topics, or websites) and save.
+2. Your PC picks it up within a minute, as `engines/<name>/engine.json`. You never edit that file: change the engine in Citadel.
+3. Press **Build next list** in Citadel, or run this here:
+   ```bash
+   python dse.py daily <engine>
+   ```
+   It finds new leads (or checks your seed websites), checks what each one is missing, and skips anyone already on your lists. It then picks each lead's channel in your order, within your daily caps, drafts your message, and writes `engines/<engine>/send-lists/<date>.csv`.
+4. Send from the **Send Desk** on your phone. Tap Sent, Got a reply and so on. Follow-ups and outcomes per engine come in the next update.
+
+`python dse.py engines` lists your engines and how many lists each has.
+
+## Daily use (without an engine)
 From HQ Tools on your phone, or here in PowerShell:
 
 **SMB / AI Voice / CareBridge:** find leads and check them in one go.

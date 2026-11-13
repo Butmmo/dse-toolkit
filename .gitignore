@@ -4,3 +4,4 @@ data/
 bridge/.env
 bridge/logs/
 __pycache__/
+engines/
