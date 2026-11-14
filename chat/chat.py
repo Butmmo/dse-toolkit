@@ -22,9 +22,35 @@ def answer(q):
         return best[1]["title"] + ":\n" + "\n".join("- " + s for s in best[1]["say"])
     return rec[1]["title"] + ":\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(rec[1]["steps"], 1))
 
+import base64, os, urllib.request
+MODEL = os.environ.get("OLLAMA_MODEL", "gemma3:1b")   # light, text only; gemma3:4b also reads images
+
+
+def ollama(q, image=None):
+    """Free local AI through Ollama (localhost:11434). Returns None if Ollama isn't running."""
+    msg = {"role": "user", "content": q}
+    if image:
+        msg["images"] = [base64.b64encode(Path(image).read_bytes()).decode()]
+    sys_txt = "You are HQ chat for a DBI student: short, practical answers on selling, freelancing, tools and simple thinking."
+    body = json.dumps({"model": MODEL, "stream": False, "messages": [{"role": "system", "content": sys_txt}, msg]}).encode()
+    try:
+        req = urllib.request.Request("http://localhost:11434/api/chat", body, {"Content-Type": "application/json"})
+        return json.loads(urllib.request.urlopen(req, timeout=300).read())["message"]["content"]
+    except Exception:
+        return None
+
+
+def reply(q, image=None):
+    return ollama(q, image) or answer(q) + "\n\n(Built-in answer. For full AI chat, install Ollama: see the tool's help.)"
+
+
 if __name__ == "__main__":
-    if sys.argv[1:]:
-        print(answer(" ".join(sys.argv[1:])))
+    args = sys.argv[1:]
+    img = None
+    if "--image" in args:
+        i = args.index("--image"); img = args[i + 1]; del args[i:i + 2]
+    if args:
+        print(reply(" ".join(args), img))
     else:
         while (q := input("You: ").strip()).lower() not in ("bye", "exit", ""):
-            print(answer(q), "\n")
+            print(reply(q), "\n")
