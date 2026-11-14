@@ -26,6 +26,21 @@ Nothing here sends, posts or pays. You do every send.
 |---|---|
 | **App Builder** (`python builder/build.py new ...`) | Builds a real, working **website, web app, phone app (iPhone + Android), desktop app or TV app** from a starting point (landing page, dashboard, store, booking). You get the project, a README with the exact commands to run and publish it, a BUILD-BRIEF of what to build next, and `AGENTS.md` so an AI coding agent can carry on safely. Needs Node.js LTS (nodejs.org) except for the plain website. Tick "Install and test the build" to prove it builds. Results go in `builds/`. |
 | **YouTube Launchpad** (`python youtube/launch.py plan ...`) | Plans a YouTube channel from zero, faceless or on camera: niche and promise, setup checklist, the current Partner Program (monetisation) numbers with their source and date, a faceless-safe policy guide, a 13-week roadmap matched to your hours, and 30 video ideas. Then `ideas` (more ideas), `script` (a ready-to-record script plan, optional Ollama first draft), `track` (weekly numbers, distance to monetisation, what to fix next) and `check` (title and thumbnail check). Results go in `youtube/channels/<name>/`. It teaches the method and the honest odds and cannot promise income. |
+| **Dev workspace** (`python dse.py dev --help`) | A sandboxed place to **create, read, edit, run and ship code** in 14 starters (JavaScript, TypeScript, Python, Java, Kotlin, C#, C, C++, Dart, Flutter, Go, Rust, PowerShell), with GitHub (clone, read issues, commit, push, pull request), named build/test/lint tasks for each ecosystem, and an AI engineer that edits code on its own branch. See "Dev workspace" below. |
+
+## Dev workspace: what it can do and what it will never do
+
+Everything happens in `workspaces/<name>/` on this PC. From Citadel (HQ Tools, group **Dev**) you can start a project, clone a repository, read and search files, change a line, run install/build/test/lint, see the diff, commit, push, open a pull request and ask the AI engineer for a change. The same commands work at the PC: `python dse.py dev languages`, `dev new "My App" --lang python-cli`, `dev run my-app test`, `dev agent my-app --instruction "..." --verify test`.
+
+**Safety is enforced in code, and the switches live only on this PC** (`dev/dev.config.json`, never in Git, never in Citadel):
+- Paths stay inside the workspace; `..`, absolute paths, links out and `.git` are refused. Files that hold secrets (`.env`, keys, tokens) cannot be read, written or committed, so they never reach a job log or an AI provider.
+- Commands run as a fixed list of programs (no shell), with a time limit, capped output, and your tokens removed from their environment. Output is scrubbed for token patterns.
+- **Pushing is off** until you run `python dse.py dev setup --github-user YOURNAME`. It then pushes only to repositories owned by an account you listed, never forces, and from `main` it pushes a new `dev/...` branch so you review a pull request first.
+- **PowerShell is off** until you run `python dse.py dev config --set allow_shell=true`. A deny list blocks the worst commands, but it is not a sandbox: turn it on only if you accept that.
+- The AI engineer works through the same sandboxed tools, needs a clean workspace, works on a fresh `dev/agent-...` branch, and never pushes. Brain: Claude when `ANTHROPIC_API_KEY` is set and `pip install anthropic` is done; otherwise your local Ollama model (use gemma3:4b or bigger).
+- `npm install` runs with `--ignore-scripts` unless you set `npm_scripts=true`.
+
+A missing toolchain is not an error to decode: `dev run` names the program and the exact `winget install` command. Tested here with real runs: Python, JavaScript (Node) and TypeScript. The other languages' starters are written and checked for structure, but their toolchains (Maven + JDK, Gradle, .NET, CMake + a C compiler, Dart, Flutter, Go, Rust) were not all installed when this was built, so run `dev run <workspace> test` once after installing each.
 
 ## Follow-ups and results for your engines
 Once you send from the **Send Desk** (More, or the Send Desk tab) and tap **Sent** on each message, your PC keeps the log and does the rest.

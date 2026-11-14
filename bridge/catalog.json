@@ -2780,6 +2780,840 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dev.config": {
+      "label": "Dev: what is allowed on this PC",
+      "group": "Dev",
+      "help": "Shows what the dev tools may do here (editing, tasks, pushing to GitHub, PowerShell). These switches can only be changed at the PC itself, never from here.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "config"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.workspaces": {
+      "label": "Dev: my workspaces",
+      "group": "Dev",
+      "help": "Lists your workspaces (project folders on this PC), what kind of project each is and which git branch it is on.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "workspaces"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.new": {
+      "label": "Dev: start a new project",
+      "group": "Dev",
+      "help": "Creates a project folder with starter code, a test and git, in one of 14 starters: JavaScript, TypeScript, Python (command line or web API), Java, Kotlin, C#, C, C++, Dart, Flutter, Go, Rust, PowerShell. Tick the last box to use the language's own generator when it is installed.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "new"
+        },
+        {
+          "field": "name"
+        },
+        {
+          "opt": "--lang",
+          "field": "lang"
+        },
+        {
+          "flag": "--official",
+          "field": "official"
+        }
+      ],
+      "fields": [
+        {
+          "name": "name",
+          "label": "Project name",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 _-]{1,59}$"
+        },
+        {
+          "name": "lang",
+          "label": "Language",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "node",
+              "label": "JavaScript API (Node, no dependencies, node:test)"
+            },
+            {
+              "value": "typescript",
+              "label": "TypeScript (Node, tsc)"
+            },
+            {
+              "value": "python-cli",
+              "label": "Python command line tool (unittest)"
+            },
+            {
+              "value": "python-api",
+              "label": "Python web API (FastAPI, pytest)"
+            },
+            {
+              "value": "java",
+              "label": "Java (Maven, JUnit 5)"
+            },
+            {
+              "value": "kotlin",
+              "label": "Kotlin (Gradle, kotlin.test)"
+            },
+            {
+              "value": "csharp",
+              "label": ".NET C# (console + xUnit)"
+            },
+            {
+              "value": "c",
+              "label": "C (CMake, ctest)"
+            },
+            {
+              "value": "cpp",
+              "label": "C++17 (CMake, ctest)"
+            },
+            {
+              "value": "dart",
+              "label": "Dart command line (package:test)"
+            },
+            {
+              "value": "flutter",
+              "label": "Flutter app (widget test)"
+            },
+            {
+              "value": "go",
+              "label": "Go (go test)"
+            },
+            {
+              "value": "rust",
+              "label": "Rust (cargo test)"
+            },
+            {
+              "value": "powershell",
+              "label": "PowerShell module (Pester)"
+            }
+          ]
+        },
+        {
+          "name": "official",
+          "label": "Use the language's own generator if installed",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dev.clone": {
+      "label": "Dev: copy a GitHub repository here",
+      "group": "Dev",
+      "help": "Copies a repository from GitHub into a workspace so you can read and change it. Public repositories need no login; private ones use the GitHub login on this PC.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "clone"
+        },
+        {
+          "field": "repo"
+        }
+      ],
+      "fields": [
+        {
+          "name": "repo",
+          "label": "GitHub repository (owner/name)",
+          "type": "text",
+          "required": true,
+          "max": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+        }
+      ],
+      "timeout_min": 10,
+      "outputs": []
+    },
+    "dev.repo": {
+      "label": "Dev: look at a GitHub repository",
+      "group": "Dev",
+      "help": "Reads a repository's description, language, stars and default branch from GitHub.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "repo"
+        },
+        {
+          "field": "repo"
+        }
+      ],
+      "fields": [
+        {
+          "name": "repo",
+          "label": "GitHub repository (owner/name)",
+          "type": "text",
+          "required": true,
+          "max": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dev.issues": {
+      "label": "Dev: open issues of a GitHub repository",
+      "group": "Dev",
+      "help": "Lists the latest open issues and pull requests.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "issues"
+        },
+        {
+          "field": "repo"
+        }
+      ],
+      "fields": [
+        {
+          "name": "repo",
+          "label": "GitHub repository (owner/name)",
+          "type": "text",
+          "required": true,
+          "max": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dev.tree": {
+      "label": "Dev: show the files",
+      "group": "Dev",
+      "help": "Lists the files and folders of a workspace.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "tree"
+        },
+        {
+          "field": "ws"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.read": {
+      "label": "Dev: read a file",
+      "group": "Dev",
+      "help": "Shows a file with line numbers. Files that hold secrets (.env, keys) are never shown.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "read"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "field": "path"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "path",
+          "label": "File path inside the workspace (like src/app.py)",
+          "type": "text",
+          "required": true,
+          "max": 200,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./ -]{0,199}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.search": {
+      "label": "Dev: search the code",
+      "group": "Dev",
+      "help": "Finds lines matching a word or pattern in every file of the workspace.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "search"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "field": "pattern"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "pattern",
+          "label": "Word or pattern to find",
+          "type": "text",
+          "required": true,
+          "max": 100
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.replace": {
+      "label": "Dev: change a line of code",
+      "group": "Dev",
+      "help": "Replaces text in a file. The old text must match exactly once. For bigger changes use Dev: let the AI make a change.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "replace"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "field": "path"
+        },
+        {
+          "opt": "--old",
+          "field": "old"
+        },
+        {
+          "opt": "--new",
+          "field": "new"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "path",
+          "label": "File path inside the workspace (like src/app.py)",
+          "type": "text",
+          "required": true,
+          "max": 200,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./ -]{0,199}$"
+        },
+        {
+          "name": "old",
+          "label": "Exact text to replace",
+          "type": "text",
+          "required": true,
+          "max": 300
+        },
+        {
+          "name": "new",
+          "label": "New text",
+          "type": "text",
+          "required": false,
+          "max": 300
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.run": {
+      "label": "Dev: install, build, test or lint",
+      "group": "Dev",
+      "help": "Runs the project's own install, build, test or lint step (npm, pip, Maven, Gradle, dotnet, CMake, Dart, Flutter, Cargo, Go). If a tool is missing it tells you the one command that installs it.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "run"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "field": "task"
+        },
+        {
+          "opt": "--script",
+          "field": "script"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "task",
+          "label": "What to run",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "install",
+              "label": "install"
+            },
+            {
+              "value": "build",
+              "label": "build"
+            },
+            {
+              "value": "test",
+              "label": "test"
+            },
+            {
+              "value": "lint",
+              "label": "lint"
+            },
+            {
+              "value": "script",
+              "label": "script"
+            }
+          ]
+        },
+        {
+          "name": "script",
+          "label": "npm script name (only for 'script')",
+          "type": "text",
+          "required": false,
+          "max": 40,
+          "pattern": "^[A-Za-z0-9:_-]{1,40}$"
+        }
+      ],
+      "timeout_min": 15,
+      "outputs": []
+    },
+    "dev.status": {
+      "label": "Dev: what changed (git status)",
+      "group": "Dev",
+      "help": "Shows the branch and which files changed.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "field": "ws"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.diff": {
+      "label": "Dev: show the changes (git diff)",
+      "group": "Dev",
+      "help": "Shows exactly what changed since the last commit.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "diff"
+        },
+        {
+          "field": "ws"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.branch": {
+      "label": "Dev: start a branch",
+      "group": "Dev",
+      "help": "Creates and switches to a new git branch.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "branch"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "field": "name"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "name",
+          "label": "Branch name",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,59}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.commit": {
+      "label": "Dev: save a commit",
+      "group": "Dev",
+      "help": "Saves the current changes as a commit. Refuses if a file that looks like a secret would be included.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "commit"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "opt": "-m",
+          "field": "message"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "message",
+          "label": "Commit message",
+          "type": "text",
+          "required": true,
+          "max": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:_#-]{2,99}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dev.pull": {
+      "label": "Dev: update from GitHub (pull)",
+      "group": "Dev",
+      "help": "Brings in new commits from GitHub (fast-forward only, it can never rewrite your work).",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "pull"
+        },
+        {
+          "field": "ws"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": []
+    },
+    "dev.push": {
+      "label": "Dev: push to GitHub",
+      "group": "Dev",
+      "help": "Pushes the current branch to GitHub. Works only when you switched pushing on at this PC and the repository belongs to an account you allowed. From main it pushes a new dev/ branch instead; it never forces.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "push"
+        },
+        {
+          "field": "ws"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": []
+    },
+    "dev.pr": {
+      "label": "Dev: open a pull request",
+      "group": "Dev",
+      "help": "Opens a pull request on GitHub for the current branch (same permission as pushing, and your GitHub login on this PC).",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "pr"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "opt": "--title",
+          "field": "title"
+        },
+        {
+          "opt": "--body",
+          "field": "body"
+        },
+        {
+          "opt": "--base",
+          "field": "base"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "title",
+          "label": "Title",
+          "type": "text",
+          "required": true,
+          "max": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:_#-]{2,99}$"
+        },
+        {
+          "name": "body",
+          "label": "Description (optional)",
+          "type": "text",
+          "required": false,
+          "max": 300
+        },
+        {
+          "name": "base",
+          "label": "Merge into branch (default main)",
+          "type": "text",
+          "required": false,
+          "max": 40,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,39}$"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dev.agent": {
+      "label": "Dev: let the AI make a change",
+      "group": "Dev",
+      "help": "An AI engineer reads the project, edits the files, runs the tests and saves the result on a NEW branch (dev/agent-...). It cannot leave the workspace, read secrets, run a shell or push. You read the diff, then push yourself. Uses Claude when ANTHROPIC_API_KEY is set on this PC, otherwise your local Ollama model.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "agent"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "opt": "--instruction",
+          "field": "instruction"
+        },
+        {
+          "opt": "--verify",
+          "field": "verify"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "instruction",
+          "label": "What should change? (one or two sentences)",
+          "type": "text",
+          "required": true,
+          "max": 300
+        },
+        {
+          "name": "verify",
+          "label": "Check afterwards",
+          "type": "choice",
+          "required": false,
+          "choices": [
+            {
+              "value": "test",
+              "label": "Run the tests"
+            },
+            {
+              "value": "build",
+              "label": "Build"
+            },
+            {
+              "value": "lint",
+              "label": "Lint"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 30,
+      "outputs": []
+    },
+    "dev.shell": {
+      "label": "Dev: run a PowerShell command",
+      "group": "Dev",
+      "help": "Runs one PowerShell command inside a workspace. OFF unless you turned it on at this PC (allow_shell). Dangerous commands are refused, but this is not a sandbox: switch it on only if you accept that.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dev"
+        },
+        {
+          "lit": "shell"
+        },
+        {
+          "field": "ws"
+        },
+        {
+          "field": "command"
+        }
+      ],
+      "fields": [
+        {
+          "name": "ws",
+          "label": "Workspace",
+          "type": "choice",
+          "required": true,
+          "choices_from": "workspaces",
+          "choices": []
+        },
+        {
+          "name": "command",
+          "label": "PowerShell command",
+          "type": "text",
+          "required": true,
+          "max": 300
+        }
+      ],
+      "timeout_min": 10,
+      "outputs": []
     }
   },
   "periodic": [

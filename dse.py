@@ -46,6 +46,9 @@ PACK_KINDS = {
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "dev":      # the Dev workspace has its own commands: python dse.py dev --help
+        from dev import cli
+        sys.exit(cli.main(sys.argv[2:]))
     ap = argparse.ArgumentParser(prog="dse.py", description=f"DSE Toolkit {VERSION}", formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=__doc__.split("\n", 2)[2])
     sub = ap.add_subparsers(dest="cmd", required=True)

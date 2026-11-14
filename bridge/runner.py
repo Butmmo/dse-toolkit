@@ -108,6 +108,14 @@ def channel_choices() -> list[dict]:
     return out
 
 
+def workspace_choices() -> list[dict]:
+    """This PC's Dev workspaces (workspaces/<name>), for "choices_from": "workspaces"."""
+    base = ROOT / "workspaces"
+    if not base.is_dir():
+        return []
+    return [{"value": p.name, "label": p.name} for p in sorted(base.iterdir()) if p.is_dir() and re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,60}", p.name)]
+
+
 def resolve_fields(cat: dict) -> dict:
     """Fill dynamic choice lists (engines) into the catalog, for both the published forms and the value checks."""
     eng = None
@@ -118,6 +126,8 @@ def resolve_fields(cat: dict) -> dict:
                 f["choices"] = eng
             elif f.get("choices_from") == "channels":
                 f["choices"] = channel_choices()
+            elif f.get("choices_from") == "workspaces":
+                f["choices"] = workspace_choices()
     return cat
 
 
