@@ -248,7 +248,22 @@ def fetch_citadel_image(image_id):
     return None
 
 
+def _guard(q):
+    """A request to DO something this chat cannot do (see files, build, commit, push, send) gets a direct, honest answer before any model is asked."""
+    try:
+        spec = importlib.util.spec_from_file_location("hq_chat_guard", H / "guard.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.guard(q)
+    except Exception:
+        return None
+
+
 def reply(q, image=None):
+    if not image:
+        g = _guard(q)
+        if g:
+            return g + NL * 2 + "(Answered instantly by HQ's built-in rules: this chat only answers questions. It cannot see files, build, commit, push or send. No AI model was used.)"
     if image:     # pictures need a vision model on this PC
         out = ollama(q, image)
         return out or ("I could not read the picture. Your Ollama model must support images: install gemma3:4b "
