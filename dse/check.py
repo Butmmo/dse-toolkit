@@ -113,13 +113,16 @@ def check_site(website: str, pack: dict, render: bool = True) -> dict:
             if stale:
                 found_gaps.append((c, {"year": y}))
             continue
-        hit = c["_re"].search(all_html) or c["_re"].search(all_text)
+        # "scope": "text" searches only what a visitor reads (not scripts, styles or attributes): use it for wording checks.
+        hit = c["_re"].search(all_text) if c.get("scope") == "text" else (c["_re"].search(all_html) or c["_re"].search(all_text))
         if kind == "present":                   # gap when nothing matching is found anywhere
             out[c["id"]] = "yes" if hit else "no"
             if not hit:
                 found_gaps.append((c, {}))
         elif kind == "absent":                  # gap when the thing IS there (e.g. "we'll reply in 2-3 days")
-            quote = re.sub(r"\s+", " ", hit.group(0)).strip() if hit else ""
+            # a named group starting with q (for example (?P<q1>...)) picks the exact words to quote; otherwise the whole match
+            picked = next((v for k, v in (hit.groupdict() if hit else {}).items() if k.startswith("q") and v), None)
+            quote = re.sub(r"\s+", " ", picked or (hit.group(0) if hit else "")).strip()[:80]
             out[c["id"]] = f"no ({quote[:60]})" if hit else "yes"
             if hit:
                 found_gaps.append((c, {"quote": quote}))

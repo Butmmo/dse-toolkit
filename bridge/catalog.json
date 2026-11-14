@@ -118,6 +118,10 @@
           "required": true,
           "choices": [
             {
+              "value": "automation",
+              "label": "AI Automation (back-office work done by hand)"
+            },
+            {
               "value": "smb",
               "label": "SMB Optimization"
             },
@@ -407,6 +411,10 @@
           "required": true,
           "choices": [
             {
+              "value": "automation",
+              "label": "AI Automation (back-office work done by hand)"
+            },
+            {
               "value": "smb",
               "label": "SMB Optimization"
             },
@@ -473,6 +481,10 @@
           "type": "choice",
           "required": true,
           "choices": [
+            {
+              "value": "automation",
+              "label": "AI Automation (back-office work done by hand)"
+            },
             {
               "value": "smb",
               "label": "SMB Optimization"

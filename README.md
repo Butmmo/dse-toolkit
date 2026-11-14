@@ -10,6 +10,7 @@ Nothing here sends, posts or pays. You do every send.
 | Your path | What the toolkit does for you |
 |---|---|
 | **SMB Optimization** | Finds independent local businesses (22 types: dentists, HVAC, plumbers, salons, law offices and more) and checks whether they ask for Google reviews, show reviews, take bookings online, and offer text/chat. |
+| **AI Automation** | Same lead finder, plus a check for back-office work still done by hand: hiring for admin roles, paper or PDF intake forms, no online scheduling, enquiries by plain email, no FAQ, no chat, no online payment, no email follow-up. It also warns you when a business already shows automation tools. Each gap is a workflow you can build in n8n. |
 | **AI Voice Receptionist** | Same lead finder for phone-heavy service businesses. Checks after-hours answering, online booking and text/chat, and warns you if they already use an AI receptionist. |
 | **CareBridge** | Finds home care agencies, assisted living, nursing homes and senior services. Checks their enquiry form and reply-time promise, then the **mystery-shop tracker** scores Hot/Warm/Cold by how fast they really answer. |
 | **Digital Ministry Systems** | Checks your own parish or a warm-network church's website: online giving, event sign-up, newsletter, services online, Mass times. No cold lists, by design. |

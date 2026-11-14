@@ -1,0 +1,135 @@
+{
+  "label": "AI Automation Engineering",
+  "variant": "automation-admin-v1",
+  "about": "Finds the repetitive back-office work a business still does by hand, from what its website shows: enquiries by plain email, paper intake forms, phone-only scheduling, no FAQ, no online payment, and admin roles being hired. Each gap is a workflow you could build in n8n. It reads public pages only; a 'no' means 'nothing found on the site', so confirm in the first conversation.",
+  "max_pages": 5,
+  "pages": [
+    "contact",
+    "book",
+    "appointment",
+    "schedule",
+    "forms",
+    "patient",
+    "intake",
+    "new-client",
+    "faq",
+    "help",
+    "careers",
+    "jobs",
+    "hiring",
+    "pay",
+    "portal",
+    "quote"
+  ],
+  "checks": [
+    {
+      "id": "hiring_admin",
+      "missing": "Hiring for desk work ({quote})",
+      "label": "Is hiring for admin or desk roles",
+      "type": "absent",
+      "look_for": [
+        "(?:we'?re hiring|now hiring|join our team|open positions?|job openings?|career opportunit\\w+|current openings?)\\W[^.]{0,150}?(?P<q1>administrative assistant|admin assistant|office (?:manager|administrator|assistant)|receptionist|front desk (?:coordinator|assistant|associate|agent)|data entry|scheduler|dispatcher|customer service (?:rep|representative|agent)|billing (?:clerk|specialist)|intake coordinator)",
+        "(?P<q2>administrative assistant|admin assistant|office (?:manager|administrator|assistant)|receptionist|front desk (?:coordinator|assistant|associate|agent)|data entry|scheduler|dispatcher|customer service (?:rep|representative|agent)|billing (?:clerk|specialist)|intake coordinator)[^.]{0,60}\\b(?:apply|job description|full[- ]time|part[- ]time|position)"
+      ],
+      "weight": 4,
+      "gap_line": "you're hiring for desk work ({quote}), which is often the repeat tasks a workflow can take over",
+      "scope": "text"
+    },
+    {
+      "id": "online_booking",
+      "missing": "No online scheduling",
+      "label": "Booking or scheduling online",
+      "type": "present",
+      "look_for": [
+        "book (online|now|an appointment|your|a)|schedule (online|now|an appointment|a call|a consultation|a visit)|request (an )?appointment|appointment request",
+        "calendly|acuityscheduling|squareup\\.com/appointments|vagaro|mindbody|zocdoc|nexhealth|housecallpro|servicetitan|jobber|schedulicity|booksy|fresha|setmore|simplybook|cal\\.com|youcanbook\\.me|hubspot\\.com/meetings|tidycal|savvycal|jane\\.app|clinicsense|10to8"
+      ],
+      "weight": 3,
+      "gap_line": "there's no online scheduling, so every appointment is arranged back and forth by phone or email"
+    },
+    {
+      "id": "paper_intake",
+      "missing": "Paper or PDF intake forms ({quote})",
+      "label": "Intake done with downloadable forms",
+      "type": "absent",
+      "look_for": [
+        "(?P<q1>(?:download|print|printable)(?: out)?(?: and (?:print|fill(?: out)?))?(?: the| our| a| your| these| this| new| patient| client| customer| intake| registration| application)* ?(?:forms?|paperwork|packets?))\\b",
+        "(?P<q2>fax (?:it|the (?:form|completed form)|us))"
+      ],
+      "weight": 3,
+      "gap_line": "new clients download a form, fill it in and send it back ({quote}), so someone has to retype it by hand",
+      "scope": "text"
+    },
+    {
+      "id": "web_form",
+      "missing": "Enquiries by plain email or phone only",
+      "label": "A real enquiry form on the site",
+      "type": "present",
+      "look_for": [
+        "<form\\b[^>]{0,300}(contact|quote|enquir|inquir|request|message|consult|estimate)",
+        "name=[\"']?(message|enquiry|inquiry|your-message)|wpcf7|wpforms|gravity_form|gform|formspree|typeform|jotform|hs-form|hubspot-form|cognito ?forms|ninja-forms|elementor-form|fluent_form|forminator|contact form"
+      ],
+      "weight": 2,
+      "gap_line": "enquiries come in by plain email or phone, so nothing is captured, sorted or answered automatically"
+    },
+    {
+      "id": "faq_help",
+      "missing": "No FAQ or help page",
+      "label": "FAQ or help page",
+      "type": "present",
+      "look_for": [
+        "faq|frequently asked|common questions|help (center|centre)|knowledge ?base|support (center|centre)|how it works|questions (and|&) answers"
+      ],
+      "weight": 2,
+      "gap_line": "there's no FAQ or help page, so the same questions are answered by hand again and again"
+    },
+    {
+      "id": "chat_instant",
+      "missing": "No chat or instant reply",
+      "label": "Chat, text or WhatsApp on the site",
+      "type": "present",
+      "look_for": [
+        "tidio|intercom|livechat|drift\\.com|crisp\\.chat|tawk\\.to|zendesk|freshchat|olark|smartsupp|chatra|manychat|leadconnector|msgsndr|podium|weave",
+        "wa\\.me|api\\.whatsapp\\.com|whatsapp (us|chat|now)|chat (with|to) us|live chat|text us|sms:"
+      ],
+      "weight": 2,
+      "gap_line": "there's no chat or instant reply on the site, so questions asked out of hours wait until someone is back"
+    },
+    {
+      "id": "online_payment",
+      "missing": "No online payment or portal",
+      "label": "Pay online or client portal",
+      "type": "present",
+      "look_for": [
+        "pay (online|now|your (bill|invoice|balance))|make a payment|online payment|client portal|customer portal|patient portal|account login|my account|member login",
+        "stripe\\.com|paypal\\.com/(invoice|paypalme)|paypal\\.me|square\\.link|paystack|flutterwave|quickbooks|freshbooks|authorize\\.net|checkout"
+      ],
+      "weight": 2,
+      "gap_line": "there's no way to pay or check an invoice online, so billing and chasing payments is done by hand"
+    },
+    {
+      "id": "follow_up_list",
+      "missing": "No email sign-up for follow-up",
+      "label": "Email sign-up for follow-up",
+      "type": "present",
+      "look_for": [
+        "newsletter|subscribe|mailing list|email updates|join our (email|list)|get (updates|offers|tips)|mailchimp|klaviyo|constant ?contact|convertkit|activecampaign|substack|mailerlite"
+      ],
+      "weight": 1,
+      "gap_line": "there's no email sign-up, so past customers are never followed up automatically"
+    },
+    {
+      "id": "already_automated",
+      "missing": "Already shows automation or AI tools ({quote})",
+      "label": "Already uses automation or AI tools",
+      "type": "absent",
+      "look_for": [
+        "(?P<q1>ai[- ]powered (?:assistant|chat|receptionist)|ai (?:assistant|receptionist|chatbot)|chat ?bot|automated (?:follow[- ]?up|reminders?|scheduling|text|texts)|powered by (?:zapier|n8n|gohighlevel|activecampaign))"
+      ],
+      "weight": 0,
+      "gap_line": "they already show automation tools",
+      "scope": "text"
+    }
+  ],
+  "opener": "Hi {business} team, I was looking at how businesses in {city} handle day-to-day admin and noticed {gap_line}. That's usually a few hours a week of copy-and-paste that a simple workflow can take over. I mapped how I'd set it up (one diagram, no cost to you); want me to send it?"
+}
