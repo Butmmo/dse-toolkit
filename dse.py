@@ -14,6 +14,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
   python dse.py proposal <engine> --client "Acme" --problem "..." --offer "..." --price 1500 --deliverables "a; b"  a one-page proposal, cover email and follow-up (it sends nothing)
+  python dse.py client won <engine> --proposal NAME   the Client Desk: from a won proposal to onboarding, invoices, delivery and payments (client list|show|done|invoice|paid)
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -37,7 +38,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, desklog, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, clients, desklog, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -98,6 +99,10 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    cd = sub.add_parser("client"); cd.add_argument("action", choices=["won", "list", "show", "done", "invoice", "paid"]); cd.add_argument("target", help="an engine (won, list) or engine/client (the rest)")
+    cd.add_argument("--proposal", default=""); cd.add_argument("--email", default=""); cd.add_argument("--address", default=""); cd.add_argument("--item", default="")
+    cd.add_argument("--date", default=""); cd.add_argument("--kind", default="final"); cd.add_argument("--amount", type=float, default=0); cd.add_argument("--note", default="")
+    cd.add_argument("--terms", type=int, default=7); cd.add_argument("--invoice", default="")
     pr = sub.add_parser("proposal"); pr.add_argument("engine"); pr.add_argument("--client", required=True); pr.add_argument("--contact", default=""); pr.add_argument("--problem", required=True)
     pr.add_argument("--offer", required=True); pr.add_argument("--price", type=float, default=0); pr.add_argument("--deliverables", required=True); pr.add_argument("--weeks", type=int, default=3)
     pr.add_argument("--cost-month", type=float, default=0, dest="cost_month"); pr.add_argument("--options", default=""); pr.add_argument("--deposit", type=int, default=50)
@@ -188,6 +193,22 @@ def main():
     elif a.cmd == "proposal":
         try:
             print(proposal.report(a.engine, a.client, a.contact, a.problem, a.offer, a.price, a.deliverables, a.weeks, a.cost_month, a.options, a.deposit, a.currency, a.excludes, a.start))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "client":
+        try:
+            if a.action == "won":
+                print(clients.won(a.target, a.proposal, a.email, a.address))
+            elif a.action == "list":
+                print(clients.listing(a.target))
+            elif a.action == "show":
+                print(clients.show(a.target))
+            elif a.action == "done":
+                print(clients.done(a.target, a.item, a.date))
+            elif a.action == "invoice":
+                print(clients.invoice(a.target, a.kind, a.amount, a.note, a.terms))
+            else:
+                print(clients.paid(a.target, a.invoice, a.amount, a.date))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "cashlog":

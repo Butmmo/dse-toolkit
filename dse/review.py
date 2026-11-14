@@ -11,7 +11,7 @@ It reads (all in engines/<slug>/, nothing is guessed, nothing is sent):
 
 The moves are ranked by one fixed rule, closest to money first, and the report says which file each number came from:
   1 replies waiting for your answer  2 calls booked to prepare for  3 follow-ups due  4 messages on your lists not yet sent
-  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
+  2.5 overdue client invoices  3.5 late client deliverables  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import datetime as dt
 
 from . import cashdesk as cd
 from . import desklog as dl
-from . import followups, goals, vetting
+from . import clients, followups, goals, vetting
 from .engines import all_slugs, engine_dir, load
 
 OPEN_OFFERS = ("researching", "applied", "interview")
@@ -52,7 +52,11 @@ def gather(slug: str, today: dt.date) -> dict:
     key = a.strftime("%Y-%m")
     target = cd.get_target(slug, key)
     offers = [o for o in vetting.read_offers(slug) if o.get("status") in OPEN_OFFERS]
-    return {"slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
+    try:
+        att = clients.attention(slug, today)
+    except Exception:
+        att = {"overdue_invoices": [], "late_items": []}
+    return {"clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
             "month": month, "target": target, "key": key, "pace": cd.pace(month["received"], today, a, b), "offers": offers,
             "goal_note": (engine_dir(slug) / "next-goal.md").exists()}
 
@@ -63,6 +67,12 @@ def moves(g: dict) -> list[dict]:
         n = len(g["replies"])
         out.append({"rank": 1, "do": f"Answer {n} repl{'y' if n == 1 else 'ies'} waiting for you ({', '.join(g['replies'][:3])}{'...' if n > 3 else ''}).",
                     "how": f"Open the Send Desk (Replies). For each one, python dse.py reply {s} --text \"their words\" gives the kind, a draft answer and the follow-up date. You send it yourself.", "source": "data/log.csv: rows whose latest tap is Got a reply"})
+    ci = g["clients"]["overdue_invoices"]
+    if ci:
+        owed = sum(i["owed"] for i in ci)
+        sym = ci[0]["sym"] if len({i["sym"] for i in ci}) == 1 else ""
+        out.append({"rank": 2.5, "do": f"{len(ci)} overdue invoice{'s' if len(ci) != 1 else ''}, {sym}{owed:,.0f} owed ({', '.join(i['client'] for i in ci[:3])}).",
+                    "how": "Send a polite reminder; when it arrives: python dse.py client paid " + f"{s}/<client> --invoice <id>", "source": "clients/*/client.json (invoice due dates and payments)"})
     if g["booked"]:
         n = len(g["booked"])
         out.append({"rank": 2, "do": f"Prepare for {n} booked call{'s' if n != 1 else ''} ({', '.join(g['booked'][:3])}{'...' if n > 3 else ''}).",
@@ -74,6 +84,10 @@ def moves(g: dict) -> list[dict]:
         n = len(g["unsent"])
         out.append({"rank": 4, "do": f"{n} message{'s' if n != 1 else ''} on your lists {'are' if n != 1 else 'is'} still not marked Sent.",
                     "how": f"First run python dse.py preflight {s} to catch blockers. Then open the Send Desk, send them yourself and tap Sent (or Skip).", "source": f"send-lists/ ({', '.join(sorted(set(g['unsent']))[:3])})"})
+    li = g["clients"]["late_items"]
+    if li:
+        out.append({"rank": 3.5, "do": f"{len(li)} deliverable{'s' if len(li) != 1 else ''} late ({'; '.join(x['client'] + ': ' + x['item'] for x in li[:3])}).",
+                    "how": "Finish or tell the client the new date today; tick done with: python dse.py client done " + f"{s}/<client> --item \"...\"", "source": "clients/*/client.json (delivery dates from the proposal)"})
     c = g["month"]["calls"]
     if c["sold"] and g["month"]["received"] <= 0:
         out.append({"rank": 5, "do": f"{c['sold']} sold call(s) this month but no money logged as received.",

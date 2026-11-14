@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import html as htmllib
+import json
 import math
 import re
 from pathlib import Path
@@ -90,7 +91,7 @@ def build_data(slug: str, client: str, contact: str, problem: str, offer: str, p
     brand = (cfg.get("brand_name") or cfg.get("name") or "").strip()
     sym = SYMBOLS[currency]
     d = {"slug": slug, "client": client, "contact": contact, "problem": problem, "offer": offer, "price": price, "items": items, "weeks": weeks, "cost_month": cost_month, "options": opts,
-         "deposit": deposit, "sym": sym, "excludes": clean(excludes, 200), "start": st, "today": today, "valid": today + dt.timedelta(days=14), "sender": sender, "brand": brand,
+         "deposit": deposit, "currency": currency, "sym": sym, "excludes": clean(excludes, 200), "start": st, "today": today, "valid": today + dt.timedelta(days=14), "sender": sender, "brand": brand,
          "calendar": (cfg.get("calendar_url") or cfg.get("calendar") or "").strip(), "notes": []}
     if cost_month:
         d["payback_months"] = price / cost_month
@@ -182,6 +183,9 @@ def report(slug: str, client: str, contact: str, problem: str, offer: str, price
     stem = f"{d['today'].isoformat()}-{re.sub(r'[^a-z0-9]+', '-', d['client'].lower()).strip('-')[:40]}"
     (folder / f"{stem}.md").write_text(md + "\n---\nCover email\n\n" + mail + "\n---\nFollow-up\n\n" + fu, encoding="utf-8")
     (folder / f"{stem}.html").write_text(html_page(d, md), encoding="utf-8")
+    (folder / f"{stem}.json").write_text(json.dumps({"client": d["client"], "contact": d["contact"], "problem": d["problem"], "offer": d["offer"], "price": d["price"], "currency": d["currency"],
+                                                     "deposit": d["deposit"], "start": d["start"].isoformat(), "weeks": d["weeks"], "items": d["items"], "cost_month": d["cost_month"],
+                                                     "created": d["today"].isoformat(), "stem": stem}, indent=1), encoding="utf-8")
     brackets = sorted(set(BRACKET.findall(md + mail + fu)))
     out = [f"# Proposal saved: {d['client']}", "", f"engines/{slug}/proposals/{stem}.md  (text, with the cover email and the follow-up)", f"engines/{slug}/proposals/{stem}.html  (open in a browser, then Print > Save as PDF)", "", md.rstrip(), "",
            "## Cover email", mail.rstrip(), "", "## Follow-up", fu.rstrip(), ""]

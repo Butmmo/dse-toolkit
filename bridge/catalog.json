@@ -4517,6 +4517,330 @@
         "engines/*/proposals/*.md",
         "engines/*/proposals/*.html"
       ]
+    },
+    "dse.client_won": {
+      "label": "Client Desk: this proposal was accepted",
+      "group": "My engines",
+      "help": "Turns a saved proposal into a client: price, deposit, timeline and deliverables carry over. Writes the onboarding checklist with dates, a welcome message in your name, a short agreement outline (a starting point, not legal advice) and the deposit invoice as a print-ready page. Nothing is sent: you send the welcome message, the agreement and the invoice yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "client"
+        },
+        {
+          "lit": "won"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--proposal",
+          "field": "proposal"
+        },
+        {
+          "opt": "--email",
+          "field": "email"
+        },
+        {
+          "opt": "--address",
+          "field": "address"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "proposal",
+          "label": "Proposal",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/proposals/*.json"
+        },
+        {
+          "name": "email",
+          "label": "Their email (for the invoice, optional)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        },
+        {
+          "name": "address",
+          "label": "Their billing address (optional)",
+          "type": "text",
+          "required": false,
+          "max": 200
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "engines/*/clients/*/onboarding.md",
+        "engines/*/clients/*/invoices/*.html"
+      ]
+    },
+    "dse.client_list": {
+      "label": "Client Desk: my clients",
+      "group": "My engines",
+      "help": "Every client with status, price, paid, what is owed now and the next deliverable.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "client"
+        },
+        {
+          "lit": "list"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.client_show": {
+      "label": "Client Desk: one client in full",
+      "group": "My engines",
+      "help": "Onboarding tasks, deliverables with dates (late ones marked), and every invoice with what is outstanding.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "client"
+        },
+        {
+          "lit": "show"
+        },
+        {
+          "field": "client"
+        }
+      ],
+      "fields": [
+        {
+          "name": "client",
+          "label": "Client",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/clients/*/client.json"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.client_done": {
+      "label": "Client Desk: tick off a deliverable or task",
+      "group": "My engines",
+      "help": "Marks a deliverable or an onboarding task as done (type a few words of its name). When the last deliverable is done it tells you to issue the final invoice.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "client"
+        },
+        {
+          "lit": "done"
+        },
+        {
+          "field": "client"
+        },
+        {
+          "opt": "--item",
+          "field": "item"
+        },
+        {
+          "opt": "--date",
+          "field": "date"
+        }
+      ],
+      "fields": [
+        {
+          "name": "client",
+          "label": "Client",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/clients/*/client.json"
+        },
+        {
+          "name": "item",
+          "label": "A few words of its name",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'&/()-]{2,79}$"
+        },
+        {
+          "name": "date",
+          "label": "Date (empty = today)",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.client_invoice": {
+      "label": "Client Desk: issue the final or an extra invoice",
+      "group": "My engines",
+      "help": "The final invoice is the balance of the price and follows delivery. An extra invoice is for something added (an amount and what it is for). Print-ready page; you send it yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "client"
+        },
+        {
+          "lit": "invoice"
+        },
+        {
+          "field": "client"
+        },
+        {
+          "opt": "--kind",
+          "field": "kind"
+        },
+        {
+          "opt": "--amount",
+          "field": "amount"
+        },
+        {
+          "opt": "--note",
+          "field": "note"
+        },
+        {
+          "opt": "--terms",
+          "field": "terms"
+        }
+      ],
+      "fields": [
+        {
+          "name": "client",
+          "label": "Client",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/clients/*/client.json"
+        },
+        {
+          "name": "kind",
+          "label": "Which",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "final",
+              "label": "Final invoice (the balance)"
+            },
+            {
+              "value": "extra",
+              "label": "Extra invoice (something added)"
+            }
+          ],
+          "default": "final"
+        },
+        {
+          "name": "amount",
+          "label": "Amount (extra invoices only)",
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 10000000,
+          "default": 0
+        },
+        {
+          "name": "note",
+          "label": "What it is for (extra invoices only)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'&/()-]{2,119}$"
+        },
+        {
+          "name": "terms",
+          "label": "Days to pay",
+          "type": "int",
+          "min": 0,
+          "max": 90,
+          "default": 7
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "engines/*/clients/*/invoices/*.html"
+      ]
+    },
+    "dse.client_paid": {
+      "label": "Client Desk: money received for an invoice",
+      "group": "My engines",
+      "help": "Records a payment against an invoice (leave the amount empty for what is left) and adds it to the Cash Desk, so what you received stays true without typing it twice.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "client"
+        },
+        {
+          "lit": "paid"
+        },
+        {
+          "field": "client"
+        },
+        {
+          "opt": "--invoice",
+          "field": "invoice"
+        },
+        {
+          "opt": "--amount",
+          "field": "amount"
+        },
+        {
+          "opt": "--date",
+          "field": "date"
+        }
+      ],
+      "fields": [
+        {
+          "name": "client",
+          "label": "Client",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/clients/*/client.json"
+        },
+        {
+          "name": "invoice",
+          "label": "Invoice number (like INV-2026-001)",
+          "type": "text",
+          "required": true,
+          "max": 20,
+          "pattern": "^INV-\\d{4}-\\d{3,4}$"
+        },
+        {
+          "name": "amount",
+          "label": "Amount received (empty = the whole outstanding amount)",
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 10000000,
+          "default": 0
+        },
+        {
+          "name": "date",
+          "label": "Date received (empty = today)",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [
