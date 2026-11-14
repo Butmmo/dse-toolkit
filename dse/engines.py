@@ -115,6 +115,7 @@ def fill(template: str, row: dict, cfg: dict) -> str:
 def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
     """New, checked leads for the engine: from the lead finder, Apple Podcasts, or the engine's own seed list."""
     slug, path = cfg["slug"], cfg.get("path", "smb")
+    mode = cfg.get("source") if path == "custom" else None        # custom engines pick their own lead source
     raw = engine_dir(slug) / "data" / "raw"
     raw.mkdir(parents=True, exist_ok=True)
     stamp = dt.date.today().isoformat()
@@ -131,7 +132,7 @@ def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
             out.append(r)
         return out
 
-    if path == "broadcast":
+    if path == "broadcast" or mode == "podcasts":
         topics = cfg.get("topics") or ["business"]
         src = podcasts.find("; ".join(topics), cfg.get("genre", "business"), max(need * 3, 30), out=str(raw / f"{stamp}-podcasts.csv"))
         rows = [r for r in fresh(read_csv(src)) if str(r.get("gap_count", "0")) not in ("", "0")]
@@ -140,7 +141,7 @@ def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
         return rows[:need]
 
     seeds = cfg.get("seed_urls") or []
-    if seeds or path in ("ministry", "revenue"):
+    if seeds or path in ("ministry", "revenue") or mode == "seeds":
         rows = [{"business": u.get("name") or domain(u.get("url", "")), "website": u.get("url", ""), "city": u.get("city", "")}
                 if isinstance(u, dict) else {"business": domain(u), "website": u, "city": ""} for u in seeds]
         rows = fresh(rows)[: need * 2]
@@ -175,6 +176,9 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
     cfg = load(slug)
     if cfg.get("archived"):
         sys.exit(f"Engine '{slug}' is archived.")
+    if cfg.get("path") == "custom" and cfg.get("source", "none") == "none":
+        print(f"'{cfg.get('name', slug)}' is a chat-and-notes engine: there are no lead lists to build. Open DBI-AI and pick it from the menu.")
+        return []
     if cfg.get("path") in ("ascent", "authority", "gtm"):
         sys.exit(f"The {cfg['path']} path prospects through LinkedIn and calls; its tools come in a later phase.")
     per_day = per_day or int(cfg.get("per_day", 20))
@@ -190,7 +194,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
     log(f"Engine '{cfg.get('name', slug)}' ({cfg.get('path')}): {per_day} a day for {days} day(s) from {dates[0]}")
     pool = candidates(cfg, per_day * days, render)
     opener_tpl = cfg.get("opener") or chk.load_pack(cfg.get("pack", cfg.get("path", "smb"))).get("opener", "")
-    if cfg.get("path") == "broadcast":
+    if cfg.get("path") == "broadcast" or (cfg.get("path") == "custom" and cfg.get("source") == "podcasts"):
         opener_tpl = cfg.get("opener") or podcasts.OPENER.replace("{show}", "{business}").replace("{genre}", cfg.get("genre", "business"))
     written = []
     # Straight onto the engine's send lists (the Send Desk shows them; Skip anything that looks wrong), unless the

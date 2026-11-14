@@ -118,7 +118,15 @@ def engine_context(folder):
     for tk in (H.parent, H.parents[1] / "dse-toolkit"):
         cfg = tk / "engines" / folder / "engine.json"
         if cfg.is_file():
-            out.append("Engine settings (" + folder + "):" + NL + cfg.read_text(encoding="utf-8", errors="ignore")[:3000])
+            raw_cfg = cfg.read_text(encoding="utf-8", errors="ignore")
+            try:
+                c = json.loads(raw_cfg)
+            except ValueError:
+                c = {}
+            if c.get("purpose") or c.get("ai_context"):      # a custom engine: its purpose and the student's instructions come first
+                out.append("This is a custom engine. Its purpose: " + str(c.get("purpose", "")) + NL
+                           + "How the student wants you to help with it: " + str(c.get("ai_context", "(no special instructions)")))
+            out.append("Engine settings (" + folder + "):" + NL + raw_cfg[:3000])
             sl = tk / "engines" / folder / "send-lists"
             lists = sorted(sl.glob("*.csv")) if sl.is_dir() else []
             out.append(str(len(lists)) + " send lists built so far" + (", newest " + lists[-1].name if lists else "") + ".")

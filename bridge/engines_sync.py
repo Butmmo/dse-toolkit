@@ -35,7 +35,7 @@ def engine_json(e: dict) -> dict:
     cfg = dict(e.get("config") or {})
     cfg.update({"name": e["name"], "path": e["path"], "archived": bool(e.get("archived")),
                 "citadel_updated_at": e.get("updated_at")})
-    cfg.setdefault("pack", e["path"])
+    cfg.setdefault("pack", "smb" if e["path"] == "custom" else e["path"])
     return cfg
 
 
