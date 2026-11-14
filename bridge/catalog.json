@@ -793,6 +793,30 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "chat.ask": {
+      "label": "HQ chat: ask anything",
+      "group": "Guides",
+      "help": "Ask about selling, objections, freelancing, planning your day, simple thinking for work, or any tool. The answer shows in the log.",
+      "script": "chat/chat.py",
+      "args": [
+        {
+          "field": "question"
+        }
+      ],
+      "fields": [
+        {
+          "name": "question",
+          "label": "Your question",
+          "type": "text",
+          "required": true,
+          "max": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!-]{2,199}$",
+          "placeholder": "a client says it is too expensive"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [
