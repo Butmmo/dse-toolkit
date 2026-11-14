@@ -10,6 +10,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py import acme-gtm                         check the CSV exports (Go-to-Market) or pasted profiles (Authority) before building a list
   python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
   python dse.py cash <engine|all> [--month 2026-11] [--target 3000]  the Cash Desk: this month against your target; python dse.py cashin <engine> --amount 450 --kind commission logs money you received
+  python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
   python dse.py packs                                   website-check packs (one per path)
@@ -32,7 +33,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, desklog, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, desklog, goals, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -93,6 +94,9 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    gl = sub.add_parser("goal"); gl.add_argument("engine"); gl.add_argument("--month", default=""); gl.add_argument("--stretch", type=float, default=goals.STRETCH_DEFAULT)
+    gl.add_argument("--apply", action="store_true", help="save the suggestion as that month's goal"); gl.add_argument("--set", type=float, default=0, dest="set_to")
+    rv = sub.add_parser("review"); rv.add_argument("engine", help="an engine, or all"); rv.add_argument("--top", type=int, default=5)
     ch = sub.add_parser("calls"); ch.add_argument("engine")
     lg = sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
     lg.add_argument("row", help="the row number on that list"); lg.add_argument("status", choices=list(desklog.STATUSES))
@@ -130,6 +134,13 @@ def main():
         print(f"Logged {r['amount']} ({r['kind']}) on {r['date']}.")
         print()
         print(cashdesk.build(a.engine))
+    elif a.cmd == "goal":
+        try:
+            print(goals.report(a.engine, a.month or None, a.stretch, a.apply, a.set_to or None))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "review":
+        print(review.build(a.engine, max(1, min(a.top, 30))))
     elif a.cmd == "cashlog":
         print(cashdesk.history(a.engine))
     elif a.cmd == "calls":

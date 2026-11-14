@@ -49,19 +49,39 @@ def read_cash(slug: str) -> list[dict]:
         return [r for r in csv.DictReader(f) if r.get("date")]
 
 
-def get_target(slug: str) -> float:
+def read_settings(slug: str) -> dict:
     try:
-        return float(json.loads(settings_path(slug).read_text(encoding="utf-8")).get("target", DEFAULT_TARGET))
-    except (OSError, ValueError, TypeError):
+        d = json.loads(settings_path(slug).read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def get_target(slug: str, month: str | None = None) -> float:
+    """That month's own goal if you set one (YYYY-MM), else your standing target, else the default."""
+    st = read_settings(slug)
+    try:
+        if month and month in (st.get("months") or {}):
+            return float(st["months"][month])
+        return float(st.get("target", DEFAULT_TARGET))
+    except (ValueError, TypeError):
         return DEFAULT_TARGET
 
 
-def set_target(slug: str, target: float) -> None:
+def set_target(slug: str, target: float, month: str | None = None) -> None:
+    """Without a month: the standing target every month without its own goal uses. With one (YYYY-MM): that month only."""
     if not 50 <= target <= 1_000_000:
         raise ValueError("The target must be between 50 and 1,000,000 a month.")
+    if month and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+        raise ValueError("Month as YYYY-MM, for example 2026-11.")
+    st = read_settings(slug)
+    if month:
+        st.setdefault("months", {})[month] = target
+    else:
+        st["target"] = target
     p = settings_path(slug)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"target": target}) + "\n", encoding="utf-8")
+    p.write_text(json.dumps(st, indent=1) + "\n", encoding="utf-8")
 
 
 def log_cash(slug: str, amount: float, kind: str, note: str = "", date: str = "") -> dict:
@@ -237,14 +257,14 @@ def build(slug: str, month: str | None = None, today: dt.date | None = None, tar
         if not slugs:
             return "You have no engines yet. Create one in HQ Tools, then come back."
         d = combine([month_data(s, a, b) for s in slugs])
-        tgt = target if target else sum(get_target(s) for s in slugs)
+        tgt = sum(get_target(s, a.strftime("%Y-%m")) for s in slugs)
         label = "all engines" if len(slugs) != 1 else "your one engine"
     else:
         load(slug)
         if target:
-            set_target(slug, target)
+            set_target(slug, target, a.strftime("%Y-%m"))
         d = month_data(slug, a, b)
-        tgt = target or get_target(slug)
+        tgt = get_target(slug, a.strftime("%Y-%m"))
         label = slug
     f, c = d["funnel"], d["calls"]
     p = pace(d["received"], today, a, b)

@@ -48,6 +48,12 @@ A missing toolchain is not an error to decode: `dev run` names the program and t
 
 Where the numbers come from, all in `engines/<engine>/data/`: `cash.csv` (money you log with `python dse.py cashin <engine> --amount 450 --kind commission --note "Acme sale"`; a refund is logged with `--kind refund`), `calls.csv` (from `callscore`; sale value x your commission % is shown as an **estimate** until you log the money), `log.csv` (Send Desk taps; out-of-office replies are not counted as replies) and `cash.json` (your target). `python dse.py cashlog <engine>` lists what you logged. The report is also saved as `engines/<engine>/cash-desk.md`.
 
+## Weekly Review and monthly goals
+
+`python dse.py review <engine|all> [--top 5]` (HQ Tools: "Weekly Review") gives the few things to do first this week, ranked by one fixed rule, closest to money first: replies waiting for you, calls booked, follow-ups due, messages on your lists not yet sent, sold calls whose money is not logged, nothing sent for 7 days, offers still being vetted, a goal to accept or a goal you are behind on. Each move names the exact step and the file the number came from. It sends and changes nothing, and saves `engines/<engine>/weekly-review.md`.
+
+`python dse.py goal <engine> [--month 2026-12] [--stretch 20]` (HQ Tools: "Monthly goal") automates the goal. The suggestion is the average of the money you logged in your last 3 complete months (or your last month if it beat that), plus a stretch you choose (default 20%), rounded up to the next $50, with the working shown, then what each week would need (sales, calls, messages) from your own rates, or a plain "too little data". A month with no goal of its own carries your standing target, so there is always one. The runner also writes `engines/<engine>/next-goal.md` every few hours when the month ahead has no goal. **Nothing changes a goal unless you add `--apply` or `--set 4000`.** The Cash Desk and the review use that month's goal.
+
 ## Follow-ups and results for your engines
 Once you send from the **Send Desk** (More, or the Send Desk tab) and tap **Sent** on each message, your PC keeps the log and does the rest.
 

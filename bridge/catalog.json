@@ -3817,6 +3817,146 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dse.review": {
+      "label": "Weekly Review: what to do first this week",
+      "group": "My engines",
+      "help": "Reads your send log, lists, follow-ups, calls, money and offers, and gives the 3 to 5 moves for the week in a fixed order, closest to money first. Each move says the exact step and which file the number came from. It sends and changes nothing.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "review"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--top",
+          "field": "top"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "top",
+          "label": "How many moves",
+          "type": "int",
+          "min": 1,
+          "max": 30,
+          "default": 5
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.review_all": {
+      "label": "Weekly Review: all engines together",
+      "group": "My engines",
+      "help": "The same review across every engine, moves ranked together.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "review"
+        },
+        {
+          "lit": "all"
+        },
+        {
+          "opt": "--top",
+          "field": "top"
+        }
+      ],
+      "fields": [
+        {
+          "name": "top",
+          "label": "How many moves",
+          "type": "int",
+          "min": 1,
+          "max": 30,
+          "default": 5
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.goal": {
+      "label": "Monthly goal: suggest, set or accept",
+      "group": "My engines",
+      "help": "Suggests next month's income goal from the money you logged in your last 3 complete months (plus a stretch you choose), shows the working, and says what each week would need using your own rates. Nothing changes unless you tick Accept the suggestion or type a goal yourself. A month with no goal of its own carries your standing target.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "goal"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--month",
+          "field": "month"
+        },
+        {
+          "opt": "--stretch",
+          "field": "stretch"
+        },
+        {
+          "flag": "--apply",
+          "field": "apply"
+        },
+        {
+          "opt": "--set",
+          "field": "set_to"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "month",
+          "label": "Month (YYYY-MM, empty = the next one to plan)",
+          "type": "text",
+          "required": false,
+          "max": 7,
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        },
+        {
+          "name": "stretch",
+          "label": "Stretch over your history (%)",
+          "type": "int",
+          "min": 0,
+          "max": 200,
+          "default": 20
+        },
+        {
+          "name": "apply",
+          "label": "Accept the suggestion as that month's goal",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "set_to",
+          "label": "Or set the goal yourself ($, empty = leave it)",
+          "type": "int",
+          "min": 0,
+          "max": 1000000,
+          "default": 0
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
     }
   },
   "periodic": [
@@ -3829,6 +3969,11 @@
       "script": "bridge/desk_sync.py",
       "every_s": 60,
       "what": "Send Desk: your engines' lists on your phone, your phone taps into your log"
+    },
+    {
+      "script": "bridge/goal_sync.py",
+      "every_s": 21600,
+      "what": "Monthly goals: a suggested goal for the month ahead, written for you to accept (it never changes a goal)"
     }
   ]
 }
