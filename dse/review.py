@@ -62,18 +62,18 @@ def moves(g: dict) -> list[dict]:
     if g["replies"]:
         n = len(g["replies"])
         out.append({"rank": 1, "do": f"Answer {n} repl{'y' if n == 1 else 'ies'} waiting for you ({', '.join(g['replies'][:3])}{'...' if n > 3 else ''}).",
-                    "how": "Open the Send Desk (Replies), answer each one yourself.", "source": "data/log.csv: rows whose latest tap is Got a reply"})
+                    "how": f"Open the Send Desk (Replies). For each one, python dse.py reply {s} --text \"their words\" gives the kind, a draft answer and the follow-up date. You send it yourself.", "source": "data/log.csv: rows whose latest tap is Got a reply"})
     if g["booked"]:
         n = len(g["booked"])
         out.append({"rank": 2, "do": f"Prepare for {n} booked call{'s' if n != 1 else ''} ({', '.join(g['booked'][:3])}{'...' if n > 3 else ''}).",
-                    "how": f"After each call run: python dse.py callscore {s} --offer ...", "source": "data/log.csv: rows whose latest tap is Call booked"})
+                    "how": f"After each call: python dse.py callscore {s} --offer ... then, if it went well, python dse.py proposal {s} --client ...", "source": "data/log.csv: rows whose latest tap is Call booked"})
     if g["due"]:
         out.append({"rank": 3, "do": f"Send {g['due']} follow-up{'s' if g['due'] != 1 else ''} that {'are' if g['due'] != 1 else 'is'} due.",
                     "how": f"python dse.py followups {s}, then send them from the Send Desk.", "source": "send-lists/ and data/log.csv (the follow-up rules)"})
     if g["unsent"]:
         n = len(g["unsent"])
         out.append({"rank": 4, "do": f"{n} message{'s' if n != 1 else ''} on your lists {'are' if n != 1 else 'is'} still not marked Sent.",
-                    "how": "Open the Send Desk, send them yourself and tap Sent (or Skip).", "source": f"send-lists/ ({', '.join(sorted(set(g['unsent']))[:3])})"})
+                    "how": f"First run python dse.py preflight {s} to catch blockers. Then open the Send Desk, send them yourself and tap Sent (or Skip).", "source": f"send-lists/ ({', '.join(sorted(set(g['unsent']))[:3])})"})
     c = g["month"]["calls"]
     if c["sold"] and g["month"]["received"] <= 0:
         out.append({"rank": 5, "do": f"{c['sold']} sold call(s) this month but no money logged as received.",
