@@ -769,6 +769,30 @@
       ],
       "timeout_min": 90,
       "outputs": []
+    },
+    "howto.ask": {
+      "label": "How to do it (your path's tools)",
+      "group": "Guides",
+      "help": "Type what you want to do and get the steps. Covers all 8 paths: GoHighLevel (SMB), Klaviyo (Revenue Recovery), Descript and CapCut (Broadcast), LinkedIn (Authority), Vapi and Cal.com (Voice AI), n8n (AI Automation), sales calls (Ascent), and Clay, HubSpot, Sales Navigator, Apollo, Instantly, Lemlist (GTM).",
+      "script": "howto/howto.py",
+      "args": [
+        {
+          "field": "question"
+        }
+      ],
+      "fields": [
+        {
+          "name": "question",
+          "label": "What do you want to do?",
+          "type": "text",
+          "required": true,
+          "max": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()-]{2,199}$",
+          "placeholder": "abandoned cart flow in klaviyo"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [

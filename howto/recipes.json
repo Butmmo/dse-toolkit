@@ -1,0 +1,528 @@
+{
+  "note": "How-to recipes for Clay and HubSpot. Add or fix one any time: keep steps short, one action each. Menus move: when a step no longer matches the screen, update it and change 'checked'.",
+  "recipes": [
+    {
+      "app": "clay",
+      "title": "Find local businesses and their websites",
+      "keywords": "find leads companies businesses local google maps search list build table",
+      "checked": "2026-11",
+      "steps": [
+        "Open Clay and create a new workbook, then add a table.",
+        "Choose to find companies or local businesses (the Google Maps style source) as the starting source.",
+        "Enter the business type and the city or area, then set the number of results.",
+        "Run it and check the rows: name, website, phone and address.",
+        "Delete obvious chains and rows without a website before enriching (saves credits)."
+      ],
+      "tips": [
+        "Clay Free has a row cap: pull small, clean batches.",
+        "Our own $0 alternative: HQ Tools lead finder (dse.py find) for the same job."
+      ]
+    },
+    {
+      "app": "clay",
+      "title": "Enrich a list with emails and socials (waterfall)",
+      "keywords": "enrich email emails find contact waterfall social instagram linkedin owner",
+      "checked": "2026-11",
+      "steps": [
+        "Open the table with your companies (it needs a website or domain column).",
+        "Add an enrichment column and pick a work-email or contact finder.",
+        "Map the input to the domain column, then add more providers in order to make a waterfall (it stops at the first hit).",
+        "Run on 5 rows first to check quality and credit cost, then run on the rest.",
+        "Add a column that validates the email before you use it."
+      ],
+      "tips": [
+        "Run on a few rows before the whole table: credits go fast.",
+        "Our free waterfall for websites: gtm.py enrich."
+      ]
+    },
+    {
+      "app": "clay",
+      "title": "Write a personalised first line with AI",
+      "keywords": "ai personalise personalize opener first line message claygent prompt write copy",
+      "checked": "2026-11",
+      "steps": [
+        "Add an AI column (the 'use AI' or Claygent option).",
+        "Write the prompt with column references, e.g. the company name, city and one fact you found.",
+        "Ask for one short sentence and forbid made-up facts.",
+        "Run on 5 rows, read every output, and tighten the prompt.",
+        "Only then run on the full table."
+      ],
+      "tips": [
+        "Keep openers permission-based: offer to send what you found, never free work.",
+        "Never use the em dash in copy (house rule)."
+      ]
+    },
+    {
+      "app": "clay",
+      "title": "Score and filter leads",
+      "keywords": "score scoring filter qualify priority hot warm cold formula",
+      "checked": "2026-11",
+      "steps": [
+        "Add a formula column that adds points for what matters (e.g. no reviews widget, few reviews).",
+        "Add a filter on the table view to show only rows above your cut-off.",
+        "Save that filtered view so you can reuse it.",
+        "Export or send only the filtered view."
+      ],
+      "tips": []
+    },
+    {
+      "app": "clay",
+      "title": "Export a table to a CSV for HQ or the CRM",
+      "keywords": "export csv download send list cockpit crm import out",
+      "checked": "2026-11",
+      "steps": [
+        "Open the table (or the filtered view you want).",
+        "Use the table menu to export or download as CSV.",
+        "Save it, then in Citadel use BPS → CRM → Import CSV, or put it in the engine's send-lists folder for the cockpit."
+      ],
+      "tips": [
+        "Name columns business, city, website, email, instagram, facebook so our importers map them automatically."
+      ]
+    },
+    {
+      "app": "clay",
+      "title": "Import a CSV into Clay",
+      "keywords": "import upload csv bring in add rows from file",
+      "checked": "2026-11",
+      "steps": [
+        "Create a new table and choose to import from CSV.",
+        "Upload the file and check each column's type.",
+        "Run your enrichment columns on the new rows."
+      ],
+      "tips": []
+    },
+    {
+      "app": "hubspot",
+      "title": "Import contacts or companies from a CSV",
+      "keywords": "import contacts companies csv upload list add bulk",
+      "checked": "2026-11",
+      "steps": [
+        "In HubSpot, open Contacts (or Companies).",
+        "Click Import, then start an import from a file on your computer.",
+        "Choose one file, one object (contacts or companies).",
+        "Map each CSV column to a HubSpot property; create a property for anything missing.",
+        "Review and finish, then open the import summary to fix any errors."
+      ],
+      "tips": [
+        "Include the email column for contacts so HubSpot de-duplicates."
+      ]
+    },
+    {
+      "app": "hubspot",
+      "title": "Set up a deal pipeline with stages",
+      "keywords": "pipeline deals stages sales board setup",
+      "checked": "2026-11",
+      "steps": [
+        "Open Settings, then Objects, then Deals, then Pipelines.",
+        "Edit the default pipeline or create one.",
+        "Name the stages in order (e.g. Contacted, Replied, Call booked, Proposal sent, Won, Lost).",
+        "Save, then open Sales, then Deals, to see the board."
+      ],
+      "tips": [
+        "Match the stages to the Citadel CRM so both read the same."
+      ]
+    },
+    {
+      "app": "hubspot",
+      "title": "Create a deal from a contact and move it",
+      "keywords": "deal create move stage contact board won lost",
+      "checked": "2026-11",
+      "steps": [
+        "Open the contact record.",
+        "In the Deals card on the right, create a deal and choose pipeline and stage.",
+        "On the deals board, drag the deal to the next stage as things move.",
+        "Mark it Won or Lost when it ends, with a short reason."
+      ],
+      "tips": []
+    },
+    {
+      "app": "hubspot",
+      "title": "Create a list (segment) of contacts",
+      "keywords": "list segment filter group contacts view saved",
+      "checked": "2026-11",
+      "steps": [
+        "Open Contacts, then Lists (sometimes called Segments).",
+        "Create a list and choose active (updates itself) or static.",
+        "Add filters, e.g. Lifecycle stage is Lead and City is Tampa.",
+        "Save and use it for follow-ups or reports."
+      ],
+      "tips": []
+    },
+    {
+      "app": "hubspot",
+      "title": "Log a call, email or note on a contact",
+      "keywords": "log call note email activity record timeline",
+      "checked": "2026-11",
+      "steps": [
+        "Open the contact.",
+        "Use the Note, Call or Log activity buttons at the top of the timeline.",
+        "Write the outcome and the next step, and set a follow-up task with a date."
+      ],
+      "tips": [
+        "Logging is record-keeping only: you still send every message yourself."
+      ]
+    },
+    {
+      "app": "hubspot",
+      "title": "Create a private app key (for scripts later)",
+      "keywords": "api key token private app integration connect script",
+      "checked": "2026-11",
+      "steps": [
+        "Open Settings, then Integrations, then Private Apps (or Legacy apps on newer accounts).",
+        "Create an app, give it only the scopes you need (e.g. contacts and deals read/write).",
+        "Copy the token straight into the PC settings file the tool names: never paste it into a chat."
+      ],
+      "tips": []
+    },
+    {
+      "app": "gtm",
+      "title": "The whole GTM system, start to finish",
+      "keywords": "gtm system overview plan outbound process stack start end high level strategy",
+      "checked": "2026-11",
+      "steps": [
+        "Pick one market and one offer (who, what problem, what result).",
+        "Build the list: Sales Navigator or Apollo for B2B people, Clay for companies and enrichment, HQ lead finder for local businesses.",
+        "Enrich and verify: emails (waterfall in Clay or Apollo), then verify before any send.",
+        "Write the message: one gap you found, a permission question, no free work.",
+        "Send from warmed inboxes in Instantly (email) and by hand on LinkedIn; keep daily caps.",
+        "Automate the boring parts in n8n: replies into the CRM, alerts, follow-up tasks.",
+        "Track in HubSpot or the Citadel CRM: replied, call booked, won, lost.",
+        "Review weekly with the outcomes report and change one thing at a time."
+      ],
+      "tips": [
+        "Stack for GTM Engineering in DBI: Claude Code, Clay, n8n and a CRM are required; add Sales Navigator, Apollo, Instantly or Lemlist by market."
+      ]
+    },
+    {
+      "app": "salesnav",
+      "title": "Build a lead list in Sales Navigator",
+      "keywords": "sales navigator salesnav linkedin lead list search filters saved search accounts people",
+      "checked": "2026-11",
+      "steps": [
+        "Open Sales Navigator, then Lead filters (people) or Account filters (companies).",
+        "Set the core filters: geography, industry, company headcount, job title or function, seniority.",
+        "Add buying signals: changed jobs recently, posted recently, or growing headcount.",
+        "Save the search so new matches show up, and save good leads to a Lead list.",
+        "Work the list by hand: view profile, connect with a short note, follow up after acceptance."
+      ],
+      "tips": [
+        "Don't scrape or auto-click LinkedIn: it breaks their terms and risks your account.",
+        "Keep connection requests low and personal on a new account."
+      ]
+    },
+    {
+      "app": "salesnav",
+      "title": "Use Sales Navigator signals for timing",
+      "keywords": "signals alerts changed job posted hiring timing trigger warm",
+      "checked": "2026-11",
+      "steps": [
+        "Open your saved searches and lists and check the alerts feed.",
+        "Prioritise people who changed job, posted, or whose company is hiring for your area.",
+        "Mention the signal in one line of your first note, then your permission question."
+      ],
+      "tips": []
+    },
+    {
+      "app": "apollo",
+      "title": "Find contacts and verified emails in Apollo",
+      "keywords": "apollo find contacts people emails search export verified list",
+      "checked": "2026-11",
+      "steps": [
+        "Open Apollo, then Search, then People.",
+        "Filter by job title, location, company size and industry; add 'email verified' if offered.",
+        "Save the people you want to a list.",
+        "Export the list to CSV (watch your export credits), or push to your CRM if connected.",
+        "Check emails again before sending if they are old."
+      ],
+      "tips": [
+        "The free plan has monthly credit limits: export only what you will contact."
+      ]
+    },
+    {
+      "app": "apollo",
+      "title": "Enrich an existing CSV in Apollo",
+      "keywords": "apollo enrich upload csv match fill missing",
+      "checked": "2026-11",
+      "steps": [
+        "Open the enrichment or data import area and upload your CSV.",
+        "Map columns (name, company, domain) and run the match.",
+        "Download the enriched file and remove rows without a verified email."
+      ],
+      "tips": []
+    },
+    {
+      "app": "instantly",
+      "title": "Set up Instantly sending inboxes and warm-up",
+      "keywords": "instantly setup inbox inboxes warmup warm up domain dns email account sending",
+      "checked": "2026-11",
+      "steps": [
+        "Buy separate sending domains (never your main one) and set up SPF, DKIM and DMARC.",
+        "Connect each inbox in Instantly (Email accounts, then Add new).",
+        "Turn on warm-up for every inbox and wait about 2 to 3 weeks before campaigns.",
+        "Keep each inbox to a modest daily send limit."
+      ],
+      "tips": [
+        "Purchases are yours to make: $0 mode applies until a client pays."
+      ]
+    },
+    {
+      "app": "instantly",
+      "title": "Launch an Instantly campaign from a CSV",
+      "keywords": "instantly campaign launch sequence upload leads csv steps schedule send",
+      "checked": "2026-11",
+      "steps": [
+        "Create a campaign and upload the leads CSV (map email, first name, company and your personal line).",
+        "Write the sequence: step 1 plus 1 to 2 follow-ups a few days apart; use the variables.",
+        "Set the schedule (their time zone, weekdays) and daily limits.",
+        "Choose the sending inboxes, turn on stop-on-reply, then launch.",
+        "Check replies daily and move interested ones to your CRM."
+      ],
+      "tips": [
+        "You press launch yourself: agents only prepare the CSV and copy."
+      ]
+    },
+    {
+      "app": "instantly",
+      "title": "Read Instantly results and fix a campaign",
+      "keywords": "instantly analytics results open reply bounce rate fix deliverability",
+      "checked": "2026-11",
+      "steps": [
+        "Open the campaign analytics: sent, opened, replied, bounced.",
+        "If bounces are high, verify the list again and pause bad inboxes.",
+        "If replies are low, change one thing (subject, first line or offer) and test again."
+      ],
+      "tips": []
+    },
+    {
+      "app": "n8n",
+      "title": "Build a simple n8n workflow",
+      "keywords": "n8n workflow build automation trigger node webhook schedule start",
+      "checked": "2026-11",
+      "steps": [
+        "Open n8n and create a new workflow.",
+        "Add a trigger: Schedule, Webhook, or an app trigger (e.g. new email).",
+        "Add the action nodes in order (e.g. read data, transform, write to CRM).",
+        "Click Execute workflow to test with real data and check each node's output.",
+        "Save and turn the workflow on (Active)."
+      ],
+      "tips": [
+        "Our local n8n runs at C:/Users/Administrator/n8n-local."
+      ]
+    },
+    {
+      "app": "n8n",
+      "title": "Send replies from email into the CRM with n8n",
+      "keywords": "n8n reply router replies crm hubspot email classify route",
+      "checked": "2026-11",
+      "steps": [
+        "Trigger on new emails in the sending inbox (or an Instantly webhook for replies).",
+        "Add a node that sorts the reply (interested, not now, unsubscribe).",
+        "For interested replies, create or update the contact and deal in HubSpot.",
+        "Send yourself an alert (email or Slack) with the next step.",
+        "Test with a few sample replies before turning it on."
+      ],
+      "tips": [
+        "Our tested version: the Reply Router in engine-c-upwork/item3-reply-router."
+      ]
+    },
+    {
+      "app": "lemlist",
+      "title": "Run a multichannel sequence in Lemlist",
+      "keywords": "lemlist sequence multichannel linkedin email campaign",
+      "checked": "2026-11",
+      "steps": [
+        "Create a campaign and import leads.",
+        "Build steps: email, then a manual LinkedIn task, then a follow-up email.",
+        "Set delays and sending limits, connect your inbox, then launch yourself."
+      ],
+      "tips": []
+    },
+    {
+      "app": "gohighlevel",
+      "path": "smb",
+      "title": "Set up review requests in GoHighLevel",
+      "keywords": "gohighlevel ghl review request reputation google reviews automation sms smb",
+      "checked": "2026-11",
+      "steps": [
+        "Create the client's sub-account and connect their Google Business Profile under Reputation.",
+        "Add the review link and customise the review-request message.",
+        "Build a workflow: trigger on job done (tag, form or pipeline stage), then send the review request by SMS and email.",
+        "Add one reminder after 2 to 3 days if no review.",
+        "Test with your own number before switching it on."
+      ],
+      "tips": [
+        "Reviews are the SMB opening offer; other systems come after."
+      ]
+    },
+    {
+      "app": "gohighlevel",
+      "path": "smb",
+      "title": "Missed-call text-back in GoHighLevel",
+      "keywords": "gohighlevel ghl missed call text back sms phone smb inquiry",
+      "checked": "2026-11",
+      "steps": [
+        "Buy or port the client's number in the sub-account (their purchase).",
+        "Create a workflow triggered by a missed call.",
+        "Send an instant SMS: thanks for calling, how can we help, plus a booking link.",
+        "Notify the owner and test by calling and hanging up."
+      ],
+      "tips": []
+    },
+    {
+      "app": "calendly",
+      "path": "ascent",
+      "title": "Prepare and run a high-ticket sales call",
+      "keywords": "ascent sales call closing prep high ticket zoom calendly objection close script",
+      "checked": "2026-11",
+      "steps": [
+        "Read the lead's application or form answers and note their goal, pain and budget.",
+        "Open the offer's call script and the objection notes.",
+        "Run the call: rapport, discovery, gap, offer, objections, close.",
+        "Log the outcome straight after (closed, follow-up, lost) with the reason.",
+        "Send the payment or contract link the offer owner gave you."
+      ],
+      "tips": [
+        "Score yourself after each call with the Ascent scorecard."
+      ]
+    },
+    {
+      "app": "calendly",
+      "path": "ascent",
+      "title": "Find high-ticket offers that hire closers",
+      "keywords": "ascent find offers closers remote commission job boards",
+      "checked": "2026-11",
+      "steps": [
+        "Search closer job boards and communities for remote commission roles.",
+        "Check the offer: price, lead flow, commission %, and reviews of the founder.",
+        "Apply with a short message plus your recorded practice call."
+      ],
+      "tips": [
+        "Never pay to get a closer role."
+      ]
+    },
+    {
+      "app": "klaviyo",
+      "path": "revenue",
+      "title": "Build an abandoned cart flow in Klaviyo",
+      "keywords": "klaviyo abandoned cart flow email sms checkout started shopify revenue recovery",
+      "checked": "2026-11",
+      "steps": [
+        "Connect the store (Shopify integration) in Klaviyo.",
+        "Create a flow from the Abandoned Cart template (trigger: Checkout Started).",
+        "Set timing: email 1 after about 1 hour, email 2 after 1 day, optional SMS.",
+        "Add the dynamic cart block and a clear button back to the cart.",
+        "Exclude people who ordered, test with a real checkout, then turn it live."
+      ],
+      "tips": [
+        "Show the client the recovered revenue in the monthly report."
+      ]
+    },
+    {
+      "app": "klaviyo",
+      "path": "revenue",
+      "title": "Build a welcome series in Klaviyo",
+      "keywords": "klaviyo welcome series signup popup list subscribe flow",
+      "checked": "2026-11",
+      "steps": [
+        "Create a sign-up form (popup) with a welcome offer and connect it to a list.",
+        "Create a flow triggered by joining that list.",
+        "Write 3 emails: welcome plus offer, brand story, best sellers.",
+        "Test the form and the flow, then turn them on."
+      ],
+      "tips": []
+    },
+    {
+      "app": "descript",
+      "path": "broadcast",
+      "title": "Edit a podcast episode in Descript",
+      "keywords": "descript podcast edit episode audio remove filler words clean export",
+      "checked": "2026-11",
+      "steps": [
+        "Import the recording; Descript makes a transcript.",
+        "Remove filler words and long pauses from the transcript.",
+        "Use Studio Sound to clean the audio, then add intro and outro.",
+        "Export the audio (MP3) and the video if recorded."
+      ],
+      "tips": [
+        "Practise on your own practice episodes first, never free work for a real host."
+      ]
+    },
+    {
+      "app": "capcut",
+      "path": "broadcast",
+      "title": "Make short clips from an episode in CapCut",
+      "keywords": "capcut clips shorts reels captions vertical podcast",
+      "checked": "2026-11",
+      "steps": [
+        "Pick 3 to 5 strong 30 to 60 second moments from the episode.",
+        "Import the video in CapCut and set the canvas to 9:16.",
+        "Add auto captions and check the spelling.",
+        "Add the show name and a hook at the top, then export."
+      ],
+      "tips": []
+    },
+    {
+      "app": "linkedin",
+      "path": "authority",
+      "title": "Write and schedule a LinkedIn ghostwritten post",
+      "keywords": "authority linkedin ghostwriting post hook write schedule client voice",
+      "checked": "2026-11",
+      "steps": [
+        "Collect the client's raw ideas (voice note, call notes).",
+        "Write a strong first line, one idea, short paragraphs, one clear ending.",
+        "Get the client's approval, then schedule it in LinkedIn's own scheduler.",
+        "Track likes, comments and profile views weekly."
+      ],
+      "tips": [
+        "Build your portfolio on a made-up persona first."
+      ]
+    },
+    {
+      "app": "vapi",
+      "path": "voiceai",
+      "title": "Build an AI receptionist in Vapi",
+      "keywords": "vapi voice ai receptionist assistant phone number calls booking cal.com",
+      "checked": "2026-11",
+      "steps": [
+        "Create an assistant in Vapi: business name, hours, services and FAQs in the prompt.",
+        "Choose a natural voice and test it in the browser.",
+        "Connect a phone number and set the client's missed calls to forward to it.",
+        "Connect booking (Cal.com) so callers can book.",
+        "Send call summaries to the owner via n8n."
+      ],
+      "tips": [
+        "Mystery-call the business first to show the gap."
+      ]
+    },
+    {
+      "app": "cal.com",
+      "path": "voiceai",
+      "title": "Connect Cal.com booking to the AI receptionist",
+      "keywords": "cal.com cal booking calendar availability voice ai",
+      "checked": "2026-11",
+      "steps": [
+        "Create the event type (length, buffers, hours) in Cal.com.",
+        "Copy the booking link or API details into the assistant's booking tool.",
+        "Test a booking end to end and check the calendar invite."
+      ],
+      "tips": []
+    },
+    {
+      "app": "n8n",
+      "path": "automation",
+      "title": "Automate client intake with n8n",
+      "keywords": "automation n8n intake form documents pdf email reply onboarding ai automation",
+      "checked": "2026-11",
+      "steps": [
+        "Map the client's current intake: form, email, documents.",
+        "Trigger on a new form submission (webhook or form node).",
+        "Send an instant reply with next steps and a booking link.",
+        "Save the details and files to their CRM or drive.",
+        "Notify the team; test with sample submissions, then go live."
+      ],
+      "tips": [
+        "Price: build $500-$8,000 plus monthly care from $150."
+      ]
+    }
+  ]
+}
