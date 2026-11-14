@@ -42,6 +42,12 @@ Everything happens in `workspaces/<name>/` on this PC. From Citadel (HQ Tools, g
 
 A missing toolchain is not an error to decode: `dev run` names the program and the exact `winget install` command. Tested here with real runs: Python, JavaScript (Node) and TypeScript. The other languages' starters are written and checked for structure, but their toolchains (Maven + JDK, Gradle, .NET, CMake + a C compiler, Dart, Flutter, Go, Rust) were not all installed when this was built, so run `dev run <workspace> test` once after installing each.
 
+## Cash Desk: am I on track this month?
+
+`python dse.py cash <engine|all> [--month 2026-11] [--target 3000]` (in HQ Tools: "Cash Desk"). It compares the money you **actually received** with your monthly target, projects the month from your pace so far, lays out the steps (messages sent, replies, calls booked, calls shown, sales) and works out what the gap would take **using your own rates**. It says plainly when there is too little data to trust a rate (under 30 messages sent or 5 shown calls), instead of inventing a number.
+
+Where the numbers come from, all in `engines/<engine>/data/`: `cash.csv` (money you log with `python dse.py cashin <engine> --amount 450 --kind commission --note "Acme sale"`; a refund is logged with `--kind refund`), `calls.csv` (from `callscore`; sale value x your commission % is shown as an **estimate** until you log the money), `log.csv` (Send Desk taps; out-of-office replies are not counted as replies) and `cash.json` (your target). `python dse.py cashlog <engine>` lists what you logged. The report is also saved as `engines/<engine>/cash-desk.md`.
+
 ## Follow-ups and results for your engines
 Once you send from the **Send Desk** (More, or the Send Desk tab) and tap **Sent** on each message, your PC keeps the log and does the rest.
 

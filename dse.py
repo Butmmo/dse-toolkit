@@ -9,6 +9,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py log tampa-dentists 2026-11-16 3 sent    mark a row by hand (the Send Desk on your phone does this for you)
   python dse.py import acme-gtm                         check the CSV exports (Go-to-Market) or pasted profiles (Authority) before building a list
   python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
+  python dse.py cash <engine|all> [--month 2026-11] [--target 3000]  the Cash Desk: this month against your target; python dse.py cashin <engine> --amount 450 --kind commission logs money you received
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
   python dse.py packs                                   website-check packs (one per path)
@@ -31,7 +32,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, desklog, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, desklog, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -88,6 +89,10 @@ def main():
     for q in vetting.questions():
         vt.add_argument(f"--{q['id']}", choices=["yes", "no", "unknown"], default="unknown", help=argparse.SUPPRESS)
     of = sub.add_parser("offers"); of.add_argument("engine")
+    ca = sub.add_parser("cash"); ca.add_argument("engine", help="an engine, or all"); ca.add_argument("--month", default=""); ca.add_argument("--target", type=float, default=0)
+    ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
+    ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
+    cl = sub.add_parser("cashlog"); cl.add_argument("engine")
     ch = sub.add_parser("calls"); ch.add_argument("engine")
     lg = sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
     lg.add_argument("row", help="the row number on that list"); lg.add_argument("status", choices=list(desklog.STATUSES))
@@ -112,6 +117,21 @@ def main():
     elif a.cmd == "offers":
         engines.load(a.engine)
         print(vetting.listing(a.engine))
+    elif a.cmd == "cash":
+        try:
+            print(cashdesk.build(a.engine, a.month or None, target=a.target or None))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "cashin":
+        try:
+            r = cashdesk.log_cash(a.engine, a.amount, a.kind, a.note, a.date)
+        except ValueError as e:
+            sys.exit(str(e))
+        print(f"Logged {r['amount']} ({r['kind']}) on {r['date']}.")
+        print()
+        print(cashdesk.build(a.engine))
+    elif a.cmd == "cashlog":
+        print(cashdesk.history(a.engine))
     elif a.cmd == "calls":
         engines.load(a.engine)
         print(callscore.history(a.engine))

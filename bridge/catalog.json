@@ -3614,6 +3614,209 @@
       ],
       "timeout_min": 10,
       "outputs": []
+    },
+    "dse.cash": {
+      "label": "Cash Desk: am I on track this month?",
+      "group": "My engines",
+      "help": "Money you logged as received against your monthly target, the pace to the end of the month, the steps (messages, replies, calls, sales) from your own logs, and what it would take to close the gap using your own rates. Every figure comes from files on this PC and the report says so when there is too little data to trust a rate.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cash"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--month",
+          "field": "month"
+        },
+        {
+          "opt": "--target",
+          "field": "target"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "month",
+          "label": "Month (YYYY-MM, empty = this month)",
+          "type": "text",
+          "required": false,
+          "max": 7,
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        },
+        {
+          "name": "target",
+          "label": "Monthly income target ($, empty = keep the saved one)",
+          "type": "int",
+          "min": 50,
+          "max": 1000000,
+          "default": 0
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.cash_all": {
+      "label": "Cash Desk: all engines together",
+      "group": "My engines",
+      "help": "The same report for every engine added up, with the targets added up too.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cash"
+        },
+        {
+          "lit": "all"
+        },
+        {
+          "opt": "--month",
+          "field": "month"
+        }
+      ],
+      "fields": [
+        {
+          "name": "month",
+          "label": "Month (YYYY-MM, empty = this month)",
+          "type": "text",
+          "required": false,
+          "max": 7,
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.cashin": {
+      "label": "Cash Desk: log money I received",
+      "group": "My engines",
+      "help": "Writes one line to the engine's cash file: the day, the amount, what kind of money it was and a short note. Log only money that has actually arrived (a refund is logged as a refund, not as a minus). Then shows the updated report.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cashin"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--amount",
+          "field": "amount"
+        },
+        {
+          "opt": "--kind",
+          "field": "kind"
+        },
+        {
+          "opt": "--note",
+          "field": "note"
+        },
+        {
+          "opt": "--date",
+          "field": "date"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "amount",
+          "label": "Amount received ($)",
+          "type": "int",
+          "required": true,
+          "min": 1,
+          "max": 10000000
+        },
+        {
+          "name": "kind",
+          "label": "What kind",
+          "type": "choice",
+          "required": false,
+          "choices": [
+            {
+              "value": "commission",
+              "label": "commission"
+            },
+            {
+              "value": "retainer",
+              "label": "retainer"
+            },
+            {
+              "value": "project",
+              "label": "project"
+            },
+            {
+              "value": "bonus",
+              "label": "bonus"
+            },
+            {
+              "value": "other",
+              "label": "other"
+            },
+            {
+              "value": "refund",
+              "label": "refund"
+            }
+          ],
+          "default": "commission"
+        },
+        {
+          "name": "note",
+          "label": "Who paid / what for (optional)",
+          "type": "text",
+          "required": false,
+          "max": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 .'&/()!:_#-]{0,99}$"
+        },
+        {
+          "name": "date",
+          "label": "Date received (empty = today)",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.cashlog": {
+      "label": "Cash Desk: money I logged",
+      "group": "My engines",
+      "help": "Every payment logged for the engine, with the total.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cashlog"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [
