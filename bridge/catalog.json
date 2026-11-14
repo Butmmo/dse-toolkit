@@ -797,11 +797,15 @@
     "chat.ask": {
       "label": "HQ chat: ask anything",
       "group": "Guides",
-      "help": "Ask about selling, objections, freelancing, planning, simple thinking or any tool. Free full AI chat with Ollama (runs on your PC, no paid AI): 1) Install Ollama from ollama.com (Windows installer). 2) In a terminal run: ollama pull gemma3:1b (about 0.8 GB, text only, works on most PCs). 3) Optional, 8 GB+ RAM: ollama pull gemma3:4b (about 3.3 GB, also reads images), set the Windows user variable OLLAMA_MODEL=gemma3:4b and restart the runner. 4) Keep Ollama running (it starts with Windows). Without Ollama you get the built-in answers. Images: in a terminal, chat.py \"what is this\" --image photo.png. Video and PDF are not supported by these light models.",
+      "help": "Ask about selling, objections, freelancing, planning, simple thinking or any tool. Free full AI chat with Ollama (runs on your PC, no paid AI): 1) Install Ollama from ollama.com (Windows installer). 2) In a terminal run: ollama pull gemma3:1b (about 0.8 GB, text only, works on most PCs). 3) Optional, 8 GB+ RAM: ollama pull gemma3:4b (about 3.3 GB, also reads images), set the Windows user variable OLLAMA_MODEL=gemma3:4b and restart the runner. 4) Keep Ollama running (it starts with Windows). Without Ollama you get the built-in answers. Images: in a terminal, chat.py \"what is this\" --image photo.png. Video and PDF are not supported by these light models. To ask about a picture in Citadel: save it on your PC in chat/images/ (png or jpg), refresh, pick it under 'Picture', and use the image model gemma3:4b.",
       "script": "chat/chat.py",
       "args": [
         {
           "field": "question"
+        },
+        {
+          "opt": "--image",
+          "field": "image"
         }
       ],
       "fields": [
@@ -813,6 +817,13 @@
           "max": 200,
           "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!-]{2,199}$",
           "placeholder": "a client says it is too expensive"
+        },
+        {
+          "name": "image",
+          "label": "Picture (optional)",
+          "type": "file",
+          "glob": "chat/images/*.*",
+          "exclude": "\\.keep$"
         }
       ],
       "timeout_min": 6,
