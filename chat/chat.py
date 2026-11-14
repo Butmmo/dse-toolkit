@@ -22,13 +22,39 @@ def answer(q):
         return best[1]["title"] + ":\n" + "\n".join("- " + s for s in best[1]["say"])
     return rec[1]["title"] + ":\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(rec[1]["steps"], 1))
 
+def progress():
+    """The member's own progress summary: the same files progress_push.py sends to Citadel."""
+    for root in (H.parents[1], H.parents[0]):
+        f = root / "_memory-vault" / "DAILY-CONTEXT.md"
+        if f.exists():
+            return f.read_text(encoding="utf-8")[:12000]
+    return ""
+
+
+def from_progress(q):
+    """Answer 'what am I doing / next move / blockers' and match other words against the progress lines."""
+    md, ws = progress(), w(q)
+    if not md:
+        return None
+    lines = [l.strip() for l in md.splitlines() if l.strip().startswith(("-", "|", "**", "###"))]
+    if ws & {"next", "doing", "progress", "where", "today", "blocker", "blockers", "stuck", "summary", "status"}:
+        keep = [l for l in lines if l.startswith(("###", "**", "-"))][:30]
+        return "Where you are (from your HQ progress):\n" + "\n".join(keep)
+    hits = sorted(((len(ws & w(l)), l) for l in lines), key=lambda x: -x[0])
+    hits = [l for s, l in hits if s >= 2][:6]
+    return ("From your HQ progress:\n" + "\n".join(hits)) if hits else None
+
+
 import base64, os, urllib.request
 MODEL = os.environ.get("OLLAMA_MODEL", "gemma3:1b")   # light, text only; gemma3:4b also reads images
 
 
+PREFIX = chr(10) * 2 + "My HQ progress summary:" + chr(10)
+
+
 def ollama(q, image=None):
     """Free local AI through Ollama (localhost:11434). Returns None if Ollama isn't running."""
-    msg = {"role": "user", "content": q}
+    msg = {"role": "user", "content": q + (PREFIX + progress()[:6000] if progress() else "")}
     if image:
         msg["images"] = [base64.b64encode(Path(image).read_bytes()).decode()]
     sys_txt = "You are HQ chat for a DBI student: short, practical answers on selling, freelancing, tools and simple thinking."
@@ -41,7 +67,7 @@ def ollama(q, image=None):
 
 
 def reply(q, image=None):
-    return ollama(q, image) or answer(q) + "\n\n(Built-in answer. For full AI chat, install Ollama: see the tool's help.)"
+    return ollama(q, image) or from_progress(q) or answer(q) + "\n\n(Built-in answer. For full AI chat, install Ollama: see the tool's help.)"
 
 
 if __name__ == "__main__":
