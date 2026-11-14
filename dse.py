@@ -16,6 +16,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py proposal <engine> --client "Acme" --problem "..." --offer "..." --price 1500 --deliverables "a; b"  a one-page proposal, cover email and follow-up (it sends nothing)
   python dse.py client won <engine> --proposal NAME   the Client Desk: from a won proposal to onboarding, invoices, delivery and payments (client list|show|done|invoice|paid)
   python dse.py cut add <engine> --name "Ada" --percent 10   the Cut Desk: the percentage your students owe you (cut report|paid|list|show|status)
+  python dse.py match <engine> statement.csv [--apply]   the Statement Matcher: match Grey, Payoneer or bank credits to your open invoices (only SURE matches are ever applied)
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -39,7 +40,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, clients, cuts, desklog, dfysync, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, clients, cuts, desklog, dfysync, matcher, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -100,6 +101,8 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    mt = sub.add_parser("match"); mt.add_argument("engine"); mt.add_argument("statement", help="your exported CSV (in engines/<engine>/statements/, or a path)")
+    mt.add_argument("--apply", action="store_true", help="record the SURE matches"); mt.add_argument("--monthfirst", action="store_true", help="read 03/04/2026 as March 4"); mt.add_argument("--tolerance", type=float, default=None, help="the transfer fee you allow a payment to be short by")
     ct = sub.add_parser("cut"); ct.add_argument("action", choices=["add", "report", "paid", "list", "show", "status", "sync", "accounts"]); ct.add_argument("target", help="an engine (add, list) or engine/student (the rest)")
     ct.add_argument("--name", default=""); ct.add_argument("--percent", type=float, default=0); ct.add_argument("--basis", default="gross"); ct.add_argument("--currency", default="USD")
     ct.add_argument("--method", default="grey"); ct.add_argument("--email", default=""); ct.add_argument("--due-days", type=int, default=7, dest="due_days"); ct.add_argument("--start", default="")
@@ -240,6 +243,11 @@ def main():
                 print(dfysync.accounts(a.target, a.publish, a.example))
             else:
                 print(cuts.set_status(a.target, a.to))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "match":
+        try:
+            print(matcher.report(a.engine, a.statement, a.apply, a.monthfirst, a.tolerance))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "cashlog":
