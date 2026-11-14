@@ -1,0 +1,14 @@
+{
+  "name": "my-provider",
+  "label": "Any email-by-domain API you have a key for",
+  "about": "Copy this file to enrich-providers/my-provider.json, rename it, and fill it in from your provider's API documentation. {domain} and {company} are replaced with the lead's domain and name. Your key is never written here: put it in a Windows user variable (setx NAME value) and write only the variable's NAME below.",
+  "key_env": "MY_PROVIDER_API_KEY",
+  "request": {
+    "method": "GET",
+    "url": "https://api.example.com/v1/domain-emails",
+    "query": {"domain": "{domain}"},
+    "auth": {"in": "header", "name": "Authorization", "prefix": "Bearer "}
+  },
+  "response": {"list": "data.emails", "email": "email", "kind": "type", "first": "first_name", "last": "last_name", "title": "job_title", "confidence": "score"},
+  "credits": "Say here what one call costs, so the next person knows."
+}

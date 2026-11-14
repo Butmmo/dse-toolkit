@@ -10,6 +10,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py import acme-gtm                         check the CSV exports (Go-to-Market) or pasted profiles (Authority) before building a list
   python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
   python dse.py cash <engine|all> [--month 2026-11] [--target 3000]  the Cash Desk: this month against your target; python dse.py cashin <engine> --amount 450 --kind commission logs money you received
+  python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -33,7 +34,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, desklog, goals, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, desklog, enrich, enrich_providers, goals, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -94,6 +95,11 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    en = sub.add_parser("enrich"); en.add_argument("source", nargs="?", default="", help="a CSV with a website or domain column"); en.add_argument("--site", default="", help="look at one website instead")
+    en.add_argument("--icp", default="", help="words you want to find on their site, comma separated"); en.add_argument("--engine", default="", help="also save an import-ready copy in this engine")
+    en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser")
+    en.add_argument("--provider", default="", help="optional: your own paid provider, set up with --add-provider"); en.add_argument("--budget", type=int, default=enrich_providers.DEFAULT_BUDGET)
+    en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
     gl = sub.add_parser("goal"); gl.add_argument("engine"); gl.add_argument("--month", default=""); gl.add_argument("--stretch", type=float, default=goals.STRETCH_DEFAULT)
     gl.add_argument("--apply", action="store_true", help="save the suggestion as that month's goal"); gl.add_argument("--set", type=float, default=0, dest="set_to")
     rv = sub.add_parser("review"); rv.add_argument("engine", help="an engine, or all"); rv.add_argument("--top", type=int, default=5)
@@ -141,6 +147,20 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "review":
         print(review.build(a.engine, max(1, min(a.top, 30))))
+    elif a.cmd == "enrich":
+        try:
+            if a.providers:
+                print(enrich_providers.describe())
+            elif a.add_provider:
+                print(enrich_providers.add_provider(a.add_provider))
+            elif a.site:
+                print(enrich.card(a.site, a.icp, not a.fast, a.provider, a.budget))
+            elif a.source:
+                print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget))
+            else:
+                sys.exit("Give a CSV to enrich (python dse.py enrich leads.csv), or --site https://their-site.com, or --providers.")
+        except ValueError as e:
+            sys.exit(str(e))
     elif a.cmd == "cashlog":
         print(cashdesk.history(a.engine))
     elif a.cmd == "calls":

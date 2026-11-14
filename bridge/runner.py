@@ -116,6 +116,19 @@ def workspace_choices() -> list[dict]:
     return [{"value": p.name, "label": p.name} for p in sorted(base.iterdir()) if p.is_dir() and re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,60}", p.name)]
 
 
+def provider_choices() -> list[dict]:
+    """Optional paid enrichment providers set up on this PC (enrich-providers/*.json), for "choices_from": "providers". Names only: never a key."""
+    out = []
+    for p in sorted((ROOT / "enrich-providers").glob("*.json")):
+        try:
+            cfg = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,30}", str(cfg.get("name", ""))):
+            out.append({"value": cfg["name"], "label": str(cfg.get("label", cfg["name"]))[:60]})
+    return out
+
+
 def resolve_fields(cat: dict) -> dict:
     """Fill dynamic choice lists (engines) into the catalog, for both the published forms and the value checks."""
     eng = None
@@ -128,6 +141,8 @@ def resolve_fields(cat: dict) -> dict:
                 f["choices"] = channel_choices()
             elif f.get("choices_from") == "workspaces":
                 f["choices"] = workspace_choices()
+            elif f.get("choices_from") == "providers":
+                f["choices"] = provider_choices()
     return cat
 
 

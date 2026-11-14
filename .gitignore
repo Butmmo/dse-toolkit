@@ -11,3 +11,4 @@ youtube/channels/
 # Dev workspace: projects, and the local safety switches (only you set these)
 workspaces/
 dev/dev.config.json
+enrich-providers/

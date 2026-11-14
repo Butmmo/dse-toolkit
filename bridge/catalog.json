@@ -3957,6 +3957,177 @@
       ],
       "timeout_min": 2,
       "outputs": []
+    },
+    "dse.enrich": {
+      "label": "Lead enrichment: find emails, owners and phones",
+      "group": "Grow",
+      "help": "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "field": "csv"
+        },
+        {
+          "opt": "--icp",
+          "field": "icp"
+        },
+        {
+          "opt": "--engine",
+          "field": "engine"
+        },
+        {
+          "opt": "--max",
+          "field": "max"
+        },
+        {
+          "flag": "--fast",
+          "field": "fast"
+        },
+        {
+          "opt": "--provider",
+          "field": "provider"
+        },
+        {
+          "opt": "--budget",
+          "field": "budget"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "List",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*.csv",
+          "exclude": "enriched"
+        },
+        {
+          "name": "icp",
+          "label": "Words you want to find on their site (optional, comma separated)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,/&'-]{0,119}$"
+        },
+        {
+          "name": "engine",
+          "label": "Also save an import-ready copy in this engine (optional)",
+          "type": "choice",
+          "required": false,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "max",
+          "label": "Most leads to look at in this run",
+          "type": "int",
+          "min": 1,
+          "max": 2000,
+          "default": 100
+        },
+        {
+          "name": "fast",
+          "label": "Fast (skip the hidden browser: quicker, misses sites drawn by JavaScript)",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "provider",
+          "label": "Paid provider with YOUR own key (optional, empty = free only)",
+          "type": "choice",
+          "required": false,
+          "choices_from": "providers",
+          "choices": []
+        },
+        {
+          "name": "budget",
+          "label": "Most paid lookups (only with a provider)",
+          "type": "int",
+          "min": 0,
+          "max": 5000,
+          "default": 25
+        }
+      ],
+      "timeout_min": 180,
+      "outputs": [
+        "my-lists/*-enriched-*.csv",
+        "my-lists/*-enriched-*.md"
+      ]
+    },
+    "dse.enrich_site": {
+      "label": "Lead enrichment: look at one website",
+      "group": "Grow",
+      "help": "Reads one company website and shows what a lead list would get: emails, owner, phone, form, booking tool, score and why. Nothing is saved.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "opt": "--site",
+          "field": "site"
+        },
+        {
+          "opt": "--icp",
+          "field": "icp"
+        },
+        {
+          "flag": "--fast",
+          "field": "fast"
+        }
+      ],
+      "fields": [
+        {
+          "name": "site",
+          "label": "Website",
+          "type": "url",
+          "required": true
+        },
+        {
+          "name": "icp",
+          "label": "Words you want to find (optional)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,/&'-]{0,119}$"
+        },
+        {
+          "name": "fast",
+          "label": "Fast (skip the hidden browser)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": []
+    },
+    "dse.enrich_providers": {
+      "label": "Lead enrichment: which paid providers are set up",
+      "group": "Grow",
+      "help": "Lists the optional paid providers on this PC and whether their key is present (the key is never shown). To add one, run at your PC: python dse.py enrich --add-provider hunter, then set your own key in a Windows user variable.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--providers",
+          "field": "go"
+        }
+      ],
+      "fields": [
+        {
+          "name": "go",
+          "label": "Show",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [

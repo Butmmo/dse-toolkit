@@ -1,0 +1,39 @@
+{
+  "note": "How a lead's score is made. Every point comes from a rule here, and the 'why' column lists exactly the rules that fired. Change a weight and re-run. The score measures how reachable and ready a lead looks from its own public website; it is not a promise they will buy.",
+  "max": 100,
+  "rules": [
+    {"id": "personal_email", "points": 25, "why": "a personal work email was found on their own site"},
+    {"id": "generic_email", "points": 12, "why": "a general email (info@, hello@) was found"},
+    {"id": "given_email", "points": 20, "why": "your file already had an email for them"},
+    {"id": "decision_maker", "points": 20, "why": "the owner or a senior person is named on the site"},
+    {"id": "contact_form", "points": 10, "why": "the site has a contact form"},
+    {"id": "phone", "points": 8, "why": "a phone number is published"},
+    {"id": "booking", "points": 6, "why": "they already use an online booking tool"},
+    {"id": "active_site", "points": 8, "why": "the site looks maintained (recent copyright year)"},
+    {"id": "linkedin", "points": 5, "why": "a LinkedIn page is linked"},
+    {"id": "social", "points": 3, "why": "an Instagram or Facebook page is linked"},
+    {"id": "icp_hit", "points": 5, "cap": 15, "why": "the site mentions a term you asked for"}
+  ],
+  "penalties": [
+    {"id": "stale_site", "points": -10, "why": "the copyright year is two or more years old"},
+    {"id": "no_route", "points": -15, "why": "no email, form or phone could be found"}
+  ],
+  "generic_locals": ["info", "hello", "hi", "contact", "support", "sales", "admin", "office", "team", "enquiries", "inquiries", "bookings", "booking", "service", "services",
+                     "mail", "help", "billing", "accounts", "careers", "jobs", "press", "media", "marketing", "reception", "frontdesk", "appointments", "orders", "general", "studio"],
+  "freemail": ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "proton.me", "protonmail.com", "live.com", "msn.com", "ymail.com"],
+  "social_only_domains": ["facebook.com", "instagram.com", "linktr.ee", "linkedin.com", "yelp.com", "google.com", "tiktok.com", "x.com", "twitter.com", "youtube.com", "wa.me", "bit.ly", "beacons.ai", "carrd.co"],
+  "titles": [
+    {"rx": "co-?founder|founder", "rank": 1}, {"rx": "owner", "rank": 1}, {"rx": "ceo|chief executive", "rank": 1}, {"rx": "president", "rank": 2},
+    {"rx": "principal", "rank": 2}, {"rx": "managing (director|partner)", "rank": 2}, {"rx": "partner", "rank": 3}, {"rx": "general manager", "rank": 3},
+    {"rx": "director", "rank": 4}, {"rx": "head of [a-z ]{3,25}", "rank": 4}, {"rx": "vp[ ,]|vice president", "rank": 4}, {"rx": "chief [a-z]+ officer", "rank": 4},
+    {"rx": "manager", "rank": 6}, {"rx": "office manager|practice manager", "rank": 7}
+  ],
+  "tech": {
+    "WordPress": ["wp-content", "wp-includes"], "Wix": ["wixstatic.com", "wix.com"], "Squarespace": ["squarespace.com", "squarespace-cdn"], "Shopify": ["cdn.shopify.com", "myshopify.com"],
+    "Webflow": ["webflow.com", "webflow.io"], "Showit": ["showit.co"], "GoDaddy site builder": ["godaddy.com/websites", "img1.wsimg.com"],
+    "HubSpot": ["js.hs-scripts.com", "hs-analytics", "hsforms.net"], "Calendly": ["calendly.com"], "Acuity": ["acuityscheduling.com"], "Chat widget": ["tidio", "intercom.io", "drift.com", "livechatinc", "crisp.chat", "tawk.to"],
+    "Google Analytics": ["googletagmanager.com", "google-analytics.com", "gtag("], "Meta Pixel": ["connect.facebook.net", "fbq("], "Mailchimp": ["mailchimp.com", "mc.us"], "Klaviyo": ["klaviyo.com"],
+    "Gusto/payroll": ["gusto.com"], "Stripe": ["js.stripe.com"], "Zapier": ["zapier.com"]
+  },
+  "booking_rx": "calendly\\.com|acuityscheduling\\.com|tidycal\\.com|youcanbook\\.me|setmore\\.com|squareup\\.com/appointments|square\\.site|booksy\\.com|honeybook\\.com|dubsado\\.com|cal\\.com|appointlet|simplybook|schedulicity|vagaro\\.com|mindbodyonline|zocdoc|book now|book online|book an appointment"
+}

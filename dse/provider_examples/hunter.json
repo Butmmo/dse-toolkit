@@ -1,0 +1,14 @@
+{
+  "name": "hunter",
+  "label": "Hunter (domain search)",
+  "about": "Looks up the email addresses Hunter knows for a company's domain. You need your own Hunter account and API key (it has a free plan with a small monthly allowance; see hunter.io). Checked against Hunter's API documentation on 14 Nov 2026.",
+  "key_env": "HUNTER_API_KEY",
+  "request": {
+    "method": "GET",
+    "url": "https://api.hunter.io/v2/domain-search",
+    "query": {"domain": "{domain}", "limit": "10"},
+    "auth": {"in": "header", "name": "X-API-KEY"}
+  },
+  "response": {"list": "data.emails", "email": "value", "kind": "type", "first": "first_name", "last": "last_name", "title": "position", "confidence": "confidence"},
+  "credits": "Hunter counts a Domain Search only when it returns at least one result, and a repeat of the same search in the same billing period is free. On a free plan, limit must be 10 or less."
+}
