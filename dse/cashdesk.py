@@ -21,10 +21,11 @@ import json
 import re
 from pathlib import Path
 
-from . import callscore, desklog
+from . import callscore, desklog, fx
 from .engines import all_slugs, engine_dir, load
 
-COLS = ["date", "amount", "kind", "note"]
+COLS = ["date", "amount", "kind", "note", "currency"]
+BASE = "USD"        # the Cash Desk counts toward a target in dollars; other currencies count once you give an exchange rate (dse/fx.py)
 KINDS = ("commission", "retainer", "project", "bonus", "other", "refund")
 MIN_N = 30            # fewer sent messages than this: the rates are tentative
 MIN_CALLS = 5
@@ -46,7 +47,11 @@ def read_cash(slug: str) -> list[dict]:
     if not p.exists():
         return []
     with p.open(encoding="utf-8-sig", newline="") as f:
-        return [r for r in csv.DictReader(f) if r.get("date")]
+        rows = [r for r in csv.DictReader(f) if r.get("date")]
+    for r in rows:
+        r["currency_assumed"] = not (r.get("currency") or "").strip()      # money logged before currencies were recorded counts as dollars, and is flagged
+        r["currency"] = (r.get("currency") or BASE).strip().upper()
+    return rows
 
 
 def read_settings(slug: str) -> dict:
@@ -84,8 +89,11 @@ def set_target(slug: str, target: float, month: str | None = None) -> None:
     p.write_text(json.dumps(st, indent=1) + "\n", encoding="utf-8")
 
 
-def log_cash(slug: str, amount: float, kind: str, note: str = "", date: str = "") -> dict:
+def log_cash(slug: str, amount: float, kind: str, note: str = "", date: str = "", currency: str = BASE) -> dict:
     load(slug)
+    currency = (currency or BASE).strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise ValueError("Currency is a 3-letter code such as USD, GBP or EUR.")
     if kind not in KINDS:
         raise ValueError("Kind must be one of: " + ", ".join(KINDS))
     if not 0 < amount <= 10_000_000:
@@ -95,9 +103,20 @@ def log_cash(slug: str, amount: float, kind: str, note: str = "", date: str = ""
         raise ValueError("Date as YYYY-MM-DD.")
     dt.date.fromisoformat(day)
     note = re.sub(r"\s+", " ", re.sub(r"[\r\n,]+", " ", note or "")).strip()[:120]
-    row = {"date": day, "amount": f"{-amount if kind == 'refund' else amount:.2f}", "kind": kind, "note": note}
+    row = {"date": day, "amount": f"{-amount if kind == 'refund' else amount:.2f}", "kind": kind, "note": note, "currency": currency}
     p = cash_path(slug)
     p.parent.mkdir(parents=True, exist_ok=True)
+    if p.exists():                       # an older file without the currency column: add it (old rows stay blank = dollars, flagged) before appending
+        with p.open(encoding="utf-8-sig", newline="") as fh:
+            reader = csv.DictReader(fh)
+            head = reader.fieldnames or []
+            old = list(reader)
+        if head and "currency" not in head:
+            with p.open("w", encoding="utf-8-sig", newline="") as fh:
+                w0 = csv.DictWriter(fh, fieldnames=COLS, extrasaction="ignore")
+                w0.writeheader()
+                for r in old:
+                    w0.writerow({**r, "currency": ""})
     fresh = not p.exists()
     with p.open("a", encoding="utf-8-sig" if fresh else "utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLS)
@@ -150,16 +169,40 @@ def calls_in(slug: str, a: dt.date, b: dt.date) -> dict:
     return {"calls": len(cs), **{k: v for k, v in callscore.stats(cs).items() if k in ("shown", "sold", "cash", "earned")}} if cs else {"calls": 0, "shown": 0, "sold": 0, "cash": 0.0, "earned": 0.0}
 
 
+def base_amount(slug: str, r: dict, rates: list[dict] | None = None) -> tuple[float | None, dict | None]:
+    """(the amount in dollars, the rate used) for one cash row, or (None, None) when it is in another currency and you gave no rate."""
+    amt = float(r["amount"])
+    if r.get("currency", BASE) == BASE:
+        return amt, None
+    got = fx.convert(slug, amt, dt.date.fromisoformat(r["date"]), r["currency"], BASE, rates)
+    return (got[0], got[1]) if got else (None, None)
+
+
 def month_data(slug: str, a: dt.date, b: dt.date) -> dict:
     entries = [r for r in read_cash(slug) if in_month(r["date"], a, b)]
-    received = round(sum(float(r["amount"]) for r in entries), 2)
-    return {"slug": slug, "entries": entries, "received": received, "funnel": funnel(slug, a, b), "calls": calls_in(slug, a, b)}
+    rates = fx.read_rates(slug)
+    received, by_cur, unconverted, converted = 0.0, {}, [], []
+    for r in entries:
+        by_cur[r["currency"]] = round(by_cur.get(r["currency"], 0.0) + float(r["amount"]), 2)
+        v, used = base_amount(slug, r, rates)
+        if v is None:
+            unconverted.append(r)
+        else:
+            received += v
+            if used and r["currency"] != BASE:
+                converted.append({**r, "base": v, "rate": used})
+    return {"slug": slug, "entries": entries, "received": round(received, 2), "by_currency": by_cur, "unconverted": unconverted, "converted": converted,
+            "funnel": funnel(slug, a, b), "calls": calls_in(slug, a, b)}
 
 
 def combine(parts: list[dict]) -> dict:
-    out = {"slug": "all engines", "entries": [], "received": 0.0, "funnel": {"sent": 0, "replied": 0, "booked": 0, "won": 0}, "calls": {"calls": 0, "shown": 0, "sold": 0, "cash": 0.0, "earned": 0.0}}
+    out = {"slug": "all engines", "entries": [], "received": 0.0, "by_currency": {}, "unconverted": [], "converted": [], "funnel": {"sent": 0, "replied": 0, "booked": 0, "won": 0}, "calls": {"calls": 0, "shown": 0, "sold": 0, "cash": 0.0, "earned": 0.0}}
     for p in parts:
         out["entries"] += p["entries"]
+        out["unconverted"] += p.get("unconverted", [])
+        out["converted"] += p.get("converted", [])
+        for k, v in p.get("by_currency", {}).items():
+            out["by_currency"][k] = round(out["by_currency"].get(k, 0.0) + v, 2)
         out["received"] = round(out["received"] + p["received"], 2)
         for k in out["funnel"]:
             out["funnel"][k] += p["funnel"][k]
@@ -270,6 +313,15 @@ def build(slug: str, month: str | None = None, today: dt.date | None = None, tar
     p = pace(d["received"], today, a, b)
     out = [f"# Cash Desk: {label}, {a.strftime('%B %Y')}", "", verdict(d, tgt, p), ""]
     out += ["## Money", f"- Received (logged with cashin): {money(d['received'])} of {money(tgt)} ({pct(d['received'] / tgt)})"]
+    for cur_, amt_ in sorted(d.get("by_currency", {}).items()):
+        if cur_ != BASE:
+            conv = [x for x in d.get("converted", []) if x["currency"] == cur_]
+            counted = sum(x["base"] for x in conv)
+            out.append(f"  - {cur_} {amt_:,.2f} received" + (f", counted as {money(counted)} at the rate(s) you entered" if conv else "") + (" (not counted yet: no exchange rate)" if any(u["currency"] == cur_ for u in d.get("unconverted", [])) else ""))
+    for u in d.get("unconverted", [])[:3]:
+        out.append(f"- Not counted: {u['currency']} {float(u['amount']):,.2f} on {u['date']} ({u['note'][:40]}): " + fx.fix_hint(slug if slug != "all" else "<engine>", u["currency"], BASE, dt.date.fromisoformat(u["date"])))
+    if any(r.get("currency_assumed") for r in d.get("entries", [])):
+        out.append(f"- {sum(1 for r in d['entries'] if r.get('currency_assumed'))} payment(s) logged before currencies were recorded are counted as dollars.")
     if c["sold"]:
         out.append(f"- Earned on sales you logged with callscore: {money(c['earned'])} from {c['sold']} sale(s) worth {money(c['cash'])}. This is an estimate until the money arrives and you log it.")
     if p["state"] == "now":

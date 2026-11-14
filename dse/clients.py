@@ -27,7 +27,7 @@ import json
 import re
 from pathlib import Path
 
-from . import cashdesk
+from . import cashdesk, fx
 from .common import ROOT
 from .engines import engine_dir, load
 
@@ -134,6 +134,15 @@ def next_invoice_id(slug: str, today: dt.date) -> str:
 
 
 # ------------------------------------------------------------------ pages
+
+def fx_note(slug: str, cur: str, when: str) -> str:
+    """What to tell the person after a payment in another currency was recorded: counted at a rate they gave, or how to give one."""
+    day = dt.date.fromisoformat(when)
+    r = fx.rate_for(slug, day, cur, "USD")
+    if r:
+        return f"Note: recorded in {cur}; it counts toward your dollar target at {r['rate']:g} (the rate you entered for {r['date']})" + (", which is old: check it" if r["old"] else "") + ".\n"
+    return f"Note: recorded in {cur}. It does not count toward your dollar target until you give a rate: {fx.fix_hint(slug, cur, 'USD', day)}\n"
+
 
 def payment_details(slug: str, method: str = "") -> str:
     """Your payment details, from a local file that never syncs: payment-details-<method>.txt (grey, payoneer ...) first, then payment-details.txt."""
@@ -251,7 +260,7 @@ def won(slug: str, proposal: str, email: str = "", address: str = "", today: dt.
     if not payment_details(slug):
         notes.append(f"No payment details yet: put them in engines/{slug}/payment-details.txt on this PC (kept off Citadel and Git) and re-issue, or add them to the invoice by hand.")
     if c["currency"] != "USD":
-        notes.append(f"The Cash Desk adds amounts as they are and does not convert {c['currency']}.")
+        notes.append(f"Payments in {c['currency']} are recorded in {c['currency']}. They count toward your dollar target once you give an exchange rate: python dse.py fx add {slug} --from {c['currency']} --to USD --rate <rate>")
     return (f"# Client Desk: {c['client']} is now a client\n\n" + "\n".join(f"- {n}" for n in notes) + f"\n- Onboarding checklist, welcome message and agreement outline: clients/{cslug}/onboarding.md\n"
             f"- {len(c['items'])} deliverable(s) with due dates, {c['weeks']} week(s) from {c['start']}\n\nNothing was sent. Send the welcome message, the agreement and the invoice yourself.\n")
 
@@ -356,12 +365,12 @@ def paid(target: str, invoice_id: str, amount: float = 0, date: str = "", today:
     if amt <= 0 or amt > left + TOL:
         raise ValueError(f"The amount must be more than 0 and at most what is outstanding on {invoice_id} ({money(left, c['sym'])}).")
     when = parse_date(date, today).isoformat()
-    cashdesk.log_cash(c["engine"], amt, "project", f"{invoice_id} {c['client']}", when)       # the Cash Desk learns of it at once
+    cashdesk.log_cash(c["engine"], amt, "project", f"{invoice_id} {c['client']}", when, c["currency"])       # the Cash Desk learns of it at once
     inv["payments"].append({"date": when, "amount": amt})
     save(f, c)
     msg = f"Recorded {money(amt, c['sym'])} on {invoice_id} ({when}) and added it to the Cash Desk. Status: {status(c)}.\n"
     if c["currency"] != "USD":
-        msg += f"Note: the Cash Desk adds amounts as they are; it does not convert {c['currency']}.\n"
+        msg += fx_note(c["engine"], c["currency"], when)
     return msg + ("That invoice is now paid in full.\n" if outstanding(inv) <= TOL else f"{money(outstanding(inv), c['sym'])} is still outstanding on it.\n")
 
 

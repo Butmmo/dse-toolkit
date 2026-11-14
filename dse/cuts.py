@@ -15,7 +15,7 @@ How it works (a plan you can change in the agreement, not a legal structure):
   * a student who has not reported by the 7th of the next month, or whose earnings drop by half against their own recent average, shows up in the Weekly Review: a prompt to ask
     a friendly question, never an accusation
 Files: engines/<engine>/cuts/<student>/student.json, agreement.md, invoices/CUT-<year>-<n>.html. Payment details are read from engines/<engine>/payment-details-<method>.txt
-(or payment-details.txt) on this PC; they never sync to Citadel or Git. The Cash Desk adds amounts as they are and does not convert currencies.
+(or payment-details.txt) on this PC; they never sync to Citadel or Git. Other currencies count toward the Cash Desk dollar target at the exchange rates you enter (dse/fx.py).
 The agreement text is a starting point, not legal advice: have it checked, and check the platforms your students earn on allow sharing earnings.
 """
 from __future__ import annotations
@@ -153,7 +153,7 @@ def add(slug: str, name: str, percent: float, basis: str = "gross", currency: st
     if not cl.payment_details(slug, method):
         notes.append(f"No payment details for {method} yet: put them in engines/{slug}/payment-details-{method}.txt on this PC (they stay off Citadel and Git).")
     if currency != "USD":
-        notes.append(f"The Cash Desk adds amounts as they are and does not convert {currency}.")
+        notes.append(f"Payments in {currency} are recorded in {currency} and count toward your dollar target once you give an exchange rate: python dse.py fx add {slug} --from {currency} --to USD --rate <rate>")
     terms = ("- D'Famocious Year terms: 20% of net income, capped at $18,000 in total, ending at 12 qualified months (net income of $2,000 or more) or the cap, whichever comes first.\n" if program == "dfy" else "")
     return (f"# Cut Desk: {name} added\n\n{terms}- {percent:g}% of their {basis} earnings, reported monthly by the {REPORT_BY_DAY}th, paid within {due_days} days of the invoice, through {method}.\n"
             f"- Agreement starter: cuts/{sslug}/agreement.md (a starting point, not legal advice: have it checked before they sign).\n" + "".join(f"- {n}\n" for n in notes)
@@ -315,7 +315,7 @@ def paid(target: str, invoice_id: str, amount: float = 0, date: str = "", writeo
     if amt <= 0 or amt > left + TOL:
         raise ValueError(f"The amount must be more than 0 and at most what is still owed on {invoice_id} ({money(left, s['sym'])}).")
     when = cl.parse_date(date, today).isoformat()
-    cashdesk.log_cash(s["engine"], amt, "commission", f"{invoice_id} {s['name']} {inv['month']}", when)
+    cashdesk.log_cash(s["engine"], amt, "commission", f"{invoice_id} {s['name']} {inv['month']}", when, s["currency"])
     inv["payments"].append({"date": when, "amount": amt})
     short = owed(inv)
     msg = f"Recorded {money(amt, s['sym'])} on {invoice_id} ({when}) and added it to the Cash Desk."
@@ -334,7 +334,7 @@ def paid(target: str, invoice_id: str, amount: float = 0, date: str = "", writeo
     else:
         msg += "\nThat invoice is settled." + (f"\n{push_msg}" if push_msg else "")
     if s["currency"] != "USD":
-        msg += f"\nNote: the Cash Desk adds amounts as they are; it does not convert {s['currency']}."
+        msg += "\n" + cl.fx_note(s["engine"], s["currency"], when).strip()
     return msg + "\n"
 
 

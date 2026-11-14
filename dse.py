@@ -18,6 +18,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py cut add <engine> --name "Ada" --percent 10   the Cut Desk: the percentage your students owe you (cut report|paid|list|show|status)
   python dse.py match <engine> statement.csv [--apply]   the Statement Matcher: match Grey, Payoneer or bank credits to your open invoices (only SURE matches are ever applied)
   python dse.py success <engine>   the Student Success Desk: DFY progress, who needs a check-in (with draft messages) and the expected DFY income
+  python dse.py books <engine> [--month 2026-11]   the Books Desk: a monthly pack for your accountant (received, invoiced, owed, ageing, rates); python dse.py fx add <engine> --from GBP --to USD --rate 1.27 enters an exchange rate
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -41,7 +42,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, clients, cuts, desklog, dfysync, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, books, callscore, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -102,6 +103,9 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    bk = sub.add_parser("books"); bk.add_argument("engine"); bk.add_argument("--month", default=""); bk.add_argument("--base", default="USD")
+    fxp = sub.add_parser("fx"); fxp.add_argument("action", choices=["add", "list"]); fxp.add_argument("engine"); fxp.add_argument("--from", dest="from_cur", default=""); fxp.add_argument("--to", dest="to_cur", default="USD")
+    fxp.add_argument("--rate", type=float, default=0); fxp.add_argument("--date", default=""); fxp.add_argument("--note", default="")
     sc_ = sub.add_parser("success"); sc_.add_argument("engine"); sc_.add_argument("--view", default="overview", choices=["overview", "flags", "drafts", "forecast"]); sc_.add_argument("--months", type=int, default=6)
     mt = sub.add_parser("match"); mt.add_argument("engine"); mt.add_argument("statement", help="your exported CSV (in engines/<engine>/statements/, or a path)")
     mt.add_argument("--apply", action="store_true", help="record the SURE matches"); mt.add_argument("--monthfirst", action="store_true", help="read 03/04/2026 as March 4"); mt.add_argument("--tolerance", type=float, default=None, help="the transfer fee you allow a payment to be short by")
@@ -255,6 +259,16 @@ def main():
     elif a.cmd == "success":
         try:
             print(success.report(a.engine, a.view, a.months))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "books":
+        try:
+            print(books.build(a.engine, a.month or None, a.base))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "fx":
+        try:
+            print(fx.add_rate(a.engine, a.from_cur, a.to_cur, a.rate, a.date, a.note) if a.action == "add" else fx.listing(a.engine))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "cashlog":

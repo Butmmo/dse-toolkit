@@ -57,7 +57,8 @@ def complete_months(slug: str, today: dt.date, n: int = HIST_MONTHS) -> list[tup
         if k < first:
             break
         a, b = cd.month_bounds(k, today)
-        out.append((k, round(sum(float(r["amount"]) for r in rows if cd.in_month(r["date"], a, b)), 2)))
+        rates = cd.fx.read_rates(slug)
+        out.append((k, round(sum(v for v in (cd.base_amount(slug, r, rates)[0] for r in rows if cd.in_month(r["date"], a, b)) if v is not None), 2)))
         y, m = add_month(y, m, -1)
     return list(reversed(out))
 

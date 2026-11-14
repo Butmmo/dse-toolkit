@@ -5523,6 +5523,222 @@
       "outputs": [
         "engines/*/success-desk.md"
       ]
+    },
+    "dse.books": {
+      "label": "Books Desk: the monthly pack for your accountant",
+      "group": "My engines",
+      "help": "Writes a month's records in one place: what you received (cash basis), what you invoiced (accrual basis), what is still owed with ageing, what you wrote off, the exchange rates used, the year to date, and a list of things to check, plus CSV files your accountant can open. Every currency stays in its own currency; money in a currency you gave no exchange rate for is listed as NOT converted, never guessed. It does not work out tax and lists the questions for your accountant. Nothing is sent.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "books"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--month",
+          "field": "month"
+        },
+        {
+          "opt": "--base",
+          "field": "base"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "month",
+          "label": "Month (YYYY-MM, empty = the last complete month)",
+          "type": "text",
+          "required": false,
+          "max": 7,
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        },
+        {
+          "name": "base",
+          "label": "Add everything up in",
+          "type": "choice",
+          "required": false,
+          "choices": [
+            {
+              "value": "USD",
+              "label": "USD"
+            },
+            {
+              "value": "GBP",
+              "label": "GBP"
+            },
+            {
+              "value": "EUR",
+              "label": "EUR"
+            }
+          ],
+          "default": "USD"
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": [
+        "engines/*/books/*/summary.md",
+        "engines/*/books/*/*.csv"
+      ]
+    },
+    "dse.fx_add": {
+      "label": "Exchange rates: enter one",
+      "group": "My engines",
+      "help": "Money in other currencies counts toward your dollar target and your books only at exchange rates YOU enter (the rate your bank, Grey or Payoneer gave you when the money landed, or the one your accountant tells you to use). Nothing is looked up. The most recent rate on or before a payment's date is used.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "fx"
+        },
+        {
+          "lit": "add"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--from",
+          "field": "from_cur"
+        },
+        {
+          "opt": "--to",
+          "field": "to_cur"
+        },
+        {
+          "opt": "--rate",
+          "field": "rate"
+        },
+        {
+          "opt": "--date",
+          "field": "date"
+        },
+        {
+          "opt": "--note",
+          "field": "note"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "from_cur",
+          "label": "From (the money you received)",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "USD",
+              "label": "USD"
+            },
+            {
+              "value": "GBP",
+              "label": "GBP"
+            },
+            {
+              "value": "EUR",
+              "label": "EUR"
+            },
+            {
+              "value": "NGN",
+              "label": "NGN"
+            }
+          ],
+          "default": "GBP"
+        },
+        {
+          "name": "to_cur",
+          "label": "To",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "USD",
+              "label": "USD"
+            },
+            {
+              "value": "GBP",
+              "label": "GBP"
+            },
+            {
+              "value": "EUR",
+              "label": "EUR"
+            },
+            {
+              "value": "NGN",
+              "label": "NGN"
+            }
+          ],
+          "default": "USD"
+        },
+        {
+          "name": "rate",
+          "label": "How many of the TO currency 1 of the FROM currency buys (like 1.27)",
+          "type": "text",
+          "required": true,
+          "max": 14,
+          "pattern": "^\\d{1,7}(\\.\\d{1,6})?$"
+        },
+        {
+          "name": "date",
+          "label": "Rate date (empty = today)",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "note",
+          "label": "Where the rate came from (optional)",
+          "type": "text",
+          "required": false,
+          "max": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 .,'/()-]{0,99}$"
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.fx_list": {
+      "label": "Exchange rates: the ones I entered",
+      "group": "My engines",
+      "help": "Every exchange rate you entered for this engine, oldest first.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "fx"
+        },
+        {
+          "lit": "list"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
     }
   },
   "periodic": [

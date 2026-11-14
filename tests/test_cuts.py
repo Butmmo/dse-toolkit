@@ -108,8 +108,12 @@ try:
     check("--writeoff accepts the shortfall (300 - 290 = 10) on the record", ai["writeoff"] == 10 and "written off" in r and "settled" in r, r)
     ben_id = json.loads((d / "cuts" / "ben-net" / "student.json").read_text(encoding="utf-8"))["invoices"][0]["id"]
     r = U.paid(f"{SLUG}/ben-net", ben_id, 0, "2026-12-10", False, dt.date(2026, 12, 10))
-    check("GBP payments carry the no-conversion note", "does not convert GBP" in r)
-    check("Cash Desk December commission total = 290 + 120 = 410", CD.month_data(SLUG, dt.date(2026, 12, 1), dt.date(2026, 12, 31))["received"] == 410.0)
+    check("GBP payments say they wait for an exchange rate, with the command", "recorded in GBP" in r and "fx add" in r, r)
+    dec = lambda: CD.month_data(SLUG, dt.date(2026, 12, 1), dt.date(2026, 12, 31))  # noqa: E731
+    check("without a rate the 120 GBP is NOT added to the dollars: December = 290, and it is listed as not counted", dec()["received"] == 290.0 and len(dec()["unconverted"]) == 1 and dec()["by_currency"] == {"USD": 290.0, "GBP": 120.0}, str(dec()["by_currency"]))
+    from dse import fx as FX  # noqa: E402
+    FX.add_rate(SLUG, "GBP", "USD", 1.25, "2026-12-01", "test rate", dt.date(2026, 12, 12))
+    check("with a rate you entered the pounds count: 290 + 120 x 1.25 = 440", dec()["received"] == 440.0 and not dec()["unconverted"], str(dec()["received"]))
 
     # ---- quiet students, deadlines, status
     s2 = json.loads((d / "cuts" / "ada-obi" / "student.json").read_text(encoding="utf-8"))
