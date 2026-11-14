@@ -850,6 +850,10 @@
         {
           "opt": "--image-id",
           "field": "image_id"
+        },
+        {
+          "opt": "--model",
+          "field": "model"
         }
       ],
       "fields": [
@@ -885,6 +889,14 @@
           "required": false,
           "max": 36,
           "pattern": "^[0-9a-f-]{36}$"
+        },
+        {
+          "name": "model",
+          "label": "Model (optional: auto, library, claude or ollama:NAME)",
+          "type": "text",
+          "required": false,
+          "max": 70,
+          "pattern": "^(auto|library|claude|ollama:[A-Za-z0-9][A-Za-z0-9._:/-]{0,59})$"
         }
       ],
       "timeout_min": 10,

@@ -175,9 +175,9 @@ Rules you never break:
 - Never use the long dash character. Use a colon or a hyphen."""
 
 
-def build_user_message(q):
+def build_user_message(q, limit=7000):
     ctx = engine_context(ENGINE)
-    mat = material(q)
+    mat = material(q, limit)
     parts = []
     if mat:
         parts.append("REFERENCE MATERIAL (researched guides and recipes from the HQ library):" + NL + mat)
@@ -193,6 +193,16 @@ def build_user_message(q):
 
 def claude(q):
     """The strongest answer: Claude, only if the student set their own API key. Returns (text, note) or None."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        try:        # a key saved in Windows after this runner started: read it from there (no restart needed)
+            spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            saved = mod.user_setting("ANTHROPIC_API_KEY")
+            if saved:
+                os.environ["ANTHROPIC_API_KEY"] = saved
+        except Exception:
+            pass
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     try:
@@ -215,18 +225,47 @@ def claude(q):
         return ("", f"Claude was not available ({type(e).__name__}); answering with the local model.")
 
 
-def ollama(q, image=None):
-    """Free local AI through Ollama. Returns None if Ollama isn't running."""
-    msg = {"role": "user", "content": build_user_message(q)}
+LAST = {"error": "", "partial": False, "seconds": 0}      # how the last local-model call went, for the answer's footer
+OLLAMA_BUDGET_S = 420        # the page waits 7 minutes and the job limit is 10: stay inside both
+
+
+def ollama(q, image=None, budget_s=None):
+    """Free local AI through Ollama, streamed so that a slow PC still returns what was written when time runs out (marked as cut short).
+    Returns the text, or None if Ollama gave nothing (LAST says why). Small CPUs get a smaller job: 4096 tokens of context, at most 500 new tokens."""
+    import time
+    LAST.update(error="", partial=False, seconds=0)
+    budget = budget_s or OLLAMA_BUDGET_S
+    msg = {"role": "user", "content": build_user_message(q, 3500)}
     if image:
         msg["images"] = [base64.b64encode(Path(image).read_bytes()).decode()]
-    body = json.dumps({"model": OLLAMA_MODEL, "stream": False, "options": {"num_ctx": 8192, "temperature": 0.4},
+    body = json.dumps({"model": OLLAMA_MODEL, "stream": True, "keep_alive": "30m", "options": {"num_ctx": 4096, "num_predict": 500, "temperature": 0.4},
                        "messages": [{"role": "system", "content": SYSTEM}, msg]}).encode()
+    start, parts = time.time(), []
     try:
         req = urllib.request.Request("http://localhost:11434/api/chat", body, {"Content-Type": "application/json"})
-        return json.loads(urllib.request.urlopen(req, timeout=300).read())["message"]["content"].strip()
-    except Exception:
-        return None
+        with urllib.request.urlopen(req, timeout=150) as r:
+            for line in r:
+                if time.time() - start > budget:
+                    LAST["partial"] = True
+                    break
+                if not line.strip():
+                    continue
+                obj = json.loads(line)
+                if obj.get("error"):
+                    LAST["error"] = str(obj["error"])[:120]
+                    break
+                parts.append((obj.get("message") or {}).get("content", ""))
+                if obj.get("done"):
+                    break
+    except Exception as e:
+        LAST["error"] = f"{type(e).__name__}: {str(e)[:100]}"
+    LAST["seconds"] = int(time.time() - start)
+    text = "".join(parts).strip()
+    if text:
+        return text
+    if not LAST["error"]:
+        LAST["error"] = f"no answer within {int(budget)} seconds" if LAST["partial"] else "an empty answer"
+    return None
 
 
 def library_answer(q):
@@ -270,30 +309,80 @@ def _guard(q):
         return None
 
 
-def reply(q, image=None):
+MODES = ("auto", "library", "claude")
+
+
+def installed_models():
+    try:
+        spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.installed()
+    except Exception:
+        return []
+
+
+def local_footer(chosen=False):
+    where = "you chose it in DBI-AI" if chosen else f"chosen from {MODEL_WHY}"
+    cut = f" It was cut short after {LAST['seconds']} seconds because this PC is slow with this model: pick a smaller model for faster answers, or ask a shorter question." if LAST["partial"] else ""
+    took = f" Took {LAST['seconds']} seconds." if LAST["seconds"] >= 20 and not LAST["partial"] else ""
+    return f"(Answered with your local model {OLLAMA_MODEL} ({where}), grounded in the HQ library.{took}{cut} A bigger model or your own Claude key gives deeper answers.)"
+
+
+def library_reply(q, why):
+    return (from_progress(q) or library_answer(q)) + NL * 2 + f"({why})"
+
+
+def reply(q, image=None, mode="auto"):
+    """mode: auto (best available), library (the built-in guides and recipes only, no AI model), claude (your Anthropic key), or ollama:<model> (one installed model)."""
+    global OLLAMA_MODEL, MODEL_WHY
     if not image:
         g = _guard(q)
         if g:
             return g + NL * 2 + "(Answered instantly by HQ's built-in rules: this chat only answers questions. It cannot see files, build, commit, push or send. No AI model was used.)"
+    mode = (mode or "auto").strip()
+    chosen = mode != "auto"
+    if mode.startswith("ollama:"):
+        want = mode[7:]
+        have = installed_models()
+        if want not in have:
+            return (f"The model '{want}' is not installed on this PC (installed: {', '.join(have) or 'none found: is Ollama running?'}). Pick another in the model menu, or run: ollama pull {want}")
+        OLLAMA_MODEL, MODEL_WHY = want, "you chose it in DBI-AI"
+    elif mode not in MODES:
+        return f"I do not know the model choice '{mode}'. Use the model menu in DBI-AI."
+    if mode == "library":
+        if image:
+            return "Pictures need a model that can read them. Choose a local model that can (marked 'reads pictures' in the menu) or Automatic."
+        return library_reply(q, "Answered from the built-in library because you chose that: the guides and recipes with sources, no AI model.")
     if image:     # pictures need a vision model on this PC
+        if mode == "claude":
+            return "Pictures are read by a local model in this version. Choose Automatic or a local model that reads pictures."
         out = ollama(q, image)
-        return out or ("I could not read the picture. Your Ollama model must support images: install gemma3:4b "
-                       "(ollama pull gemma3:4b), set OLLAMA_MODEL=gemma3:4b and restart the runner.")
+        return (out + NL * 2 + local_footer(chosen)) if out else ("I could not read the picture" + (f" ({LAST['error']})" if LAST["error"] else "") + ". Your Ollama model must support images: install gemma3:4b "
+                                                                      "(ollama pull gemma3:4b), choose it in the model menu and try again.")
     note = ""
-    c = claude(q)
-    if c and c[0]:
-        return c[0] + NL * 2 + "(" + c[1] + ")"
-    if c:
-        note = NL * 2 + "(" + c[1] + ")"
+    if mode == "claude" or (mode == "auto" and not mode.startswith("ollama:")):
+        c = claude(q)
+        if c and c[0]:
+            return c[0] + NL * 2 + "(" + c[1] + ")"
+        if mode == "claude":
+            why = c[1] if c else "Claude did not answer (it needs ANTHROPIC_API_KEY on this PC and: pip install anthropic)."
+            return library_reply(q, why + " Here is the built-in library answer instead.")
+        if c:
+            note = NL * 2 + "(" + c[1] + ")"
     out = ollama(q)
     if out:
-        return out + NL * 2 + f"(Answered with your local model {OLLAMA_MODEL} (chosen from {MODEL_WHY}), grounded in the HQ library. A bigger model or your own Claude key gives deeper answers.)" + note
-    return (from_progress(q) or library_answer(q)) + NL * 2 + "(Answered from the built-in library. Install Ollama for a full AI answer.)" + note
+        return out + NL * 2 + local_footer(chosen) + note
+    why = f"Ollama did not give an answer with {OLLAMA_MODEL} ({LAST['error'] or 'it is not running'}). This is the built-in library answer instead. Try a smaller model from the model menu, or a shorter question."
+    return library_reply(q, why) + note
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     img = None
+    mode = "auto"
+    if "--model" in args:
+        i = args.index("--model"); mode = args[i + 1]; del args[i:i + 2]
     if "--engine" in args:
         i = args.index("--engine"); ENGINE = args[i + 1]; del args[i:i + 2]
     if "--image-id" in args:
@@ -302,10 +391,10 @@ if __name__ == "__main__":
         i = args.index("--image"); img = args[i + 1]; del args[i:i + 2]
     if args:
         try:
-            print(reply(" ".join(args), img))
+            print(reply(" ".join(args), img, mode))
         finally:
             if img and Path(img).name.startswith("dbi-ai-"):
                 Path(img).unlink(missing_ok=True)
     else:
         while (q := input("You: ").strip()).lower() not in ("bye", "exit", ""):
-            print(reply(q), NL)
+            print(reply(q, None, mode), NL)

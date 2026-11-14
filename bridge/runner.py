@@ -178,6 +178,16 @@ def ollama_info() -> dict:
             info["vision"] = "vision" in (json.loads(r.read()).get("capabilities") or [])
     except Exception:
         pass
+    try:        # what the DBI-AI model menu can offer: every installed model (and whether it reads pictures), and whether Claude is ready
+        import importlib.util as iu
+        spec = iu.spec_from_file_location("hq_ollama_model", HERE.parent / "chat" / "ollama_model.py")
+        mod = iu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        info["models"] = mod.models_info()
+        info["claude"] = bool(mod.claude_ready())
+    except Exception:
+        info.setdefault("models", [])
+        info.setdefault("claude", False)
     _OLL.update(t=time.time(), v=info)
     return info
 

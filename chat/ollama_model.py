@@ -54,3 +54,42 @@ def pick(env=None, saved=None, have=None) -> tuple[str, str]:
     if have:
         return have[0], "the only kind installed"
     return DEFAULT, "the default (Ollama did not answer)"
+
+
+# ------------------------------------------------------------------ what the DBI-AI model picker can offer
+
+def has_claude_key() -> bool:
+    """An Anthropic key on this PC: in this process or saved in Windows user settings. The key itself is never read out or sent anywhere from here."""
+    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip() or user_setting("ANTHROPIC_API_KEY"))
+
+
+def claude_ready() -> bool:
+    """Claude can be used: a key is present AND the anthropic package is installed for this Python."""
+    try:
+        import importlib.util
+        return has_claude_key() and importlib.util.find_spec("anthropic") is not None
+    except Exception:
+        return False
+
+
+def models_info(timeout: float = 4.0, limit: int = 12) -> list[dict]:
+    """Installed Ollama models with whether each reads pictures and its size: [{name, vision, size_gb}]. Asks Ollama itself."""
+    out: list[dict] = []
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2) as r:
+            tags = json.loads(r.read()).get("models", [])
+    except Exception:
+        return out
+    for m in tags[:limit]:
+        name = str(m.get("name", ""))
+        if not name:
+            continue
+        vision = False
+        try:
+            req = urllib.request.Request("http://localhost:11434/api/show", json.dumps({"model": name}).encode(), {"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                vision = "vision" in (json.loads(r.read()).get("capabilities") or [])
+        except Exception:
+            pass
+        out.append({"name": name, "vision": vision, "size_gb": round(float(m.get("size", 0)) / 1e9, 1)})
+    return out
