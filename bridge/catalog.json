@@ -4249,6 +4249,81 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dse.preflight": {
+      "label": "Outreach Preflight: check a list before you send",
+      "group": "My engines",
+      "help": "Checks a send list row by row before anything goes out. Blockers: on your do-not-contact list, a missing or invalid address, already contacted, an unfilled placeholder left in the message. Warnings: spam trigger words, ALL CAPS, too many links, a long message, role or free mailboxes, no easy way to say no, no sender name or postal address, more email than your own cap. Optionally also checks your sending domain (mail servers, SPF, DMARC, DKIM). Tick the last box to save a copy without the blocked rows (the original is never touched). Guidance, not legal advice. It sends nothing.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "preflight"
+        },
+        {
+          "field": "csv"
+        },
+        {
+          "opt": "--domain",
+          "field": "domain"
+        },
+        {
+          "flag": "--clean",
+          "field": "clean"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "Send list",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/send-lists/*.csv",
+          "exclude": "drafts"
+        },
+        {
+          "name": "domain",
+          "label": "Your sending domain (the part after the @), optional",
+          "type": "text",
+          "required": false,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*(\\.[A-Za-z0-9-]+)+$"
+        },
+        {
+          "name": "clean",
+          "label": "Also save a copy without the blocked rows",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.preflight_domain": {
+      "label": "Outreach Preflight: check my sending domain",
+      "group": "My engines",
+      "help": "Looks up your domain's mail servers, SPF record, DMARC record and the common DKIM names, and says what to fix before you send cold email from it. Nothing is sent or changed.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "preflight"
+        },
+        {
+          "opt": "--domain",
+          "field": "domain"
+        }
+      ],
+      "fields": [
+        {
+          "name": "domain",
+          "label": "Your sending domain (the part after the @)",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*(\\.[A-Za-z0-9-]+)+$"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
     }
   },
   "periodic": [

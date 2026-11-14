@@ -1,0 +1,18 @@
+{
+  "note": "The thresholds the Outreach Preflight uses. Change a number and re-run. These are common practitioner guidance for cold outreach, not laws, except where a line says so. Nothing here is legal advice.",
+  "spam_words": ["free", "guarantee", "guaranteed", "act now", "limited time", "click here", "buy now", "winner", "urgent", "risk-free", "risk free", "no obligation", "100%", "make money", "earn money",
+                 "cash bonus", "double your", "once in a lifetime", "no cost", "special promotion", "order now", "apply now", "congratulations", "dear friend", "this is not spam", "increase your sales", "$$$"],
+  "max_spam_words": 1,
+  "max_words": 120,
+  "max_exclamations": 1,
+  "max_links": 1,
+  "max_caps_words": 2,
+  "optout_rx": "unsubscribe|opt[- ]?out|reply (no|stop)|(just )?say (no|stop)|not (relevant|for you|interested).{0,60}(let me know|reply|tell me)|(prefer|rather) not to (hear|receive|get)|won't (write|email|message|contact)|will not (write|email|message|contact)|no hard feelings|take you off|remove you",
+  "role_locals": ["info", "hello", "hi", "contact", "office", "admin", "support", "sales", "team", "enquiries", "inquiries", "mail", "reception", "frontdesk", "appointments", "bookings", "billing", "accounts"],
+  "freemail": ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "proton.me", "protonmail.com", "live.com", "msn.com", "ymail.com"],
+  "dkim_selectors": ["google", "selector1", "selector2", "default", "k1", "k2", "s1", "s2", "mail", "dkim", "mandrill", "smtp", "zoho", "mxvault"],
+  "mailbox_daily_warn": 40,
+  "mailbox_daily_note": "Cold email from one mailbox is usually kept to a few dozen a day, and a new domain or mailbox is warmed up slowly. 40 is a common ceiling; your own engine cap is also checked.",
+  "spf_lookup_limit": 10,
+  "sender_guidelines": "Google's Email sender guidelines (support.google.com/a/answer/81126) ask every sender to authenticate with SPF and DKIM, and bulk senders with DMARC as well."
+}

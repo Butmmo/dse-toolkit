@@ -12,6 +12,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py cash <engine|all> [--month 2026-11] [--target 3000]  the Cash Desk: this month against your target; python dse.py cashin <engine> --amount 450 --kind commission logs money you received
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
+  python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -35,7 +36,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, desklog, enrich, enrich_providers, goals, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, desklog, enrich, enrich_providers, goals, preflight, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -96,6 +97,8 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    pf = sub.add_parser("preflight"); pf.add_argument("target", nargs="?", default="", help="an engine (newest list) or a path to a list"); pf.add_argument("--domain", default="")
+    pf.add_argument("--clean", action="store_true", help="write a copy without the blocked rows")
     rp = sub.add_parser("reply"); rp.add_argument("engine"); rp.add_argument("--text", required=True); rp.add_argument("--name", default=""); rp.add_argument("--source", default="")
     rp.add_argument("--row", default=""); rp.add_argument("--email", default=""); rp.add_argument("--log", action="store_true", help="record it and update the do-not-contact list")
     dn = sub.add_parser("dnc"); dn.add_argument("engine")
@@ -172,6 +175,11 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "dnc":
         print(replies.dnc_report(a.engine))
+    elif a.cmd == "preflight":
+        try:
+            print(preflight.report(a.target, a.domain, a.clean))
+        except ValueError as e:
+            sys.exit(str(e))
     elif a.cmd == "cashlog":
         print(cashdesk.history(a.engine))
     elif a.cmd == "calls":
