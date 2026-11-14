@@ -773,7 +773,7 @@
     "howto.ask": {
       "label": "How to do it (your path's tools)",
       "group": "Guides",
-      "help": "Type what you want to do and get the steps. Covers all 8 paths: GoHighLevel (SMB), Klaviyo (Revenue Recovery), Descript and CapCut (Broadcast), LinkedIn (Authority), Vapi and Cal.com (Voice AI), n8n (AI Automation), sales calls (Ascent), and Clay, HubSpot, Sales Navigator, Apollo, Instantly, Lemlist (GTM).",
+      "help": "Step-by-step recipes written from the tools' official help pages: Clay, Apollo, HubSpot, Sales Navigator, Instantly, Lemlist, n8n, Vapi, Cal.com, GoHighLevel, Klaviyo, Descript, CapCut, LinkedIn posts, sales calls and the whole GTM system. Each recipe gives the goal, what to have ready, steps with why each matters and what you should see, mistakes to avoid, a 'you are done when' check, the official source links and the date it was checked. Ask in your own words, like: enrich my list with emails in clay. Menus and plans change: if a button differs, open the source link in the answer.",
       "script": "howto/howto.py",
       "args": [
         {
@@ -797,7 +797,7 @@
     "chat.ask": {
       "label": "HQ chat: ask anything",
       "group": "Guides",
-      "help": "Ask about selling, objections, freelancing, planning, simple thinking or any tool. Free full AI chat with Ollama (runs on your PC, no paid AI): 1) Install Ollama from ollama.com (Windows installer). 2) In a terminal run: ollama pull gemma3:1b (about 0.8 GB, text only, works on most PCs). 3) Optional, 8 GB+ RAM: ollama pull gemma3:4b (about 3.3 GB, also reads images), set the Windows user variable OLLAMA_MODEL=gemma3:4b and restart the runner. 4) Keep Ollama running (it starts with Windows). Without Ollama you get the built-in answers. Images: in a terminal, chat.py \"what is this\" --image photo.png. Video and PDF are not supported by these light models. To ask about a picture in Citadel: save it on your PC in chat/images/ (png or jpg), refresh, pick it under 'Picture', and use the image model gemma3:4b.",
+      "help": "Ask anything about selling, discovery calls, objections, cold messages, follow-ups, pricing and proposals, freelancing, international clients, planning, focus, decisions, rejection, writing, or any tool in the stack. Answers are grounded in HQ's researched guides and recipes. Three levels, best available is used: (1) Claude, the strongest: set your own Claude API key as the Windows user variable ANTHROPIC_API_KEY, run pip install anthropic, and restart the runner (your question and the matching guide text go to Anthropic, you pay your own usage; nothing else is sent unless you ask about your progress). (2) Free local AI with Ollama: install it from ollama.com, run ollama pull gemma3:4b (about 3.3 GB, needs about 8 GB RAM, also reads pictures), set OLLAMA_MODEL=gemma3:4b and restart the runner. gemma3:1b works on small PCs but gives thinner answers. (3) With neither, you get the matching researched guide or recipe in full. The answer says which one wrote it. To ask about a picture in Citadel, use DBI-AI with an image-capable model.",
       "script": "chat/chat.py",
       "args": [
         {
@@ -851,7 +851,7 @@
           "pattern": "^[0-9a-f-]{36}$"
         }
       ],
-      "timeout_min": 6,
+      "timeout_min": 10,
       "outputs": []
     },
     "app.build": {

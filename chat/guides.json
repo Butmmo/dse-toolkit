@@ -1,7 +1,959 @@
-{"guides":[
-{"title":"How to think like a seller","keywords":"sell seller sales think mindset selling","say":["Selling is helping someone decide. Find their problem before you talk about your offer.","Ask more than you tell: what is costing them money or time right now?","Sell the result (more booked jobs), not the tool (an automation)."]},
-{"title":"Handling objections","keywords":"objection expensive price no time think about it later","say":["Agree first, then ask: 'What would make it worth it for you?'","Too expensive: compare the price to what the problem costs them each month.","'Let me think about it': ask what exactly they want to think over, and answer that."]},
-{"title":"Think like a freelancer","keywords":"freelancer freelance client clients mindset business","say":["You run a business of one: every week needs outreach, delivery and follow-up.","Pick one niche and one offer; being known for one thing gets referrals.","Never do free work; offer to show what you found instead."]},
-{"title":"Plan your day","keywords":"plan day focus productive time schedule motivation","say":["Do the money task first: outreach before learning.","Set three must-dos only. Tick them, then extras.","End the day by writing tomorrow's first task."]},
-{"title":"Simple thinking for work","keywords":"philosophy think life stoic meaning failure rejection fear","say":["Control what you can: your actions, not their replies.","Rejection is data, not a verdict on you. Count attempts, not feelings.","Small daily steps beat rare big efforts."]}
-]}
+{
+ "guides": [
+  {
+   "id": "think-like-a-seller",
+   "title": "How to think like a seller (honest and helpful)",
+   "keywords": "sell selling seller sales mindset think pushy scared shy afraid rejection help customer client value trust consultative",
+   "summary": "Selling is helping a person decide whether your service solves a real problem of theirs. Use this mindset before every message, call and proposal so you stop feeling pushy and start being useful.",
+   "principles": [
+    "Your job is a good decision, not a yes. If your service fits, helping them say yes is a favour. If it does not fit, helping them say no early saves you both time. This removes most of the fear.",
+    "Problems before products. People pay to remove a cost, risk or frustration they already feel. Talk about their problem in their words and your offer only comes in at the end (consultative selling, as taught by Neil Rackham's SPIN research and Mike Bosworth's Solution Selling).",
+    "Sell the outcome, not the tool. 'Twelve more booked viewings a month' is a result; 'an n8n workflow' is a method. Clients buy results.",
+    "Trust is built by being specific and honest: say what you can do, what you cannot, and what you do not yet know. Cialdini's work on influence shows people comply more with sources they see as credible and fair, so honesty is not a weakness, it is the strategy.",
+    "Rejection is information. A 'no' usually means wrong person, wrong time or unclear offer. Count attempts per week, not feelings per reply.",
+    "Never use fake urgency, invented scarcity or exaggerated income claims. They win one deal and lose the referral that would have followed."
+   ],
+   "steps": [
+    "Pick one type of client and one problem you solve (for example: recruiting agencies that lose candidates because replies are slow).",
+    "Write the problem as the client would say it in one sentence, with a rough cost (hours lost, jobs missed).",
+    "Write your offer as 'I help [who] get [result] by [simple method]'.",
+    "Before any contact, learn two real facts about the person or company so your message is about them.",
+    "In every conversation, spend about 70 percent of the time asking and listening, 30 percent talking.",
+    "After each conversation write down: their problem in their words, what they said it costs, who decides, and the agreed next step.",
+    "Only recommend your service if the problem you heard is one you can fix. If not, say so and, if you can, point them somewhere useful.",
+    "Review weekly: how many conversations started, how many got a next step, what you learned."
+   ],
+   "say": [
+    "[Opening a chat] 'I am not sure I can help, so my first question is: what is the most annoying part of [their process] right now?'",
+    "[When they ask what you do] 'I help small recruiting agencies stop losing candidates to slow follow-up. Is that something you run into?'",
+    "[When you are unsure] 'I have not done exactly that, here is what I have done that is close, and here is how I would find out the rest.'",
+    "[When it is not a fit] 'From what you describe, I do not think I am the right person. Here is what I would try instead.'",
+    "[Ending a call] 'Would it help if I send a short plan with a price so you can decide without pressure?'"
+   ],
+   "example": "Ada, a beginner, messages a small UK recruiting agency. She does not say 'I do automation'. She writes: 'I noticed your site has a contact form but no confirmation email. Do candidates ever ask whether you got their CV?' The owner replies that it happens weekly. Ada asks how many hours that takes. He says about three hours a week. She now has a real problem with a real cost, and her offer (an automatic acknowledgement and status email) becomes a direct answer, not a pitch.",
+   "mistakes": [
+    "Talking about yourself and your skills first. Start with their situation and make your skills the answer to it.",
+    "Treating a no as personal. Log it, note the reason if given, move on to the next person.",
+    "Pretending to know something you do not. Say how you would find out; clients forgive gaps and do not forgive bluffing.",
+    "Using pressure phrases like 'only 2 slots left' when it is not true. Give an honest reason for any deadline or leave it out.",
+    "Selling to everyone. A vague audience gives vague messages; narrow to one client type first."
+   ],
+   "practice": "Write your one-sentence offer in the form 'I help [who] get [result] by [method]', then write the problem sentence the client would say in their own words and a rough monthly cost. Read both aloud. If you cannot say the cost, list three questions you will ask real people to find out.",
+   "sources": [
+    "SPIN Selling by Neil Rackham (Huthwaite research on consultative selling)",
+    "Influence by Robert Cialdini (credibility and reciprocity)",
+    "To Sell Is Human by Daniel Pink (selling as helping and problem finding)",
+    "Not fetched online: written from established, widely taught frameworks"
+   ]
+  },
+  {
+   "id": "discovery-call-questions",
+   "title": "The discovery call: questions that uncover the real problem",
+   "keywords": "discovery call questions meeting interview qualify qualifying SPIN problem ask listen first call consultation what to ask",
+   "summary": "A discovery call is a structured conversation where you learn the real problem, its cost and who decides, before you recommend anything. Use it on every first call, even a 15 minute chat.",
+   "principles": [
+    "Ask in layers: situation, problem, implication, payoff. This is Neil Rackham's SPIN pattern, drawn from Huthwaite's research into more than 35,000 observed sales calls (the exact study details vary by source). The strongest questions explore the consequences of a problem, not the facts around it.",
+    "The stated problem is rarely the real one. 'We need a website' often means 'we lose leads'. Keep asking why until you reach a cost or a goal.",
+    "Get a number. Hours, money, lost clients, missed deadlines. A number turns a nice-to-have into a decision and later justifies your price.",
+    "Find the decision process early: who else signs off, what budget exists, by when. This is the idea behind MEDDIC style qualification, simplified.",
+    "Silence is a tool. After a question, wait. People often add the most honest answer after a pause.",
+    "End with a clear next step that you both agreed to, not a vague 'I will send something'."
+   ],
+   "steps": [
+    "Prepare: read their site and LinkedIn for 10 minutes and write three guesses about their problems.",
+    "Open by setting the frame: how long you have, that you will ask questions, and that it is fine to say 'not a fit' at the end.",
+    "Situation questions (few, mostly researched already): how does the process work today, which tools, who is involved.",
+    "Problem questions: what is hardest, what keeps going wrong, what have you tried.",
+    "Implication questions: what happens when that goes wrong, what does it cost per month, who else is affected.",
+    "Need-payoff questions: if this were fixed, what would change for you and the team.",
+    "Check decision and timing: who else needs to agree, what budget range makes sense, when do you want it solved.",
+    "Summarise in their words and ask 'Did I get that right?'. Then propose the next step and a date."
+   ],
+   "say": [
+    "[Opening] 'I have 20 minutes of questions for you. At the end we will both know whether it makes sense to continue, and either answer is fine.'",
+    "[Problem] 'What is the most frustrating part of how this works today?'",
+    "[Digging] 'Can you give me the last time that happened?'",
+    "[Implication] 'When that happens, what does it cost you, in time or in lost work?'",
+    "[Payoff] 'If that disappeared next month, what would that free you up to do?'",
+    "[Decision] 'Besides you, who would need to be comfortable with this?'",
+    "[Budget, gently] 'Have you set aside anything for solving this, or is that still open?'",
+    "[Close] 'Let me read back what I heard. Tell me what I missed.'"
+   ],
+   "example": "Client says: 'We need a better CRM.' You ask what is wrong with the current one. 'Candidates fall through.' You ask for the last example: a strong candidate waited four days for a reply and took another job. You ask how often: roughly twice a month, each placement worth about 3,000 pounds. Now the real problem is slow follow-up, costing around 6,000 pounds a month, and the fix may be simple automation, not a new CRM. You say that, and the client trusts you because you did not sell the tool they asked for.",
+   "mistakes": [
+    "Pitching early. Hold your solution until you can repeat their problem and its cost back to them.",
+    "Closed questions only. Prefer 'how', 'what', 'tell me about'.",
+    "Asking easy fact questions you could have researched. It wastes their time; do homework.",
+    "Interrupting or finishing sentences. Let them finish, then ask a follow-up from their last words.",
+    "Leaving without a next step. Always agree what happens next and when."
+   ],
+   "practice": "Write 10 questions for one imaginary client in your niche: 2 situation, 3 problem, 3 implication, 2 need-payoff. Then role-play them with a friend or by voice note for 10 minutes and note which question produced a number.",
+   "sources": [
+    "SPIN Selling by Neil Rackham",
+    "MEDDIC qualification framework (originated at PTC in the 1990s, simplified here)",
+    "Never Split the Difference by Chris Voss (calibrated, open questions)",
+    "Not fetched online: written from established frameworks"
+   ]
+  },
+  {
+   "id": "handling-price-objections",
+   "title": "Handling 'it is too expensive'",
+   "keywords": "too expensive price objection cost cheaper discount high budget afford costly lower your price can you reduce",
+   "summary": "A price objection usually means the value is not clear, the budget is limited, or they are comparing to the wrong thing. Use this when a client says your price is too high before you even think about discounting.",
+   "principles": [
+    "Find out what 'expensive' means. It can mean 'more than I planned', 'more than the other quote' or 'I do not see the value yet'. Each needs a different answer.",
+    "Price is judged against value. If you established the cost of the problem on the discovery call, bring that back; a 500 dollar fix to a 3,000 dollar monthly leak looks small.",
+    "Do not drop the price to ease discomfort. Discounting tells the client your first number was not real. If the budget is smaller, reduce the scope instead.",
+    "Use the LAER method (listen, acknowledge, explore, respond) taught by Carew International (credited to Jack Carew): you hear the concern fully before you answer it.",
+    "Offer options. A smaller package, a phased start or a payment split respects both their budget and your work.",
+    "Be willing to lose the deal. If the numbers truly do not work, a polite exit keeps the relationship and often returns later."
+   ],
+   "steps": [
+    "Stay calm and do not speak first after hearing it. Pause for two seconds.",
+    "Acknowledge: 'That is a fair thing to think about.'",
+    "Explore: ask what they are comparing it to, or what number they had in mind.",
+    "Recall the cost of the problem in their own figures from earlier.",
+    "Respond with the value in that frame: what the price buys and what the problem costs each month.",
+    "If budget is the real limit, offer a smaller scope, a phase one, or a payment split. Keep the price per unit of work the same.",
+    "Ask for a decision on the adjusted option, or agree a date to revisit.",
+    "If you do not reach agreement, thank them and leave the door open without dropping your price."
+   ],
+   "say": [
+    "[First reaction] 'Thanks for being direct. Can I ask what you were expecting, or what you are comparing it to?'",
+    "[Value] 'You told me the slow replies cost about 6,000 a month. This is 900 once. Does that comparison feel off to you?'",
+    "[Other quote] 'Is the other quote doing the same things? Can you show me so I can tell you honestly where we differ?'",
+    "[Budget limit] 'I will not change my rate, but I can do a smaller first phase for [amount] so you see results before the rest.'",
+    "[Payment] 'Would splitting it in two payments make it easier?'",
+    "[Walking away] 'Understood, it is not the right moment. I will leave the plan with you, and if things change just message me.'"
+   ],
+   "example": "Client: 'It is too expensive.' You: 'Fair. What number were you thinking?' Client: 'Maybe 400.' You: 'I cannot do the full job for that, but I can do phase one, the automatic confirmation emails, for 400 and show you the effect in two weeks. Then you can decide on the rest.' Client agrees. You kept your pricing integrity, the client got a smaller scope within budget, and you earned a result to build on.",
+   "mistakes": [
+    "Instant discount. Reduce scope or offer phases instead, so your price still means something.",
+    "Defending your price with a long justification. Ask a question first, then answer the actual concern.",
+    "Arguing that cheap is bad. Compare with the cost of the problem, not with other freelancers.",
+    "Skipping the cost of the problem during discovery. Without it you have nothing to anchor to.",
+    "Getting defensive or emotional. Treat it as a normal part of buying."
+   ],
+   "practice": "Write your own version of each response above for your actual service. Add one smaller package at about 40 percent of your main price, with exactly what is and is not included. Say the script aloud three times.",
+   "sources": [
+    "LAER objection-handling model, taught by Carew International (credited to Jack Carew); origin dates vary by source",
+    "Value-based pricing ideas from Alan Weiss, Value-Based Fees",
+    "Not fetched online: written from established frameworks"
+   ]
+  },
+  {
+   "id": "handling-other-objections",
+   "title": "Handling 'I need to think about it', 'send more info', 'we already have someone', 'no budget'",
+   "keywords": "objection think about it send me info more information already have someone no budget not now maybe later stall brush off not interested handling objections LAER",
+   "summary": "Most objections are polite stalls or real concerns not yet said. Use the LAER method (listen, acknowledge, explore, respond) to find the real reason and answer it honestly.",
+   "principles": [
+    "Never argue with an objection. Listen, say you understand, then ask a question. LAER is built on that order.",
+    "'I need to think about it' usually hides a specific doubt: price, trust, timing or a second decision maker. Ask what exactly they want to think over.",
+    "'Send me info' is often a polite no or a low-interest request. Offer a short tailored summary instead of a generic brochure, tied to a next step.",
+    "'We already have someone' is common and not final. Ask what works and what does not, and offer to be a backup or second option, never to undermine them.",
+    "'No budget' may be true now. Find out when budgets are set and offer a small, low-risk start or a date to talk again.",
+    "Respect no. If a person says no after you explore, thank them and leave. Honest persistence is fine; pressure is not."
+   ],
+   "steps": [
+    "Listen to the whole objection without answering.",
+    "Acknowledge it: repeat in your words and say it makes sense.",
+    "Explore with one open question to find the real cause.",
+    "Respond only to what they said, with one short, honest answer.",
+    "Check: 'Does that help?' and wait for the answer.",
+    "Agree a dated next step (a call on Thursday, a decision by Friday).",
+    "If it is a clear no, record the reason and close politely.",
+    "Set a reminder to contact them when they said things might change."
+   ],
+   "say": [
+    "[Think about it] 'Of course. So I can help, what is the main thing you want to think over: the price, the timing, or whether it fits?'",
+    "[Think about it, still vague] 'Would it help if we spoke again on Thursday once you have had time?'",
+    "[Send info] 'Happy to. So I send the right thing, what do you most want to know: how it works, what it costs, or examples?'",
+    "[Already have someone] 'Good to hear. What do they do well, and is there anything you wish was better?'",
+    "[Already have someone, soft] 'No pressure to switch. If it helps, I can be a backup for the busy periods.'",
+    "[No budget] 'Understood. When do you plan next quarter's spend? I can check back then.'",
+    "[No budget, small start] 'If it helps, a small first piece for [amount] shows results before a bigger commitment.'",
+    "[Clear no] 'Thank you for being honest. If anything changes, you know where to find me.'"
+   ],
+   "example": "You: 'Sending the proposal. Any thoughts?' Client: 'Let me think about it.' You: 'Of course. Is it more the price or more whether it will fit your team?' Client: 'Honestly, my partner needs to see it.' You: 'That makes sense. Would a ten minute call with both of you on Thursday help? I will keep it short.' Now you know the real blocker and you have a dated next step.",
+   "mistakes": [
+    "Accepting 'think about it' with no date. Always ask what to clarify and propose when to talk.",
+    "Sending a long PDF to everyone who asks for info. Ask what they want to know first.",
+    "Criticising the competitor or current provider. It damages your credibility.",
+    "Answering before you listen. You respond to the wrong concern and look defensive.",
+    "Chasing someone who said a clear no. Thank them and move to the next person."
+   ],
+   "practice": "Pick the objection you dread most. Write the LAER response in four lines (Listen, Acknowledge, Explore, Respond) for it and for one more. Record yourself saying both and listen for a calm, curious tone.",
+   "sources": [
+    "LAER objection-handling model, taught by Carew International (credited to Jack Carew)",
+    "Never Split the Difference by Chris Voss (labeling and open questions)",
+    "Not fetched online: written from established frameworks"
+   ]
+  },
+  {
+   "id": "cold-message-that-gets-a-reply",
+   "title": "Writing a cold message that gets a reply",
+   "keywords": "cold message cold email cold outreach linkedin whatsapp instagram dm first message reply rate prospecting subject line template personalise",
+   "summary": "A good cold message is short, about them, and asks for one small thing. Use it on email, LinkedIn, WhatsApp or Instagram when you contact someone who does not know you.",
+   "principles": [
+    "Relevance beats cleverness. A message that shows you looked at their business in one sentence outperforms any template.",
+    "Short wins. Aim for 50 to 100 words; the reader should understand it in ten seconds on a phone.",
+    "One ask only, and make it small: a yes or no question, not 'a 30 minute call'. Lower effort for the reader means more replies.",
+    "Lead with them, not you. Open with an observation about their business, then a likely problem, then a light offer. This is a widely taught structure among cold outreach practitioners such as Alex Berman and Josh Braun.",
+    "Be honest about who you are and why you wrote. No fake familiarity, no 'Re:' subject lines, no invented urgency.",
+    "Respect each channel: email is more formal, LinkedIn and WhatsApp are conversational, Instagram is casual; never message a personal WhatsApp number you obtained unfairly, and always accept 'stop' immediately."
+   ],
+   "steps": [
+    "Choose one specific person with a role that matches the problem (owner, hiring lead, operations).",
+    "Find one true observation: a job post, a slow reply, a missing page, a recent post.",
+    "Write line one: the observation, in plain words.",
+    "Write line two: the likely problem it causes, as a question or a light guess.",
+    "Write line three: who you are and one result, in one sentence.",
+    "Ask one small question that is easy to answer yes or no.",
+    "Read it aloud; cut every word that does not help. Remove links and attachments from the first message.",
+    "Send, log it, and schedule your follow-up for 3 to 4 days later."
+   ],
+   "say": [
+    "[Email subject] 'Question about your candidate replies'",
+    "[Email body] 'Hi Sam, I saw your agency posts new roles weekly. Do candidates ever wait a few days for a reply? I help small recruiting teams send quick automatic updates so fewer drop out. Worth a short chat, or should I send two examples?'",
+    "[LinkedIn] 'Hi Sam, I liked your post on hiring in Manchester. Quick question: how do you keep candidates updated between interviews? I am working on a simple fix for that and would value your view.'",
+    "[WhatsApp, only if they use it for business] 'Hi, this is Ada from D'Famocious Ltd. I noticed your site lists this number for enquiries. Could I ask one quick question about your candidate follow-up? If not relevant, just say and I will stop.'",
+    "[Instagram] 'Hi, loved your recent move-day post. Do you get many missed calls on busy days? I help movers reply to every enquiry automatically. Want me to show a quick example?'",
+    "[Opt-out line] 'If this is not for you, no problem, just tell me and I will not message again.'"
+   ],
+   "example": "Weak: 'I am a freelancer offering automation, CRM and email services at affordable rates. Please see my portfolio.' Better: 'Hi Sam, I saw you posted three roles last week. When candidates apply, do they get any confirmation? I set up quick automatic replies for small agencies. Can I send two examples?' The better version is 38 words, references their situation, and asks a yes or no question.",
+   "mistakes": [
+    "Sending the same text to everyone. Change at least the first line each time.",
+    "Opening with your life story or services list. Start with them.",
+    "Asking for a long call in the first message. Ask a small question first.",
+    "Over-formatting with emojis, bold and multiple links. Plain text looks human and avoids spam filters.",
+    "Contacting people who said stop. Respect it, record it and do not message again."
+   ],
+   "practice": "Pick five real companies in your niche. For each write one true observation and a three-line message (observation, problem question, one small ask). Send none yet: read them aloud and cut each to under 70 words.",
+   "sources": [
+    "Cold email practice from Josh Braun (Pain, Not Product style) and Alex Berman (Experiment 27 cold email teaching)",
+    "Platform terms: respect LinkedIn, WhatsApp, Instagram and email anti-spam rules (CAN-SPAM in the US, PECR and GDPR in the UK)",
+    "Not fetched online: written from established practice"
+   ]
+  },
+  {
+   "id": "following-up-without-nagging",
+   "title": "Following up without nagging",
+   "keywords": "follow up followup no reply ghosted chase sequence reminder bump nudge email silence cadence",
+   "summary": "Most deals need several touches, and most beginners stop after one. A short, respectful sequence that adds something each time gets replies without feeling pushy.",
+   "principles": [
+    "No reply usually means busy, not no. Many people reply only after a follow-up, so following up is normal, not rude.",
+    "Each follow-up must add something: a new fact, a short example, an easier question. 'Just checking in' gives them nothing to respond to.",
+    "Space messages out and vary the channel gently: for example day 3, day 7, day 14, day 30. Keep a defined end so you do not become a nuisance.",
+    "Make replying easy: end with a yes or no question or a choice between two times.",
+    "Give a polite exit. A final 'close the loop' message often gets replies because it removes pressure and honours their time.",
+    "Keep a log. Date, channel, what you said. Good records stop you chasing twice in one day or forgetting someone."
+   ],
+   "steps": [
+    "Day 0: send the first message and log it.",
+    "Day 3: reply on the same thread with one new useful line and the same simple question.",
+    "Day 7: try another channel if appropriate (LinkedIn after email) with a small relevant observation.",
+    "Day 14: send a short example or a one-line result that matches their problem.",
+    "Day 21 to 30: send a break-up message that closes the loop politely.",
+    "If they reply with interest, move to a call or proposal at once and stop the sequence.",
+    "If they reply 'not now', note the month they gave and set a reminder.",
+    "If they say stop, mark it and never message again."
+   ],
+   "say": [
+    "[Day 3] 'Hi Sam, adding one thing: most agencies I speak to lose one or two candidates a month to slow replies. Is that true for you too?'",
+    "[Day 7] 'Hi Sam, no worries if you are busy. Would it help if I sent a two-line example of what candidates would receive?'",
+    "[Day 14] 'Here is a quick before and after from a small test I ran. Does that look relevant to your team?'",
+    "[After a proposal] 'Hi Sam, I wanted to check the plan arrived and if you have questions. Happy to walk through it in 10 minutes.'",
+    "[Gentle date] 'Should I check back in March when you plan hiring, or is another time better?'",
+    "[Break-up] 'I will assume this is not a priority and stop here. If that changes, just reply and I will pick it up.'"
+   ],
+   "example": "Ada sends a cold message on Monday. No reply. Thursday: 'Sam, one more thought: I can send you the exact email candidates would get. Want to see it?' Next Monday on LinkedIn: 'Hi Sam, sent you an email too. No pressure.' Two weeks later: she shares a tiny demo labeled as a demo. At day 25 she sends the break-up note. Sam replies: 'Sorry, been slammed. Call Thursday?' The last, no-pressure message restarted the conversation.",
+   "mistakes": [
+    "'Just checking in' with nothing new. Always add value or ease.",
+    "Following up the next day on every channel. Space it out and keep volume low.",
+    "Guilt or sarcasm ('I guess you are too busy'). Stay warm and neutral.",
+    "Never stopping. Set an endpoint, then move on and revisit in a few months.",
+    "Not logging. Keep a simple sheet so you never repeat yourself or forget a promised date."
+   ],
+   "practice": "Take one real prospect, or invent one. Write the full five-message sequence with dates, each with a new angle and a simple question. Put the dates in a spreadsheet with a column for 'sent' and 'replied'.",
+   "sources": [
+    "Follow-up cadence as commonly taught by B2B sales practitioners such as Jill Konrath (Selling to Big Companies); the exact numbers are rules of thumb, not measured results",
+    "Break-up message pattern commonly taught in B2B sales",
+    "Not fetched online: written from established practice"
+   ]
+  },
+  {
+   "id": "one-page-proposal-and-pricing",
+   "title": "Writing a one-page proposal and pricing it",
+   "keywords": "proposal quote pricing price how much charge value based hourly packages anchoring tiers rate fixed price scope estimate",
+   "summary": "A one-page proposal restates the client's problem, shows a clear outcome, scope, price and next step. Price by the value of the result, in three simple packages, instead of by the hour when you can.",
+   "principles": [
+    "The proposal should be a mirror, not a surprise. Everything in it was already said on the discovery call, in their words.",
+    "Value-based pricing, as taught by Alan Weiss and Ron Baker, ties price to the outcome for the client, not your time. Hourly punishes you for getting faster. For a beginner with no track record, a fixed price per clear deliverable is a sensible middle ground.",
+    "Three packages (good, better, best) let the client choose how much, not whether. Most pick the middle. This is the basis of tiered pricing widely used in services.",
+    "Honest anchoring: show the cost of the problem or a fuller option first, then your recommended one. Do not invent a fake 'original price'. The anchor must be real.",
+    "Define scope exactly: what is included, what is not, how many revisions, timeline, what you need from the client. Vague scope causes disputes.",
+    "Make the next step obvious: one sentence on how to accept and when work starts."
+   ],
+   "steps": [
+    "Write the problem in the client's words with the cost they gave you.",
+    "State the outcome you will deliver, in one or two sentences.",
+    "List the deliverables in plain bullets, with what is not included.",
+    "Set a timeline with two or three dates.",
+    "Create three packages: starter (core), recommended (core plus extras), full (everything and support).",
+    "Price against value: aim for a fraction of the yearly cost of the problem; if you have no benchmark, price per deliverable and test.",
+    "Add payment terms (for example 50 percent to start, 50 percent on delivery) and a decision date.",
+    "Send it as a short PDF or message after a call, never cold, and offer to talk it through."
+   ],
+   "say": [
+    "[Cover line] 'Based on our call, you lose about 6,000 a month to slow candidate follow-up. Here is a plan to fix it.'",
+    "[Packages] 'Option A covers the basics. Option B, which I recommend, adds reporting. Option C adds a month of support.'",
+    "[Payment] 'I start work on a 50 percent deposit and the rest is due when you approve delivery.'",
+    "[Scope] 'Anything outside this list I will quote separately so there are no surprises.'",
+    "[Price question] 'My price is fixed for this scope. If your scope is smaller, we can change the package.'",
+    "[Decision] 'If you tell me by Friday, I can start Monday.'"
+   ],
+   "example": "Problem: candidates wait four days for replies, costing around 6,000 a month. Starter, 300: automatic acknowledgement emails. Recommended, 750: acknowledgement plus status updates and a weekly report. Full, 1,200: everything plus a month of tweaks. Timeline: 7 days. Payment: half upfront. A client who sees 6,000 a month of loss and three clear options will compare options, not argue about hours.",
+   "mistakes": [
+    "Quoting hourly with no cap. The client fears a bill without limit and you earn less as you improve.",
+    "Sending a long document. One page that is read beats ten that are not.",
+    "Fake discounts or fake 'normal price'. If the anchor is not real, do not use it.",
+    "Leaving scope fuzzy. Write what is not included.",
+    "Sending the proposal without a call. Talk it through so you can handle questions at once."
+   ],
+   "practice": "Draft a one-page proposal for an imaginary client in your niche using the structure: problem and cost, outcome, deliverables, timeline, three packages with prices, payment terms, next step. Keep it to 300 words.",
+   "sources": [
+    "Value-Based Fees by Alan Weiss",
+    "Implementing Value Pricing by Ron Baker",
+    "Tiered (good, better, best) pricing, a widely used services pricing pattern",
+    "Not fetched online: written from established frameworks"
+   ]
+  },
+  {
+   "id": "negotiating-without-caving-or-fighting",
+   "title": "Negotiating without caving or fighting",
+   "keywords": "negotiate negotiation discount counter offer haggle terms push back concession deal fair win win bargaining",
+   "summary": "Negotiation is solving a shared problem, not winning a fight. Use it when a client counters on price, scope or terms and you want a fair deal without resentment.",
+   "principles": [
+    "Separate people from the problem and focus on interests, not positions, as taught in Getting to Yes by Roger Fisher and William Ury. Ask why they want it, not only what they want.",
+    "Know your walk-away point before you start (your BATNA, best alternative to a negotiated agreement). Without it you will say yes to anything.",
+    "Trade, never give. Every concession should be matched with something in return: longer commitment, faster payment, a testimonial, a smaller scope.",
+    "Use calibrated questions, a Chris Voss technique: 'How am I supposed to do that?' invites them to solve your constraint without a fight.",
+    "Slow down. Silence and a polite 'let me come back to you' beat a rushed yes you later regret.",
+    "Stay honest. Do not invent competing offers or deadlines. A fair, steady tone keeps the relationship and the referral."
+   ],
+   "steps": [
+    "Before any negotiation, write your ideal result, your minimum and what you can trade (timeline, scope, payment terms).",
+    "Ask what matters most to them: budget, speed, risk, or quality.",
+    "Restate their position to show you heard it ('So the key issue is cost').",
+    "Respond with a trade, not a discount: 'If we change X, I can do Y'.",
+    "Make small concessions slowly, and smaller each time, so your limit is clear.",
+    "Put the agreement in writing: scope, price, dates, payment, revisions.",
+    "If the gap cannot be closed, say so kindly and leave the door open.",
+    "After closing, thank them; good deals start good projects."
+   ],
+   "say": [
+    "[Counter on price] 'I can do 500 if we remove the weekly report. Would that work?'",
+    "[Trade] 'I can lower it if you commit to the three-month plan, or pay in full upfront.'",
+    "[Calibrated question] 'How can we make this work within your budget without losing the main result?'",
+    "[Pressure] 'I want to give you a considered answer. Can I reply by tomorrow noon?'",
+    "[Free extra request] 'I can add that. It is outside this scope, so it would be an extra 150.'",
+    "[Fairness] 'I want you to feel this is fair and I need it to work for me too.'",
+    "[Walk away] 'I understand. That is below what I can deliver quality work at, so I will pass this time. Please come back if that changes.'"
+   ],
+   "example": "Client: 'Can you do it for 400 instead of 750?' You: 'What matters most: the budget or the reporting?' Client: 'Budget.' You: 'I can do 400 without the weekly report and with one revision instead of three. If you later want reports, I can add them for 350.' Client accepts. You conceded scope, not your hourly value, and kept the door open for an upsell.",
+   "mistakes": [
+    "Giving a discount without getting anything back. Trade instead.",
+    "Negotiating before you know your minimum. Decide beforehand.",
+    "Treating it as a battle. Aim for a deal both can live with.",
+    "Agreeing verbally only. Confirm the terms in writing the same day.",
+    "Bluffing about other clients or deadlines. If caught, trust is gone."
+   ],
+   "practice": "Write your walk-away number, ideal number and three things you can trade for a lower price (for example upfront payment, longer term, testimonial). Role-play a client asking for 30 percent off and respond only with trades.",
+   "sources": [
+    "Getting to Yes by Roger Fisher and William Ury (Harvard Negotiation Project)",
+    "Never Split the Difference by Chris Voss",
+    "Not fetched online: written from established frameworks"
+   ]
+  },
+  {
+   "id": "first-client-with-no-money",
+   "title": "Getting your first client with no money",
+   "keywords": "first client no money zero budget get clients free pilot warm network referrals beginner start freelance case study testimonial portfolio",
+   "summary": "Your first client almost always comes from people who already know or trust you, plus a small honest pilot that creates proof. Use this plan when you have no budget, no portfolio and no testimonials.",
+   "principles": [
+    "Start warm. People who know you (friends, family, former colleagues, classmates, community) are far easier than strangers. List 50 names before you contact a stranger.",
+    "Ask for introductions, not jobs. 'Do you know someone who struggles with X?' is easier to answer than 'Do you have work for me?'",
+    "Free work only as a small, time-limited pilot with a clear scope and a written agreed outcome, in exchange for a testimonial and permission to show results. Never work free open-ended, and label demos as demos.",
+    "Proof creates trust. One real result with numbers (hours saved, replies increased) beats ten claims. Collect permission in writing.",
+    "Narrow focus helps. 'I help small recruiting agencies stop losing candidates' is easier to refer than 'I do automation'.",
+    "Honesty rule: say it is your first project and what you can and cannot do. Clients value candour and tend to be patient with beginners who are clear."
+   ],
+   "steps": [
+    "Write a list of 50 people who know you; mark those who run or know a small business.",
+    "Write a short message explaining what you do and ask if they know anyone with that problem.",
+    "Send it personally to 10 people a day on WhatsApp or email.",
+    "When someone is interested, run a discovery call and write a one-page plan.",
+    "Offer a small paid first project at a low but real price, or a one-week free pilot with agreed limits and testimonial.",
+    "Deliver early, measure the result and write it down with numbers.",
+    "Ask for a testimonial and two introductions after delivery.",
+    "Turn the result into a one-page case study and use it in every future message."
+   ],
+   "say": [
+    "[To your network] 'I now help small recruiting agencies stop losing candidates to slow replies. Do you know anyone who struggles with that? I would be grateful for an introduction.'",
+    "[Pilot offer] 'This is my first project in this area. I can do a small one-week pilot for free: you get [specific result], and if it works I ask for a short testimonial.'",
+    "[Boundary] 'The pilot covers these three things. Anything beyond that I would quote as a paid project.'",
+    "[After delivery] 'Would you be willing to share a sentence about the result I can use on my profile?'",
+    "[Referral ask] 'Who else do you know who has this problem? Would you introduce us?'",
+    "[Honesty] 'I am new, so I will send you updates twice a week and show you everything as I go.'"
+   ],
+   "example": "Ada messages 10 contacts a day. A former colleague, who runs a small recruiting agency, says candidates complain about silence. Ada offers a one-week pilot: automatic acknowledgement emails for new applicants, free, with a written agreement and a testimonial request. After the week acknowledgement time falls from two days to ten minutes. The client pays for phase two and introduces her to two other owners. Total spend: zero.",
+   "mistakes": [
+    "Free work with no scope or end date. Always limit the pilot and agree the outcome in writing.",
+    "Waiting until you feel ready. Start with a small paid or pilot project and learn on the job.",
+    "Asking everyone for 'any work'. Ask for introductions to a specific kind of person.",
+    "Not asking for a testimonial or referral. The proof and the introductions are the real payment.",
+    "Claiming results you have not had. Use real numbers or call it a demo."
+   ],
+   "practice": "In 10 minutes write a list of 20 people you know and mark five who may know a small business owner. Draft one short referral message and send it to the first two today.",
+   "sources": [
+    "Referral and warm network approach taught in The Referral Engine by John Jantsch",
+    "Building proof with a defined pilot: a common freelance practice, not tied to one source",
+    "Not fetched online: written from established practice"
+   ]
+  },
+  {
+   "id": "closing-and-handling-silence",
+   "title": "Closing: asking for the decision and handling silence",
+   "keywords": "close closing ask for the sale decision silence ghosted no response proposal sent waiting yes no commit next step assumptive",
+   "summary": "Closing is simply asking for a clear decision at the right moment and agreeing what happens next. Use it after a proposal, and use the silence steps when a client goes quiet.",
+   "principles": [
+    "Asking is part of the service. Clients often wait for you to say what the next step is; a clear, calm ask reduces their effort.",
+    "Close only after the problem, cost and plan are agreed. If you have to push, something earlier was missed; go back and ask.",
+    "Offer a choice between yes options, not yes or no (for example Package B or C, start Monday or Wednesday). This is a standard 'alternative close'.",
+    "Every conversation should end with a dated next step. A date turns a vague 'later' into a plan.",
+    "Silence is not rejection. Most proposals need two or three polite check-ins. Use dates and a clear final message to resolve it.",
+    "A clear no is a good result: it frees your time. Ask what could have changed their mind so you improve."
+   ],
+   "steps": [
+    "At the end of the discovery call, say when you will send the proposal and when you want to speak again.",
+    "Send the proposal within 24 hours, then book a short walk-through if possible.",
+    "In the walk-through, summarise problem, plan, price and timeline, then ask for the decision.",
+    "Use a choice: which package fits better, and when do they want to start.",
+    "If they hesitate, use LAER to find the concern and answer it once.",
+    "If they go quiet, follow up after 2 to 3 days with a helpful, simple question.",
+    "Follow up again after a week with one fresh piece of value and a decision date.",
+    "Send a final polite message stating you will close the file, leaving the door open. Then stop."
+   ],
+   "say": [
+    "[Ask] 'Based on what we covered, would you like to go ahead with Option B?'",
+    "[Alternative] 'Would you prefer to start Monday or the following week?'",
+    "[Next step] 'I will send the proposal tomorrow morning. Can we speak Thursday at 3 to decide together?'",
+    "[Check] 'On a scale of 1 to 10, how confident do you feel? What would make it a 10?'",
+    "[Quiet, day 3] 'Hi Sam, just making sure the proposal reached you. Any questions I can answer?'",
+    "[Quiet, day 7] 'I know things get busy. Should I hold the start date for you, or is it better to pause for now?'",
+    "[Final] 'I will assume the timing is not right and close this for now. If it becomes a priority, message me and I will pick it up.'",
+    "[On a no] 'Thanks for being clear. Was there anything that would have made it a yes?'"
+   ],
+   "example": "After the walk-through you say: 'Do you want Option B, and can we start Monday?' Client: 'Let me discuss with my partner.' You: 'Of course. Can we speak Thursday at 3 so you can tell me what you decided?' Thursday passes with no reply. You send the day-3 message, then the day-7 message. Nothing. You send the final note. Two weeks later Sam replies: 'Sorry, we are ready now.' The dated ask and polite final message gave him a clear, easy way back.",
+   "mistakes": [
+    "Ending with 'let me know' and leaving the next step to them. Propose a date and a time.",
+    "Closing before the problem and cost are clear. Return to discovery first.",
+    "Hard pressure or fake deadlines. Use a true reason such as your real calendar.",
+    "Chasing endlessly. Use a defined sequence with a final message.",
+    "Taking silence personally. Log it, move on to the next lead and revisit later."
+   ],
+   "practice": "Write your closing line for a package choice (two options and two start dates) and your three-message silence sequence with dates. Say the closing line aloud five times until it feels natural and calm.",
+   "sources": [
+    "Alternative and assumptive close patterns from classic sales training such as Zig Ziglar, Secrets of Closing the Sale",
+    "LAER objection-handling model, taught by Carew International (credited to Jack Carew)",
+    "Not fetched online: written from established frameworks"
+   ]
+  },
+  {
+   "id": "think-like-a-freelancer",
+   "title": "Think like a freelancer: run yourself as a small business",
+   "keywords": "freelancer freelance business of one mindset niche offer pricing clients pipeline referrals no clients feast famine self employed",
+   "summary": "A freelancer is not an employee waiting for tasks: you are a tiny business with a product, customers, a pipeline and a bank balance. Use this to set up your week so work keeps arriving instead of coming in waves.",
+   "principles": [
+    "You have four jobs, not one: find clients, deliver the work, get paid, and improve. Most beginners only do 'deliver' and then wonder why work dries up. Give each job time every week.",
+    "One niche and one clear offer beats 'I do everything'. People refer and remember a specific thing ('I set up automated follow-up for recruiting agencies') far more easily than a vague skill list.",
+    "Sell outcomes, not hours. A client cares about booked calls, saved time or fewer errors. Pricing on the result also stops you being paid less when you get faster.",
+    "Pipeline before need. Feast-and-famine happens because outreach stops when you are busy. Keep a small daily outreach habit even with a full diary.",
+    "Reputation compounds. Every finished job can become a result, a testimonial and a referral, so do fewer jobs well and ask for the proof at the end.",
+    "Stay honest and boring about promises: say what you will deliver, by when, and what you need from the client. Reliability is rarer than talent and clients pay for it."
+   ],
+   "steps": [
+    "Write one sentence: 'I help [type of client] get [result] by [what I do].' Keep it narrow enough that you can name 50 real companies that fit.",
+    "List your offer as a product: what is included, what is not, how long it takes, and one price (or a small range). Put it in one page.",
+    "Create a simple tracker with columns: name, contact, stage (contacted, replied, call, proposal, won, lost), next step, date. A spreadsheet is enough.",
+    "Block fixed weekly time: outreach (daily, 30 to 60 minutes), delivery (blocks), admin and invoicing (once a week), learning (one block).",
+    "After each job, send a short thank-you and ask for a testimonial and, if it went well, one introduction.",
+    "Once a month, check four numbers: contacts made, replies, calls, jobs won. Change one thing based on the weakest number.",
+    "Set money rules: ask for a deposit or milestone payment before starting, and never begin big work unpaid.",
+    "Keep a 'proof folder' of screenshots, before and after numbers (with permission) and kind messages."
+   ],
+   "say": [
+    "[Introducing yourself] 'I help small recruiting agencies stop losing candidates to slow follow-up. I set up the automation so it runs without you.'",
+    "[Starting a conversation] 'What is the most repetitive thing your team does every week?'",
+    "[Quoting] 'The project is a fixed price of $X, includes A, B and C, and takes about two weeks from the day you send the access I need.'",
+    "[Asking for a deposit] 'I start once the first payment is in. After that I send updates every Friday.'",
+    "[Declining a bad fit] 'I do not think I am the right person for this, but I can suggest what to look for.'",
+    "[After delivery] 'Would you be open to writing two or three lines about the result? It helps me a lot.'"
+   ],
+   "example": "Ada has a skill in spreadsheets and automation but no clients. She writes: 'I help small moving companies answer new enquiries within five minutes.' She contacts 10 movers a day with a short message and logs each one. After two weeks she has 3 replies and 1 call. She quotes a fixed price for one automated reply setup, takes half upfront, delivers in a week, and asks for a testimonial. Because she kept messaging while delivering, she has two more calls booked the week the first job ends.",
+   "mistakes": [
+    "Waiting for work to come to you: schedule outreach daily and treat it as part of the job.",
+    "Being a generalist to avoid missing out: pick one niche for 90 days and judge it by data.",
+    "Charging by the hour when you are slow: price the outcome or a defined package.",
+    "Starting work without a deposit: use milestones so you are never exposed.",
+    "Stopping outreach when busy: keep a small daily minimum so the pipeline never empties.",
+    "Not asking for proof: request the testimonial the same week the result is fresh."
+   ],
+   "practice": "In 10 minutes write your one-sentence offer, list 10 company names that fit it, and create the tracker with those 10 rows. Tomorrow's first task is to contact the first three.",
+   "sources": [
+    "Michael Gerber, The E-Myth Revisited (working on the business, not only in it).",
+    "Blair Enns, The Win Without Pitching Manifesto (positioning and selling expertise).",
+    "Alan Weiss, Million Dollar Consulting (value-based pricing and pipeline habits).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "client-communication-and-scope",
+   "title": "Client communication: set expectations, update weekly, say no, handle scope creep",
+   "keywords": "client communication expectations weekly update scope creep change request say no extra work revision unhappy client delay deadline boundaries",
+   "summary": "Most client problems are expectation problems, not skill problems. Use this to agree the scope clearly at the start, keep the client calm with predictable updates, and handle extra requests without damaging the relationship.",
+   "principles": [
+    "Write down what is in and what is out before work starts. A short scope note prevents most arguments because both sides can point to the same page.",
+    "Predictable beats frequent. A client who knows an update arrives every Friday stops chasing you on Tuesday. Silence is what creates anxiety.",
+    "Bad news early is small news. Tell the client about a delay or problem as soon as you know, with a new date and a plan. Hiding it makes the same problem bigger and breaks trust.",
+    "Scope creep is usually friendly, not hostile. The client simply asks for 'one small thing'. Treat it as a change request: acknowledge it, price it or schedule it, then let them choose.",
+    "A good no has a yes inside it. Say what you can do, by when, or at what extra cost, instead of a flat refusal.",
+    "Put decisions in writing. After any call, send three lines summarising what was agreed so memory is not the contract."
+   ],
+   "steps": [
+    "Before starting, send a scope note: goal, deliverables, what is not included, number of revisions, what you need from the client, timeline, price.",
+    "Ask for written approval ('Reply YES if this matches') and keep that message.",
+    "Choose one update day and format (for example Friday, three bullet points: done, next, anything I need from you).",
+    "Send the update even when nothing exciting happened. One line is better than nothing.",
+    "When a new request arrives, pause before agreeing. Ask yourself whether it is inside the scope note.",
+    "If outside, reply with the options: add it for a price or time, swap it for something in scope, or do it after the current delivery.",
+    "If you will miss a date, message the same day with the new date and the reason in one sentence.",
+    "At delivery, list what was done against the scope note, then close the project formally and ask for feedback."
+   ],
+   "say": [
+    "[Kickoff] 'To keep us aligned, here is what is included and what is not. Reply YES if this looks right.'",
+    "[Weekly update] 'Done: A and B. Next: C. I need from you: login access by Thursday.'",
+    "[Scope creep, friendly] 'Happy to add that. It is outside the original scope, so it would be $X and about two more days. Shall I include it?'",
+    "[Scope creep, trade] 'I can include that if we drop item D from this round. Which do you prefer?'",
+    "[Saying no] 'I cannot do that by Friday without cutting quality. I can deliver it Tuesday, or the first half on Friday.'",
+    "[Delay] 'Heads up: the export is taking longer than planned. New date is Wednesday. Nothing else is affected.'",
+    "[After a call] 'Quick recap of what we agreed: 1, 2, 3. Tell me if I missed anything.'",
+    "[Unclear request] 'Just to be sure I build the right thing: do you mean X or Y?'"
+   ],
+   "example": "Tunde is building an automated email follow-up for a US client. Midway the client writes on WhatsApp: 'Can you also add a text message step?' Tunde replies: 'Yes, that is possible. It was not in the original scope (email only), so it adds $120 and two days. Want me to add it, or finish the email version first and do SMS next?' The client picks to finish email first. Tunde logs the choice in the next Friday update, so nothing is ambiguous later.",
+   "mistakes": [
+    "Saying yes to everything to be liked: price or schedule extras instead of absorbing them.",
+    "Going quiet when something is late: message earlier, with a new date.",
+    "Agreeing things only on a call: always send a written recap.",
+    "Vague scope like 'set up marketing': list deliverables and exclusions.",
+    "Getting defensive when the client is annoyed: restate facts calmly and offer the next step.",
+    "Unlimited revisions: state the number of revision rounds upfront."
+   ],
+   "practice": "Write a scope note template for your main service (goal, included, not included, revisions, timeline, price, what you need) and a three-line Friday update template. Save both where you can paste them.",
+   "sources": [
+    "Project scope and change-control practice from the PMBOK Guide (Project Management Institute), paraphrased.",
+    "Chris Voss, Never Split the Difference (calm, labelled, collaborative negotiation).",
+    "David Maister, Charles Green and Robert Galford, The Trusted Advisor (trust through reliability).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "working-with-international-clients",
+   "title": "Working with international clients: time zones, contracts, invoices, getting paid",
+   "keywords": "international clients us uk time zone contract invoice payment paid nigeria payoneer wise upwork paypal bank transfer fees currency dollars withdraw safe",
+   "summary": "Working for US or UK clients from Nigeria is normal and workable if you agree time, scope and payment clearly. This guide covers the basics; you must confirm every fee and rule on each provider's official page because they change.",
+   "principles": [
+    "Overlap matters more than working hours. Agree a small shared window (for example two hours) for calls and do the rest asynchronously with written updates.",
+    "Contracts do not need to be long. One page covering scope, price, payment schedule, revisions, ownership and how either side can end the work is far better than nothing.",
+    "Get paid in a way that is traceable. A platform with escrow or a regulated payment provider gives you records for taxes, banks and disputes.",
+    "Ask for part of the money before work. Deposits or milestones protect both sides and filter out people who are not serious.",
+    "Fees and rules change often. Never rely on a blog post or a friend's memory for fees, limits or rates: check each provider's official pricing and help pages before you quote or choose.",
+    "Keep records. Save invoices, contracts, payment confirmations and messages in one folder. You will need them for banking questions and tax filing."
+   ],
+   "steps": [
+    "Find the client's time zone and write the overlap in both zones in your first message ('10:00 to 12:00 UK time is 10:00 to 12:00 in Nigeria in winter'). Use a world clock to check daylight saving changes.",
+    "State your working hours, response time (for example within one working day) and the days you are unavailable.",
+    "Send a one-page agreement: scope, price and currency, payment schedule, revision rounds, delivery date, who owns the work after payment, confidentiality, and how to end the agreement.",
+    "Choose how you will be paid: marketplace escrow, bank transfer, or a payment provider that supports your country. Read each provider's official page for current fees, limits, and whether it supports Nigerian accounts.",
+    "Send an invoice with your business name (D'Famocious Ltd if you work through it), invoice number, date, description, amount, currency, due date and payment details.",
+    "Set payment terms in the invoice, for example 50 percent upfront and 50 percent on delivery, and when late payment will pause work.",
+    "When money arrives, record it, note any fees and exchange rate, and keep the confirmation. Ask a qualified accountant or the tax authority's official page about tax obligations.",
+    "Follow up politely on overdue invoices the day after the due date."
+   ],
+   "say": [
+    "[Time zones] 'I am in Nigeria (WAT). I can overlap with you from 2pm to 5pm your time. Does that work for a weekly call?'",
+    "[Response expectations] 'I reply to messages within one working day and send a written update every Friday.'",
+    "[Payment terms] 'My terms are 50 percent to start and 50 percent on delivery. I start once the first payment is received.'",
+    "[Choosing a method] 'Which payment method would you like to use? I can be paid through [platform] or bank transfer.'",
+    "[Invoice cover note] 'Attached is invoice 004 for the automation setup, due in 7 days. Please confirm when it has been sent.'",
+    "[Late payment] 'A gentle reminder that invoice 004 was due yesterday. Could you tell me when I can expect payment?'",
+    "[Unfamiliar request] 'Before I send anything, I would like to confirm how you would like to pay, to keep it traceable.'"
+   ],
+   "example": "Chidi gets a UK client. He writes: 'I am on Nigerian time, one hour ahead of UK winter time. Could we meet Tuesdays 3pm UK time? I will send a short agreement and invoice for 50 percent upfront.' The client agrees. Chidi checks his chosen payment provider's official fee page for current rates, notes the fee in his records, delivers, sends the second invoice and a thank-you. Later he tells his accountant the dates and amounts from his folder.",
+   "mistakes": [
+    "Starting without any written agreement: send a one-page agreement first.",
+    "Agreeing to be paid in a way you cannot receive or that has no record: confirm methods in advance.",
+    "Trusting old fee numbers: always check the provider's official page.",
+    "Ignoring daylight saving: UK and US clocks change on different dates, so recheck twice a year.",
+    "Overpayment or cheque scams (a client sends too much and asks for a refund): never refund a payment you have not confirmed has cleared in your account.",
+    "Forgetting records and tax: save everything and ask a qualified accountant."
+   ],
+   "practice": "Make a one-page agreement and an invoice template in a document. Then open two payment providers' official pricing pages, write down what you can verify about fees and Nigeria support, and note the date you checked.",
+   "sources": [
+    "General freelancing practice: agreements, deposits and records (widely taught, for example by the Freelancers Union at freelancersunion.org).",
+    "Provider details intentionally not stated: student must confirm on each provider's official page.",
+    "Written from established practice in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "plan-your-day-and-week",
+   "title": "Plan your day and week: time blocks, priority check, 3-task rule, weekly review",
+   "keywords": "plan day week schedule time blocking eisenhower priority urgent important to do list overwhelmed procrastination routine weekly review three tasks",
+   "summary": "A simple plan beats a perfect one. Use time blocks for your best hours, a quick urgent/important check, three must-do tasks per day and a short weekly review.",
+   "principles": [
+    "Put tasks on the calendar, not only on a list. A task with a time has a much higher chance of happening than a task that just exists.",
+    "Urgent is not the same as important. Messages and notifications feel urgent. Outreach, learning and finishing deliverables are usually important. The matrix attributed to Dwight Eisenhower helps you tell them apart.",
+    "Three must-do tasks per day is enough. Limiting the list forces you to decide what matters and gives you a clear finish line.",
+    "Protect your best hours for the hardest or most valuable work, and push email and admin to a separate block.",
+    "Plan for 60 to 70 percent of the day. Real days contain interruptions, so leave gaps rather than scheduling every minute.",
+    "A weekly review keeps the system honest: look back, learn, and choose next week's priorities."
+   ],
+   "steps": [
+    "The evening before, write three tasks for tomorrow. Make each one specific and finishable ('send 10 outreach messages', not 'work on marketing').",
+    "Sort every extra item using the four boxes: important and urgent (do now), important and not urgent (schedule), urgent and not important (delegate or batch), neither (drop).",
+    "Put your most valuable task in your best energy window as a block of 60 to 90 minutes.",
+    "Add a block for messages and admin, one or two times a day, so you are not reacting all day.",
+    "Work the first task before opening social media or the inbox.",
+    "At the end of the day tick off what is done, move what is not, and write tomorrow's three tasks.",
+    "Once a week, spend 20 minutes: what got done, what slipped and why, what are the three goals for next week, and what can be dropped.",
+    "Adjust one thing for next week, not ten."
+   ],
+   "say": [
+    "[To yourself, morning] 'What are my three tasks today, and which one comes first?'",
+    "[Interruption] 'Is this important or only urgent?'",
+    "[Overwhelm] 'What is the smallest next action for this task?'",
+    "[To a client wanting instant replies] 'I check messages at 11am and 4pm and will reply within the day.'",
+    "[Saying no to a distraction] 'I cannot take that on this week. I can look at it Monday.'",
+    "[Weekly review prompt] 'What moved me forward most? What should I stop doing?'"
+   ],
+   "example": "Ngozi has 14 things on her list. She chooses three: write 10 outreach messages, finish the client's workflow, and watch one lesson. She blocks 9:00 to 10:30 for outreach, 11:00 to 1:00 for the workflow, and 4:00 for the lesson. Email is checked at 1:00 and 5:00. Friday she reviews: outreach done 4 of 5 days, the workflow slipped because of power cuts, so next week she puts delivery earlier in the day and adds a backup plan.",
+   "mistakes": [
+    "Making a list of 15 tasks: choose three and treat the rest as backlog.",
+    "Starting the day in messages: do the most valuable task first.",
+    "Planning every minute: leave buffer for interruptions and power or network problems.",
+    "Vague tasks: write the exact action and the finish line.",
+    "Skipping the weekly review: it takes 20 minutes and prevents repeating the same problems.",
+    "Treating a bad day as failure: restart with the next block."
+   ],
+   "practice": "Right now write tomorrow's three tasks, put each in a calendar slot, and decide one time window for checking messages. Tomorrow evening do the 5-minute reset.",
+   "sources": [
+    "Eisenhower matrix, popularised by Stephen Covey in The 7 Habits of Highly Effective People (urgent vs important).",
+    "Cal Newport, Deep Work (time-blocking the day).",
+    "David Allen, Getting Things Done (weekly review).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "deep-focus-and-distraction",
+   "title": "Deep focus: avoid distraction, phone rules, work blocks and breaks",
+   "keywords": "focus concentration distraction phone social media procrastination pomodoro deep work breaks attention scrolling whatsapp notifications cannot concentrate",
+   "summary": "Focus is a skill you set up, not a mood. Use short protected work blocks, remove the phone from reach, and take real breaks so you do more in fewer hours.",
+   "principles": [
+    "Switching tasks has a cost. Every check of a message pulls part of your attention away and it takes time to regain it, so batching beats constant checking.",
+    "Environment beats willpower. If the phone is in another room, you do not need to resist it. Make the distraction harder and the work easier.",
+    "Work in sprints. Many people do well with 25 to 50 minutes of focus followed by a 5 to 10 minute break, the idea behind the Pomodoro technique. Pick a length you can actually finish.",
+    "Rest is part of work. Short breaks away from screens restore attention. Sleep, water, food and some movement affect focus more than any app.",
+    "Decide the target of each block before it starts. 'Write the proposal intro' gives focus a point. 'Work on proposal' does not.",
+    "Boredom is not a signal to check the phone. The urge usually passes in a minute or two if you wait and keep the next small step in front of you."
+   ],
+   "steps": [
+    "Pick one task for the block and write its finish line on paper ('draft three outreach messages').",
+    "Put the phone on silent, face down, out of arm's reach, or in another room. Close unneeded tabs and apps.",
+    "Tell people your focus time ('I reply after 12'). For WhatsApp, mute chats during the block.",
+    "Set a timer for 25 to 50 minutes and work on only that task.",
+    "If a distracting thought appears ('check the price of X'), write it on a notepad and go back.",
+    "When the timer rings, stop. Take a 5 to 10 minute break away from the screen: stretch, water, walk.",
+    "After 3 or 4 blocks take a longer break of 20 to 30 minutes.",
+    "At the end of the day note how many focused blocks you did. Aim to add one block rather than doing more hours."
+   ],
+   "say": [
+    "[To yourself] 'Ten minutes, just start. I can stop after.'",
+    "[When the urge to scroll hits] 'Write it down, finish the block, then look.'",
+    "[To family or friends] 'I am working until 12. I will reply after.'",
+    "[To a client] 'I check messages at set times so I can concentrate on your project; I reply within the day.'",
+    "[After a distraction] 'Back to the next small step.'",
+    "[End of block] 'What did I finish? What is the next block?'"
+   ],
+   "example": "Emeka struggles to work for more than 10 minutes. He leaves his phone in another room, sets a 30 minute timer and writes 'draft landing page headline and subheading' on paper. He finishes in 28 minutes, drinks water, walks around, and starts a second block. After a week he is completing four blocks a day and reports that the first block is the hardest, so he now starts with a very small task to get momentum.",
+   "mistakes": [
+    "Relying on willpower with the phone beside you: remove it from reach.",
+    "Working long hours with no breaks: use planned breaks and stop earlier.",
+    "Multitasking between chats and work: batch messages.",
+    "Spending the break scrolling: pick breaks that rest your eyes and mind.",
+    "Blocks with no clear target: write the finish line first.",
+    "Ignoring sleep: a short night undoes most focus tricks."
+   ],
+   "practice": "Do one 25 minute block now with the phone in another room and a single written target. When it ends, write one line: how did it feel, what distracted me, what will I change.",
+   "sources": [
+    "Cal Newport, Deep Work (work in protected, distraction-free blocks).",
+    "Francesco Cirillo's Pomodoro Technique (timed focus sprints).",
+    "Gloria Mark, Attention Span (research on interruptions and switching cost).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "decisions-under-uncertainty",
+   "title": "Making decisions under uncertainty: reversible vs irreversible, pre-mortem, deadlines",
+   "keywords": "decision decide uncertain choice stuck overthinking analysis paralysis risk which niche which course pre-mortem reversible regret deadline",
+   "summary": "You will never have full information, especially early on. Use this to sort decisions by how hard they are to undo, imagine failure before it happens, and set a deadline so you decide and move.",
+   "principles": [
+    "Not all decisions are equal. Some are easy to reverse (try a niche for two weeks) and some are hard to undo (sign a long contract, spend your last money). Decide reversible ones fast and slow down only for the irreversible ones. Jeff Bezos describes these as two-way and one-way doors.",
+    "More research has diminishing returns. After you have the main facts, extra information rarely changes the answer but it does cost time.",
+    "A pre-mortem exposes risks cheaply. Imagine the project has failed and ask why. People find problems more easily when failure is assumed. This technique is credited to the psychologist Gary Klein.",
+    "A deadline forces a decision. Without one the choice drifts. Set a date and a rule for what you will do if you are still unsure.",
+    "Small experiments beat debate. A one-week test gives real data that no amount of thinking can.",
+    "Judge the decision by the process, not only the outcome. A good decision can still turn out badly, and learning from it is the point."
+   ],
+   "steps": [
+    "Write the decision in one sentence ('Should I focus on recruiters or movers for the next 30 days?').",
+    "Ask: if it turns out wrong, can I undo it? How much would it cost? If it is easy to undo, plan to decide within a day.",
+    "List two or three options only, including 'do nothing'.",
+    "Write what you know, what you do not know, and what one cheap action would teach you.",
+    "Do a pre-mortem: 'It is three months later and this failed. The three most likely reasons are...' Add a protection for each.",
+    "Set a decision date and a tiebreaker rule (for example 'if I have no strong reason by Friday, choose option A').",
+    "Choose, tell someone, and start the first small step the same day.",
+    "Put a review date on the calendar to check results and change course if needed."
+   ],
+   "say": [
+    "[Framing] 'What is the decision, and what happens if I am wrong?'",
+    "[Reversibility] 'Can I undo this in a week? If yes, I will decide today.'",
+    "[Pre-mortem] 'Imagine it failed. What is the most likely reason?'",
+    "[Deadline] 'I will decide by Friday 5pm.'",
+    "[Tiebreaker] 'If I still cannot choose, I take option A and review in 30 days.'",
+    "[To a client unsure about a purchase] 'We can start with a small pilot so the decision is easy to reverse.'"
+   ],
+   "example": "Kemi cannot choose between two niches. She sees both are reversible. She decides to test recruiters for 14 days with 10 messages a day. A pre-mortem shows the likely failure is sending messages that are too long, so she sets a rule to keep them under 80 words. Her deadline is day 14: if she has fewer than 2 replies she tests the other niche. She decides in one evening instead of weeks.",
+   "mistakes": [
+    "Treating all decisions as huge: sort by reversibility first.",
+    "Endless research: set a deadline and a data limit.",
+    "Having 8 options: narrow to two or three.",
+    "Ignoring risk entirely: do a short pre-mortem for the big ones.",
+    "Never reviewing: schedule a date to check and adjust.",
+    "Blaming yourself for bad luck: separate process from outcome."
+   ],
+   "practice": "Choose one pending decision. In 10 minutes: write it in one sentence, classify it as reversible or not, list two options, do a three-reason pre-mortem, and set the decision date.",
+   "sources": [
+    "Jeff Bezos, Amazon shareholder letter 2015 (one-way and two-way decisions).",
+    "Gary Klein, Performing a Project Premortem, Harvard Business Review (2007).",
+    "Annie Duke, Thinking in Bets (decision quality vs outcome quality).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "handling-rejection-silence-discouragement",
+   "title": "Handling rejection, silence and discouragement",
+   "keywords": "rejection silence no reply ghosted discouraged demotivated give up fear failure ignored low reply rate imposter motivation quit bad day",
+   "summary": "Outreach and freelancing produce a lot of no and a lot of silence. Use this to read that correctly, keep a daily minimum, and know when to adjust instead of quitting.",
+   "principles": [
+    "Silence is mostly about the other person's inbox, not your worth. Busy people miss messages, and most replies come after follow-ups.",
+    "It is a numbers game that you can improve. Reply rates are often low at first. Track volume and results so you can see progress instead of relying on feelings.",
+    "Reframe a no as information. It tells you the message, the timing or the target might be off, which you can test and fix.",
+    "A daily minimum protects momentum. A small fixed amount of work (for example 10 messages) done on a bad day is worth more than a huge plan abandoned on day three.",
+    "Adjust after enough data, not after one bad day. Change one thing at a time, once you have a reasonable sample (for example 50 to 100 contacts).",
+    "Your mood is not evidence. Feeling discouraged is normal and does not mean the plan is failing. Check numbers, sleep and food first."
+   ],
+   "steps": [
+    "Set a daily minimum that is small enough to do on your worst day (for example 10 messages or 3 follow-ups).",
+    "Log every attempt: date, who, message version, reply (yes, no, none).",
+    "After each no or silence, write one line: what is one thing I can test next time?",
+    "Follow up politely two or three times at sensible intervals before closing a contact.",
+    "Every 50 contacts, compute the reply rate and book rate. If it is very low, change one variable: target list, first line, or offer.",
+    "Keep a 'wins' note with every reply, kind word and small result and read it when discouraged.",
+    "Share the numbers with a friend or study partner for accountability.",
+    "If you feel persistently low, take a rest day, talk to someone you trust, and get proper support when needed."
+   ],
+   "say": [
+    "[To yourself] 'That is one more attempt logged. Next.'",
+    "[After a no] 'Thanks for letting me know. If anything changes, I am here.'",
+    "[First follow-up] 'Hi [name], just checking this reached you. Happy to send more detail if useful.'",
+    "[Final follow-up] 'I will assume this is not a priority right now and close this out. Feel free to reach out later.'",
+    "[Asking why] 'If you have a moment, was it timing, price or something else? It helps me improve.'",
+    "[Bad day] 'My minimum today is 10. I only need to do 10.'"
+   ],
+   "example": "Seyi sends 40 messages and gets 1 reply, a no. He feels like quitting. Instead he checks the log: 38 got no answer, and his first line is a long introduction. He rewrites it to one sentence about the recipient's business, sends 40 more, adds a follow-up on day three, and gets 4 replies and 1 call. The change came from data and a small edit, not from willpower.",
+   "mistakes": [
+    "Judging the plan after 10 messages: wait for a meaningful sample.",
+    "Taking silence personally: follow up, then move on.",
+    "Changing everything at once: change one variable so you learn which one worked.",
+    "Doing nothing on bad days: keep the small daily minimum.",
+    "Spamming or being pushy to get replies: stay polite and honest, with a limited number of follow-ups.",
+    "Ignoring your wellbeing: rest, sleep and talk to someone when it gets heavy."
+   ],
+   "practice": "Create a simple log with columns date, who, message version, result. Enter your next 10 attempts and write one test idea for the next batch.",
+   "sources": [
+    "Epictetus and the Stoic idea of focusing on what you control (see the philosophy guide).",
+    "Carol Dweck, Mindset (learning from setbacks, growth mindset).",
+    "James Clear, Atomic Habits (small repeatable minimums).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "writing-clearly",
+   "title": "Writing clearly: short emails, one ask, structure, editing checklist",
+   "keywords": "writing email message clear short concise one ask subject line structure edit proofread whatsapp tone grammar professional reply long",
+   "summary": "Clear writing is the cheapest professional upgrade. Use this to write short messages that get read and answered, with one ask and an easy structure.",
+   "principles": [
+    "The reader is busy. Put the point first, then the detail. If they only read the first two lines they should still know what you want.",
+    "One message, one ask. Several questions in one email usually get one answer or none. If you need more, number them or send separate messages.",
+    "Short words and short sentences win. Plain language is not childish: it is easier to understand and faster to act on, especially for readers whose first language is not English.",
+    "Make the next step obvious and easy. Say who does what by when ('Please reply with a time that suits you').",
+    "Write, then cut. First drafts are long. Delete the warm-up, repeated points and apologies and the message gets stronger.",
+    "Tone is kindness plus clarity. Be polite, direct and honest, and avoid fake urgency or exaggeration."
+   ],
+   "steps": [
+    "Before writing, finish this sentence: 'After reading this, I want them to ___.' That is your one ask.",
+    "Write a subject line that says the topic in plain words ('Question about your follow-up process').",
+    "Open with the reason or the ask in the first sentence or two.",
+    "Add only the context needed: two to four short sentences, or three bullets.",
+    "End with the specific next step and a deadline if one is real.",
+    "Edit: cut the first sentence if it is a warm-up, delete extra words, split long sentences, replace jargon.",
+    "Read it aloud or check on your phone. If you stumble, simplify.",
+    "Run the checklist: one ask, clear subject, names spelled correctly, dates and numbers right, attachment included, tone polite, no em-dash or fancy decoration, no spelling errors."
+   ],
+   "say": [
+    "[Subject line] 'Quick question about your new hires process'",
+    "[Opening] 'I am writing to ask whether you would be open to a 15 minute call about X.'",
+    "[Clear ask] 'Could you send me the login by Thursday?'",
+    "[Numbered questions] 'Two questions: 1) Which format do you prefer? 2) Who approves the final version?'",
+    "[Closing] 'If this is not a priority, no problem. Just let me know.'",
+    "[Follow-up] 'Following up on my note below. Is this still something you would like to look at?'",
+    "[Apology without grovelling] 'Sorry for the delay. Here is the file.'"
+   ],
+   "example": "Before: 'Hello, I hope you are doing well. I wanted to reach out because I have been looking at your company and noticed several things that could be improved and I was wondering if maybe you would like to possibly discuss some ideas sometime.' After: 'Hi Sam, I noticed your site has no way to book a call. I can set one up in a day. Would you like a quick example? A yes or no is enough.' The second version is 34 words, has one ask and is easy to answer.",
+   "mistakes": [
+    "Long openings and apologies: start with the point.",
+    "Several asks in one message: pick one or number them.",
+    "Vague asks like 'let me know your thoughts': ask a specific question.",
+    "Walls of text: use short paragraphs and bullets.",
+    "Sending without re-reading: check names, numbers and attachments.",
+    "Fancy words to sound professional: choose plain ones."
+   ],
+   "practice": "Take an email you have already sent or drafted. Rewrite it in under 80 words with one ask, a clear subject line and a next step, then compare the two versions.",
+   "sources": [
+    "Strunk and White, The Elements of Style (omit needless words).",
+    "George Orwell, Politics and the English Language (plain, concrete writing).",
+    "Steven Pinker, The Sense of Style (writing for the reader).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "practical-philosophy-for-work",
+   "title": "Simple philosophy for work: Stoic ideas, craftsmanship, compounding habits",
+   "keywords": "philosophy stoic stoicism marcus aurelius epictetus control worry anxiety craftsmanship habits compounding mindset meaning obstacle calm resilience",
+   "summary": "A few old ideas hold up well when you are building something with little money and lots of uncertainty. This guide explains three plainly: Stoic focus on control, caring about craft, and small habits that compound.",
+   "principles": [
+    "Separate what you control from what you do not. You control your effort, your messages and your learning. You do not control replies, the economy or other people's moods. Putting energy only on the first group reduces worry and increases action. This is the core of Epictetus.",
+    "Rehearse trouble in advance. The Stoics practised 'premeditation of evils': picture what could go wrong (a client cancels, a power cut) and plan a response, so it hurts less and you react better.",
+    "The obstacle is the way. Marcus Aurelius wrote that what stands in the way can become the way. A rejection, a mistake or a lack of money can become a lesson or a reason to be creative.",
+    "Do good work for its own sake. Craftsmanship means caring about the quality of what you make, even small things. It builds reputation, skill and self-respect, and clients notice.",
+    "Habits compound. Getting one percent better, or doing 10 outreach messages every day, looks tiny now and large after months. Consistency beats intensity.",
+    "Use philosophy as a tool, not a performance. Ideas are only useful when they change what you do on Tuesday."
+   ],
+   "steps": [
+    "Draw two columns: 'In my control' and 'Not in my control'. Write the current worries in the right place.",
+    "For each item in the first column write one action for today. For the second column write 'let go' or 'prepare'.",
+    "Do a short premeditation: 'What could go wrong this week? What will I do if it does?' Write one backup per risk.",
+    "When something goes wrong, ask: 'What can I learn or use from this?' Write one sentence.",
+    "Choose one thing you make (a message, a report, a design) and improve it by 10 percent today: clearer, shorter, error-free.",
+    "Pick one tiny habit linked to a trigger ('after breakfast I send 5 messages') and track it on a calendar with an X each day.",
+    "At the end of the day ask: what did I do well, what could I do better, what will I do tomorrow?",
+    "Do not break the chain twice: if you miss a day, restart the next day."
+   ],
+   "say": [
+    "[Worry] 'Is this in my control? If yes, what is the action? If no, let it go.'",
+    "[Bad news] 'Okay. What is the next useful step?'",
+    "[Before a hard day] 'What could go wrong, and what is my plan?'",
+    "[After a mistake] 'What can I learn? How do I fix it and prevent it?'",
+    "[Quality check] 'Would I be proud to put my name on this?'",
+    "[Motivation dip] 'I only need to do today's small version.'"
+   ],
+   "example": "Dayo hears that a prospect picked another freelancer. He writes two columns: controllable (his message, his follow-ups, his portfolio) and not controllable (their decision). He picks two actions: improve his portfolio example and send five new messages. He also plans for the next cancellation by keeping a list of backup prospects. A month later the daily messages have compounded into a pipeline of 20 contacts, and the lost prospect is forgotten.",
+   "mistakes": [
+    "Thinking Stoicism means suppressing emotion: it means noticing feelings and choosing a useful response.",
+    "Using philosophy to avoid action: always end with a concrete step.",
+    "Quoting wise people instead of doing the work: apply one idea per day.",
+    "Perfectionism disguised as craftsmanship: ship good work, then improve.",
+    "Big habits that collapse: start tiny and build.",
+    "Ignoring things you can influence: control is a spectrum, so do your part and accept the rest."
+   ],
+   "practice": "Write the control/no-control columns for your three biggest worries now, pick one action for each controllable item, and do the smallest of them within the next 10 minutes.",
+   "sources": [
+    "Epictetus, Enchiridion (dichotomy of control).",
+    "Marcus Aurelius, Meditations (obstacle is the way, premeditation).",
+    "Ryan Holiday, The Obstacle Is the Way (practical Stoicism).",
+    "Richard Sennett, The Craftsman (craft and quality).",
+    "James Clear, Atomic Habits (compounding small habits).",
+    "Written from established works in my own words; no pages fetched in this session."
+   ]
+  },
+  {
+   "id": "learn-a-skill-fast-and-prove-it",
+   "title": "Learn a skill fast and prove it: deliberate practice, projects, portfolio",
+   "keywords": "learn skill fast practice project portfolio proof show work case study tutorial hell certificate learning plan feedback build in public beginner no experience",
+   "summary": "You learn fastest by practising slightly beyond your level, building real projects and getting feedback. Then you turn the results into proof clients can see, since a portfolio of real work beats a list of courses.",
+   "principles": [
+    "Learning is doing. Watching tutorials feels productive but skills grow when you build, get stuck, fix and repeat. Aim for a rule such as 30 percent input and 70 percent practice.",
+    "Deliberate practice means working on a specific weakness at the edge of your ability, with quick feedback. Researcher Anders Ericsson described this as the difference between mere repetition and improvement.",
+    "Project-based learning gives context. Pick a small real project (an automation for a make-believe or real business) and learn only what you need to finish it.",
+    "Feedback speeds everything up. Ask someone more experienced or a potential user to look at the work and tell you what is unclear.",
+    "Proof beats claims. Clients trust a short case study with a before, an after and what you did more than a certificate or a statement that you are good.",
+    "Show your work. Sharing progress, notes and results (honestly labelled, with permission) makes you visible and holds you accountable."
+   ],
+   "steps": [
+    "Define the skill in one outcome ('build an automated lead follow-up in n8n') and a deadline of two to four weeks.",
+    "Break it into sub-skills and rank them. Choose the one that most limits your project.",
+    "Spend a short time learning (one tutorial or doc page), then immediately apply it to your project.",
+    "Practise in cycles: attempt, check against a good example or the docs, find the gap, repeat the weak part.",
+    "Finish the project to a usable standard. Label demos as demos and never present practice work as a client's work.",
+    "Write a one-page case study: the problem, what you built, how it works, the result or what you learned, screenshots or a short video.",
+    "Ask two people for feedback and improve it once. Then publish it where clients look (your profile, site, LinkedIn).",
+    "Start the next project that is slightly harder, and keep a list of finished projects."
+   ],
+   "say": [
+    "[Learning goal] 'By Friday I will have built one working X, and I will show it to two people.'",
+    "[Asking for feedback] 'Could you look at this for five minutes and tell me what is confusing?'",
+    "[Being honest about experience] 'This is a demo project I built to show how I would approach it.'",
+    "[Case study title] 'How I would cut response time for a recruiting agency from hours to minutes (demo).'",
+    "[Sharing progress] 'This week I built X, learned Y, and next I will try Z.'",
+    "[To a client] 'Here is a short example of similar work so you can judge the quality.'"
+   ],
+   "example": "Bisi wants to offer automations. Instead of another course, she picks one project: an auto-reply for a make-believe moving company. She learns the tool step by step as she builds, gets stuck twice and fixes it from the documentation, then records a 2 minute screen video and writes a one-page case study labelled 'demo'. She asks two friends and a community member for feedback, improves the explanation, and publishes it. A client later says the demo is what convinced them to book a call.",
+   "mistakes": [
+    "Tutorial hell: after each lesson build something on your own.",
+    "Learning ten skills at once: pick one that serves a clear offer.",
+    "Never finishing: set a deadline and ship an imperfect version.",
+    "Presenting demos or practice as client results: label them honestly.",
+    "No feedback: ask someone every week.",
+    "Hiding the work: publish, even small, and keep improving."
+   ],
+   "practice": "Choose one small project you can finish in two weeks, write its one-sentence outcome and a three-step plan, and do the first step for 10 minutes now. Pick the person you will ask for feedback.",
+   "sources": [
+    "Anders Ericsson and Robert Pool, Peak (deliberate practice).",
+    "Cal Newport, So Good They Can't Ignore You (craft and career capital).",
+    "Austin Kleon, Show Your Work (sharing process and results).",
+    "Josh Kaufman, The First 20 Hours (rapid skill acquisition).",
+    "Written from established frameworks in my own words; no pages fetched in this session."
+   ]
+  }
+ ]
+}
