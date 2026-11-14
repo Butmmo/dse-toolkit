@@ -23,7 +23,7 @@ from . import config
 from .sandbox import Refused, run
 
 INSTALL_HINT = {
-    "npm": "winget install OpenJS.NodeJS.LTS", "node": "winget install OpenJS.NodeJS.LTS", "python": "winget install Python.Python.3.12", "mvn": "winget install Apache.Maven",
+    "npm": "winget install OpenJS.NodeJS.LTS", "node": "winget install OpenJS.NodeJS.LTS", "python": "winget install Python.Python.3.12", "mvn": "Maven is not in winget: download the binary zip from maven.apache.org/download.cgi, unzip it, add its bin folder to PATH and set JAVA_HOME to your JDK",
     "gradle": "winget install Gradle.Gradle", "java": "winget install EclipseAdoptium.Temurin.21.JDK", "dotnet": "winget install Microsoft.DotNet.SDK.8", "cmake": "winget install Kitware.CMake",
     "make": "winget install GnuWin32.Make (or use CMake)", "gcc": "winget install MSYS2.MSYS2 then install mingw-w64-ucrt-x86_64-gcc", "flutter": "winget install Google.Flutter (or flutter.dev/docs/get-started/install)",
     "dart": "winget install Google.DartSDK", "cargo": "winget install Rustlang.Rustup", "go": "winget install GoLang.Go", "git": "winget install Git.Git",
