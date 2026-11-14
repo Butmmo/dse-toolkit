@@ -40,9 +40,7 @@ def from_progress(q):
     if ws & {"next", "doing", "progress", "where", "today", "blocker", "blockers", "stuck", "summary", "status"}:
         keep = [l for l in lines if l.startswith(("###", "**", "-"))][:30]
         return "Where you are (from your HQ progress):\n" + "\n".join(keep)
-    hits = sorted(((len(ws & w(l)), l) for l in lines), key=lambda x: -x[0])
-    hits = [l for s, l in hits if s >= 2][:6]
-    return ("From your HQ progress:\n" + "\n".join(hits)) if hits else None
+    return None
 
 
 import base64, os, urllib.request
