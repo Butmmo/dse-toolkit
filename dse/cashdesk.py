@@ -274,6 +274,13 @@ def build(slug: str, month: str | None = None, today: dt.date | None = None, tar
         out.append(f"- Earned on sales you logged with callscore: {money(c['earned'])} from {c['sold']} sale(s) worth {money(c['cash'])}. This is an estimate until the money arrives and you log it.")
     if p["state"] == "now":
         out.append(f"- Day {p['elapsed']} of {p['total_days']}; at this pace the month ends at {money(round(p['projected']))}.")
+        try:
+            from . import success as _suc
+            nxt = _suc.attention(slug, today)["next"] if slug != "all" else None
+            if nxt and nxt["students"]:
+                out.append(f"- Expected from DFY students next month (a projection from their own last 3 months, not a promise): likely {money(nxt['likely'])}, low {money(nxt['low'])}, from {nxt['students']} student(s).")
+        except Exception:
+            pass
     out += ["", "## Steps this month (from your own logs)",
             f"- Messages sent: {f['sent']}", f"- Replies: {f['replied']}{of(rate(f['replied'], f['sent']), 'of sent')}",
             f"- Calls booked from a message: {f['booked']}{of(rate(f['booked'], f['replied']), 'of replies')}",

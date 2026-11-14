@@ -11,7 +11,7 @@ It reads (all in engines/<slug>/, nothing is guessed, nothing is sent):
 
 The moves are ranked by one fixed rule, closest to money first, and the report says which file each number came from:
   1 replies waiting for your answer  2 calls booked to prepare for  3 follow-ups due  4 messages on your lists not yet sent
-  2.5 overdue client invoices  2.6 overdue student cuts  3.5 late client deliverables  3.6 students who have not reported  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
+  2.5 overdue client invoices  2.6 overdue student cuts  3.5 late client deliverables  3.6 students who have not reported  3.7 students who need a check-in  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import datetime as dt
 
 from . import cashdesk as cd
 from . import desklog as dl
-from . import clients, cuts, followups, goals, vetting
+from . import clients, cuts, followups, goals, success, vetting
 from .engines import all_slugs, engine_dir, load
 
 OPEN_OFFERS = ("researching", "applied", "interview")
@@ -60,7 +60,11 @@ def gather(slug: str, today: dt.date) -> dict:
         cut = cuts.attention(slug, today)
     except Exception:
         cut = {"overdue": [], "quiet": []}
-    return {"cuts": cut, "clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
+    try:
+        suc = success.attention(slug, today)
+    except Exception:
+        suc = {"needs": [], "next": None}
+    return {"success": suc, "cuts": cut, "clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
             "month": month, "target": target, "key": key, "pace": cd.pace(month["received"], today, a, b), "offers": offers,
             "goal_note": (engine_dir(slug) / "next-goal.md").exists()}
 
@@ -93,6 +97,10 @@ def moves(g: dict) -> list[dict]:
         n = len(g["unsent"])
         out.append({"rank": 4, "do": f"{n} message{'s' if n != 1 else ''} on your lists {'are' if n != 1 else 'is'} still not marked Sent.",
                     "how": f"First run python dse.py preflight {s} to catch blockers. Then open the Send Desk, send them yourself and tap Sent (or Skip).", "source": f"send-lists/ ({', '.join(sorted(set(g['unsent']))[:3])})"})
+    sn = [r for r in g["success"]["needs"] if r["sev"] == "red" or r["n"] >= 2]
+    if sn:
+        out.append({"rank": 3.7, "do": f"{len(sn)} student{'s need' if len(sn) != 1 else ' needs'} a check-in ({', '.join(r['student'] for r in sn[:5])}{f' and {len(sn) - 5} more' if len(sn) > 5 else ''}). Most urgent: {sn[0]['student']}: {sn[0]['why']}.",
+                    "how": f"python dse.py success {s} --view drafts gives a kind message for each; you send them yourself.", "source": "cuts/*/student.json (DFY filings and invoices)"})
     cq = g["cuts"]["quiet"]
     if cq:
         out.append({"rank": 3.6, "do": f"{len(cq)} student{'s have' if len(cq) != 1 else ' has'} not reported earnings ({'; '.join(q['student'] + ' ' + ', '.join(q['months'][:2]) for q in cq[:3])}).",
@@ -138,7 +146,8 @@ def build(slug: str, top: int = 5, today: dt.date | None = None) -> str:
     for s, g, _ms in allm:
         m, p = g["month"], g["pace"]
         line = f"- {s}: " + (f"{cd.money(m['received'])} of {cd.money(g['target'])} received" + (f", on pace for {cd.money(round(p['projected']))}" if p["state"] == "now" and m["received"] > 0 else "")
-                              + f"; {g['sent_week']} message(s) sent in the last {DAYS} days")
+                              + f"; {g['sent_week']} message(s) sent in the last {DAYS} days"
+                              + (f"; expected DFY income next month: likely {cd.money(g['success']['next']['likely'])} (low {cd.money(g['success']['next']['low'])})" if g["success"]["next"] and g["success"]["next"]["students"] else ""))
         out.append(line)
     flat = [(s, mv) for s, _g, ms in allm for mv in ms]
     flat.sort(key=lambda x: x[1]["rank"])
