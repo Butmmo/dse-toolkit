@@ -1,0 +1,7 @@
+{
+  "label": "Authority Engine (LinkedIn ghostwriting)",
+  "variant": "authority-portfolio-v1",
+  "about": "For experts whose profile and public posts YOU read by hand and paste into a file: it does not touch LinkedIn. The audit (dse/authority.py) scores the posting gap, how posts open, whether they ask for anything, and how much they talk about 'you' versus 'we'. This file only holds the opener.",
+  "checks": [],
+  "opener": "Hi {contact_first}, I read your recent posts and noticed {gap_line}. I write LinkedIn posts for experts in their own voice. I wrote two sample posts for a made-up expert in your field (clearly labelled as samples); want me to send them? If it's not for you, say so and I won't follow up."
+}

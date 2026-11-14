@@ -33,7 +33,8 @@
       ],
       "weight": 4,
       "gap_line": "you're hiring for desk work ({quote}), which is often the repeat tasks a workflow can take over",
-      "scope": "text"
+      "scope": "text",
+      "signal": true
     },
     {
       "id": "online_booking",
@@ -58,7 +59,8 @@
       ],
       "weight": 3,
       "gap_line": "new clients download a form, fill it in and send it back ({quote}), so someone has to retype it by hand",
-      "scope": "text"
+      "scope": "text",
+      "signal": true
     },
     {
       "id": "web_form",
@@ -128,7 +130,8 @@
       ],
       "weight": 0,
       "gap_line": "they already show automation tools",
-      "scope": "text"
+      "scope": "text",
+      "signal": true
     }
   ],
   "opener": "Hi {business} team, I was looking at how businesses in {city} handle day-to-day admin and noticed {gap_line}. That's usually a few hours a week of copy-and-paste that a simple workflow can take over. I mapped how I'd set it up (one diagram, no cost to you); want me to send it?"

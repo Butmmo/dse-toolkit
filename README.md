@@ -16,7 +16,9 @@ Nothing here sends, posts or pays. You do every send.
 | **Digital Ministry Systems** | Checks your own parish or a warm-network church's website: online giving, event sign-up, newsletter, services online, Mass times. No cold lists, by design. |
 | **Revenue Recovery Engine** | Checks an online shop you found in the Meta Ad Library: email tool installed, sign-up offer, SMS sign-up, product reviews. |
 | **The Broadcast Engine** | Finds active business podcasts on Apple Podcasts. Shows missed episodes, irregular schedule, no video version, thin show notes, and the host's public email. |
-| The Ascent, Authority Engine, Go-to-Market Engineering | Coming next: these paths prospect through LinkedIn and calls, which the toolkit won't scrape. |
+| **The Ascent** | You scout companies that sell high-ticket offers by hand (search, YouTube, people who already close for them) and paste their websites. The check looks for a price of $3,000+, an application page, closers being hired and income-promise red flags, then drafts your commission-only pitch. **Score a sales call** (HQ Tools) rates each call in eight areas, names your two weakest with a 10-minute drill, and tracks show rate, close rate, cash per call and your score trend. |
+| **Authority Engine** | You look at experts by hand and paste their headline, audience, last post dates and a few posts into a CSV (`name, profile_url, headline, connections, post_dates, post_1, post_2`). The audit scores who posts little and finds what to lead with: the silence, announcement-style openers, walls of text, no question or ask, talking about "we" instead of "you". Nothing is read from LinkedIn. |
+| **Go-to-Market Engineering** | You export a list from your **own** Clay, Apollo or HubSpot account and save the CSV in `engines/<engine>/imports/`. Columns are matched by meaning. Each account is scored (sales or growth lead, funding in the last 12 months, 10-500 people), its website is read for GTM signals (hiring SDR, AE or RevOps, a CRM, no instant demo path) and the best are drafted. |
 
 ## Build and grow tools (for every path)
 | Tool (in HQ Tools) | What it does |

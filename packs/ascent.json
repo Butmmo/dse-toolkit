@@ -1,0 +1,101 @@
+{
+  "label": "The Ascent (high-ticket closer)",
+  "variant": "ascent-mock-call-v1",
+  "about": "For scouting companies that sell high-ticket offers and might hire a commission closer. You scout them by hand (search, YouTube, people who already closer for them) and paste their websites. Each signal found is a reason to approach them; there is no 'gap' to fix. It mirrors the Ascent target-company score: a visible price of $3,000+, an application or booking page, closers or setters being hired, content going out. Warnings (income promises, regulated lanes) mean: read it carefully before you approach. Public pages only.",
+  "max_pages": 5,
+  "pages": [
+    "apply",
+    "application",
+    "book",
+    "work-with-us",
+    "programs",
+    "program",
+    "pricing",
+    "careers",
+    "jobs",
+    "join",
+    "closers"
+  ],
+  "checks": [
+    {
+      "id": "high_ticket",
+      "missing": "High-ticket offer ({quote})",
+      "label": "Shows a price of $3,000 or more",
+      "type": "absent",
+      "scope": "text",
+      "weight": 3,
+      "look_for": [
+        "(?P<q1>\\$\\s?(?:[3-9],\\d{3}|[1-9]\\d,\\d{3})(?:\\.\\d\\d)?)",
+        "(?P<q2>(?:investment|price|tuition|program fee)[^.$]{0,30}\\$\\s?(?:[3-9]\\d{3}|[1-9]\\d{4}))"
+      ],
+      "gap_line": "you sell a high-ticket offer ({quote})",
+      "signal": true
+    },
+    {
+      "id": "apply_page",
+      "missing": "Takes sales calls ({quote})",
+      "label": "Application or booking page",
+      "type": "absent",
+      "scope": "text",
+      "weight": 2,
+      "look_for": [
+        "(?P<q1>apply (?:now|today|here)|book a (?:strategy |discovery |sales |free )?call|schedule a (?:strategy |discovery |free )?call|book your (?:call|session)|application form)"
+      ],
+      "gap_line": "you take sales calls ({quote})",
+      "signal": true
+    },
+    {
+      "id": "hiring_closers",
+      "missing": "Looks for closers or setters ({quote})",
+      "label": "Hiring closers, setters or sales reps",
+      "type": "absent",
+      "scope": "text",
+      "weight": 3,
+      "look_for": [
+        "(?P<q1>(?:high[- ]ticket |remote )?(?:sales )?closers?|appointment setters?|sales (?:reps?|representatives?)|commission[- ]only)[^.]{0,80}(?:wanted|apply|hiring|join|open|looking|positions?|roles?)",
+        "(?:we'?re hiring|now hiring|join our (?:sales )?team|careers|open roles)[^.]{0,200}(?P<q2>closers?|appointment setters?|sales reps?)"
+      ],
+      "gap_line": "you are looking for sales help ({quote})",
+      "signal": true
+    },
+    {
+      "id": "content",
+      "missing": "Publishes content",
+      "label": "Content going out (YouTube, Instagram, podcast)",
+      "type": "absent",
+      "weight": 1,
+      "look_for": [
+        "youtube\\.com/(?:@|channel/|c/|user/)|instagram\\.com/[a-z0-9._]{2,}|podcasts?\\.apple\\.com|open\\.spotify\\.com/show|tiktok\\.com/@"
+      ],
+      "gap_line": "you publish content, so there is real lead flow",
+      "signal": true
+    },
+    {
+      "id": "income_claims",
+      "missing": "Income promises ({quote})",
+      "label": "Makes income promises",
+      "type": "absent",
+      "scope": "text",
+      "weight": 0,
+      "look_for": [
+        "(?P<q1>guaranteed? (?:income|results|returns|profit)|make \\$\\s?\\d[\\d,]*k?[^.]{0,25}(?:a|per) (?:month|week|day)|passive income|financial freedom|get rich|6[- ]?figures? (?:in|within))"
+      ],
+      "gap_line": "income promises on the site",
+      "signal": true
+    },
+    {
+      "id": "regulated_lane",
+      "missing": "Regulated lane ({quote})",
+      "label": "A regulated lane (credit, lending, trading)",
+      "type": "absent",
+      "scope": "text",
+      "weight": 0,
+      "look_for": [
+        "(?P<q1>credit repair|business funding|business credit|loan (?:broker|origination)|lending|forex|binary options|crypto signals|investment advice|trading signals)"
+      ],
+      "gap_line": "a regulated lane: confirm licensing in writing",
+      "signal": true
+    }
+  ],
+  "opener": "Hi {business} team, I noticed {gap_line}. I'm {sender}: I close high-ticket offers on commission only. I recorded a short mock call selling an offer like yours so you can judge my close before we talk. Want me to send it? If it's not a fit, just say so and I won't follow up."
+}

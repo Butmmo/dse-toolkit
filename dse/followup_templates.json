@@ -1,12 +1,31 @@
 {
   "note": "Follow-up rules and wording for every engine. To change them for ONE engine, copy this file to engines/<slug>/followup-templates.json and edit it. Keep one 'variant' name per wording so the results can tell which wording works. Never put a link in a follow-up: the write-up goes only after a reply. Every message gives an easy way to say no.",
   "schedule": {
-    "Instagram DM": [3, 7],
-    "Facebook message": [4, 9],
-    "Website form": [5, 12],
-    "Email": [3, 7]
+    "Instagram DM": [
+      3,
+      7
+    ],
+    "Facebook message": [
+      4,
+      9
+    ],
+    "Website form": [
+      5,
+      12
+    ],
+    "Email": [
+      3,
+      7
+    ],
+    "LinkedIn message": [
+      4,
+      9
+    ]
   },
-  "default_schedule": [4, 9],
+  "default_schedule": [
+    4,
+    9
+  ],
   "max_touches": 3,
   "touches": {
     "2": {

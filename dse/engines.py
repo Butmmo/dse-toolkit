@@ -19,12 +19,12 @@ import sys
 from pathlib import Path
 
 from . import check as chk
-from . import places, podcasts
+from . import authority, importer, places, podcasts
 from .common import ROOT, log, read_csv, write_csv
 
 ENGINES = ROOT / "engines"
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
-CHANNELS = ("Instagram DM", "Facebook message", "Email", "Website form")
+CHANNELS = ("Instagram DM", "Facebook message", "Email", "Website form", "LinkedIn message")
 
 
 def engine_dir(slug: str) -> Path:
@@ -94,6 +94,7 @@ def pick_channel(row: dict, order: list[str], left: dict) -> tuple[str, str]:
         "Facebook message": row.get("facebook", ""),
         "Email": row.get("email", ""),
         "Website form": row.get("website", ""),
+        "LinkedIn message": row.get("linkedin", ""),
     }
     for ch in order:
         if have.get(ch) and left.get(ch, 0) > 0:
@@ -105,7 +106,9 @@ def fill(template: str, row: dict, cfg: dict) -> str:
     business = re.sub(r"\s*\([^)]*\)\s*$", "", row.get("business") or row.get("name") or "").strip()
     vals = {"business": business or "there", "city": (row.get("city") or "your area").strip(),
             "gap_line": row.get("gap_line") or row.get("gap_used") or "", "sender": cfg.get("sender_name", ""),
-            "brand": cfg.get("brand_name", ""), "host": (row.get("host") or "").split(" ")[0] or "there"}
+            "brand": cfg.get("brand_name", ""), "host": (row.get("host") or "").split(" ")[0] or "there",
+            "contact_first": (row.get("contact_first") or (row.get("contact_name") or "").split(" ")[0] or "there"),
+            "title": row.get("contact_title", "")}
     try:
         return template.format(**vals).strip()
     except (KeyError, IndexError, ValueError) as e:
@@ -115,7 +118,7 @@ def fill(template: str, row: dict, cfg: dict) -> str:
 def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
     """New, checked leads for the engine: from the lead finder, Apple Podcasts, or the engine's own seed list."""
     slug, path = cfg["slug"], cfg.get("path", "smb")
-    mode = cfg.get("source") if path == "custom" else None        # custom engines pick their own lead source
+    mode = cfg.get("source") if path == "custom" else {"gtm": "import", "authority": "pasted"}.get(path)   # custom engines pick their own lead source
     raw = engine_dir(slug) / "data" / "raw"
     raw.mkdir(parents=True, exist_ok=True)
     stamp = dt.date.today().isoformat()
@@ -132,6 +135,14 @@ def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
             out.append(r)
         return out
 
+    if mode == "import":
+        return import_candidates(cfg, need, render, fresh)
+    if mode == "pasted":
+        rows = fresh(authority.audit(slug, int(cfg.get("min_score", 4))))
+        if not rows:
+            log(f"  No expert with a gap to lead with yet. Put your CSV in engines/{slug}/pasted/ (run: python dse.py import {slug}).")
+        return rows[:need]
+
     if path == "broadcast" or mode == "podcasts":
         topics = cfg.get("topics") or ["business"]
         src = podcasts.find("; ".join(topics), cfg.get("genre", "business"), max(need * 3, 30), out=str(raw / f"{stamp}-podcasts.csv"))
@@ -141,7 +152,7 @@ def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
         return rows[:need]
 
     seeds = cfg.get("seed_urls") or []
-    if seeds or path in ("ministry", "revenue") or mode == "seeds":
+    if seeds or path in ("ministry", "revenue", "ascent") or mode == "seeds":
         rows = [{"business": u.get("name") or domain(u.get("url", "")), "website": u.get("url", ""), "city": u.get("city", "")}
                 if isinstance(u, dict) else {"business": domain(u), "website": u, "city": ""} for u in seeds]
         rows = fresh(rows)[: need * 2]
@@ -172,6 +183,38 @@ def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
     return pool[:need]
 
 
+def import_candidates(cfg: dict, need: int, render: bool, fresh) -> list[dict]:
+    """Go-to-Market: accounts from your own exports (engines/<slug>/imports/*.csv), scored, website-checked, ranked."""
+    slug = cfg["slug"]
+    rows, _rep = importer.load_all(slug)
+    if not rows:
+        log(f"  No file in engines/{slug}/imports/. Export a list from your own Clay, Apollo or HubSpot account and save the CSV there (check it with: python dse.py import {slug}).")
+        return []
+    best: dict[str, dict] = {}
+    for r in rows:                                          # one account per website: keep the contact with the best score
+        if not r["website"]:
+            continue
+        pts, why = importer.icp(r)
+        r["icp"], r["icp_why"] = pts, "; ".join(why)
+        if r["website"] not in best or pts > best[r["website"]]["icp"]:
+            best[r["website"]] = r
+    pool = fresh(sorted(best.values(), key=lambda r: -r["icp"]))[: need * 3]
+    if not pool:
+        log("  Every account in your files is already on a list. Export more.")
+        return []
+    raw = engine_dir(slug) / "data" / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    stamp = dt.date.today().isoformat()
+    src = raw / f"{stamp}-import.csv"
+    write_csv(src, pool)
+    checked = read_csv(chk.check_file(cfg.get("pack", "gtm"), str(src), render=render, out=str(raw / f"{stamp}-import-checked.csv")))
+    checked = [r for r in checked if r.get("gap_line")]
+    for r in checked:
+        r["check_notes"] = "; ".join(x for x in (r.get("icp_why", ""), r.get("check_notes", "")) if x)
+    checked.sort(key=lambda r: -(int(r.get("icp") or 0) + min(int(r.get("gap_count") or 0), 3)))
+    return checked[:need]
+
+
 def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | None = None, render: bool = True) -> list[str]:
     cfg = load(slug)
     if cfg.get("archived"):
@@ -179,8 +222,6 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
     if cfg.get("path") == "custom" and cfg.get("source", "none") == "none":
         print(f"'{cfg.get('name', slug)}' is a chat-and-notes engine: there are no lead lists to build. Open DBI-AI and pick it from the menu.")
         return []
-    if cfg.get("path") in ("ascent", "authority", "gtm"):
-        sys.exit(f"The {cfg['path']} path prospects through LinkedIn and calls; its tools come in a later phase.")
     per_day = per_day or int(cfg.get("per_day", 20))
     caps = {ch: int((cfg.get("caps") or {}).get(ch, 999)) for ch in CHANNELS}
     order = [c for c in (cfg.get("channels") or list(CHANNELS)) if c in CHANNELS]
@@ -216,6 +257,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
                          "gaps_found": r.get("gaps_found", ""), "email": r.get("email", ""), "phone": r.get("phone", ""),
                          "instagram": r.get("instagram", ""), "facebook": r.get("facebook", ""),
                          "category": r.get("category", ""), "host": r.get("host", ""),
+                         "linkedin": r.get("linkedin", ""), "contact_name": r.get("contact_name", ""), "contact_title": r.get("contact_title", ""),
                          "notes": "; ".join(x for x in (r.get("check_notes", ""), r.get("source", "")) if x)})
         if not rows:
             log(f"  {day}: no leads left with a usable channel")

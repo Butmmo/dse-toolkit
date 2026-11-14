@@ -140,6 +140,14 @@
             {
               "value": "revenue",
               "label": "Revenue Recovery (online shops)"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market (B2B accounts)"
+            },
+            {
+              "value": "ascent",
+              "label": "The Ascent (high-ticket companies)"
             }
           ]
         },
@@ -433,6 +441,14 @@
             {
               "value": "revenue",
               "label": "Revenue Recovery (online shops)"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market (B2B accounts)"
+            },
+            {
+              "value": "ascent",
+              "label": "The Ascent (high-ticket companies)"
             }
           ]
         },
@@ -504,6 +520,14 @@
             {
               "value": "revenue",
               "label": "Revenue Recovery (online shops)"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market (B2B accounts)"
+            },
+            {
+              "value": "ascent",
+              "label": "The Ascent (high-ticket companies)"
             }
           ]
         },
@@ -1621,6 +1645,360 @@
           "upload": true
         }
       ]
+    },
+    "dse.import_check": {
+      "label": "My engine: check my file",
+      "group": "My engines",
+      "help": "Go-to-Market and Authority engines build their lists from a file YOU make. Go-to-Market: a CSV exported from your own Clay, Apollo or HubSpot account, saved in engines/<engine>/imports/ on your PC. Authority: a CSV of experts you looked at and pasted by hand (name, profile_url, headline, connections, post_dates, post_1, post_2), saved in engines/<engine>/pasted/. This shows which columns were understood, how many rows, and the best prospects, so a wrong column shows up before you build a list. Nothing is scraped from LinkedIn or anywhere else.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "import"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "ascent.callscore": {
+      "label": "The Ascent: score a sales call",
+      "group": "My engines",
+      "help": "After every sales call, real or a mock you recorded, rate it honestly in eight areas (0 missed, 1 partly, 2 done well). You get your score, the two weakest areas with a 10-minute drill each, and your numbers over time: show rate, close rate, cash per call, what you earned in commission, and your score trend. Be harsh: a scorecard that flatters you teaches nothing. Based on the up-front contract, SPIN-style questions and the pause-ask-answer objection routine (HQ recipe: Prepare and run a high-ticket sales call).",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "callscore"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--offer",
+          "field": "offer"
+        },
+        {
+          "opt": "--outcome",
+          "field": "outcome"
+        },
+        {
+          "opt": "--cash",
+          "field": "cash"
+        },
+        {
+          "opt": "--commission",
+          "field": "commission"
+        },
+        {
+          "opt": "--talk",
+          "field": "talk"
+        },
+        {
+          "opt": "--a1",
+          "field": "a1"
+        },
+        {
+          "opt": "--a2",
+          "field": "a2"
+        },
+        {
+          "opt": "--a3",
+          "field": "a3"
+        },
+        {
+          "opt": "--a4",
+          "field": "a4"
+        },
+        {
+          "opt": "--a5",
+          "field": "a5"
+        },
+        {
+          "opt": "--a6",
+          "field": "a6"
+        },
+        {
+          "opt": "--a7",
+          "field": "a7"
+        },
+        {
+          "opt": "--a8",
+          "field": "a8"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "offer",
+          "label": "Which offer or company",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:-]{1,79}$"
+        },
+        {
+          "name": "outcome",
+          "label": "How did it end",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "sold",
+              "label": "Sold"
+            },
+            {
+              "value": "follow_up",
+              "label": "Follow-up booked"
+            },
+            {
+              "value": "no_sale",
+              "label": "No sale"
+            },
+            {
+              "value": "no_show",
+              "label": "No-show"
+            }
+          ]
+        },
+        {
+          "name": "cash",
+          "label": "Cash collected ($, only if sold)",
+          "type": "int",
+          "min": 0,
+          "max": 1000000,
+          "default": 0
+        },
+        {
+          "name": "commission",
+          "label": "Your commission (%)",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 10
+        },
+        {
+          "name": "talk",
+          "label": "How much of the call did YOU talk (%)",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 40
+        },
+        {
+          "name": "a1",
+          "label": "1. Up-front contract (time, agenda, permission, outcome)",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        },
+        {
+          "name": "a2",
+          "label": "2. Prepared (3 facts known)",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        },
+        {
+          "name": "a3",
+          "label": "3. Problem questions (they talked most)",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        },
+        {
+          "name": "a4",
+          "label": "4. Cost of the problem (money or time)",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        },
+        {
+          "name": "a5",
+          "label": "5. Qualified (budget, decider, timing)",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        },
+        {
+          "name": "a6",
+          "label": "6. Offer in their words",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        },
+        {
+          "name": "a7",
+          "label": "7. Objection handled (pause, ask, answer)",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        },
+        {
+          "name": "a8",
+          "label": "8. Asked for the decision and followed up",
+          "type": "choice",
+          "required": false,
+          "default": "1",
+          "choices": [
+            {
+              "value": "0",
+              "label": "Missed"
+            },
+            {
+              "value": "1",
+              "label": "Partly"
+            },
+            {
+              "value": "2",
+              "label": "Done well"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.calls": {
+      "label": "The Ascent: my call history",
+      "group": "My engines",
+      "help": "Your logged calls and totals: how many, how many sold, cash, and your average score.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "calls"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [

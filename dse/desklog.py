@@ -46,6 +46,9 @@ def thread_key(row: dict) -> str:
     h = ig_handle(row.get("instagram", "")) or ig_handle(row.get("where", ""))
     if h:
         return "i:" + h
+    li = re.search(r"linkedin\.com/in/([\w%-]+)", (row.get("linkedin", "") or row.get("where", "")), re.I)
+    if li:
+        return "l:" + li.group(1).lower()
     return "n:" + norm(re.sub(r"\s*\([^)]*\)\s*$", "", row.get("business") or row.get("name") or ""))
 
 

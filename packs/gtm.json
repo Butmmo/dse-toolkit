@@ -1,0 +1,67 @@
+{
+  "label": "Go-to-Market Engineering",
+  "variant": "gtm-signal-v1",
+  "about": "For B2B companies you got from an export of your own Clay, Apollo or HubSpot account. It reads their website for GTM signals: hiring for SDR, AE or RevOps roles, a CRM you can build on, and the demo path (no instant way to book a demo, no chat or qualification). Hiring and a CRM are signals in your favour; the missing demo path is the gap you lead with. Public pages only.",
+  "max_pages": 5,
+  "pages": [
+    "careers",
+    "jobs",
+    "about",
+    "demo",
+    "contact",
+    "pricing",
+    "book",
+    "company"
+  ],
+  "checks": [
+    {
+      "id": "hiring_sales",
+      "missing": "Hiring for sales or revenue ops ({quote})",
+      "label": "Hiring SDR, AE or RevOps",
+      "type": "absent",
+      "scope": "text",
+      "weight": 4,
+      "look_for": [
+        "(?:we'?re hiring|now hiring|open (?:roles|positions)|join our team|careers)[^.]{0,250}?(?P<q1>(?:sales|business) development rep(?:resentative)?|\\bSDRs?\\b|\\bBDRs?\\b|account executive|\\bAEs?\\b|revenue operations|\\brevops\\b|sales operations|sales ops|head of (?:sales|growth|revenue)|growth marketer)",
+        "(?P<q2>(?:sales|business) development rep(?:resentative)?|\\bSDRs?\\b|\\bBDRs?\\b|account executive|revenue operations|\\brevops\\b|sales operations)[^.]{0,60}\\b(?:apply|full[- ]time|remote|position|role)\\b"
+      ],
+      "gap_line": "you're hiring for {quote}, which usually means the pipeline process is still manual",
+      "signal": true
+    },
+    {
+      "id": "crm_detected",
+      "missing": "Runs a CRM ({quote})",
+      "label": "A CRM to build on",
+      "type": "absent",
+      "weight": 1,
+      "look_for": [
+        "(?P<q1>js\\.hs-scripts\\.com|hs-analytics|hubspot\\.com|salesforce|pardot|pipedrive|zoho\\.com/crm|attio|close\\.com)"
+      ],
+      "gap_line": "you run a CRM",
+      "signal": true
+    },
+    {
+      "id": "demo_path",
+      "missing": "No instant way to book a demo",
+      "label": "Book a demo with a calendar",
+      "type": "present",
+      "weight": 3,
+      "look_for": [
+        "book a demo|request a demo|schedule a demo|get a demo|see a demo|calendly|chili ?piper|hubspot\\.com/meetings|savvycal|cal\\.com|default\\.com|navattic"
+      ],
+      "gap_line": "there's no instant way to book a demo, so interested visitors wait for a reply"
+    },
+    {
+      "id": "chat_qualify",
+      "missing": "No chat or instant qualification",
+      "label": "Chat or qualification on the site",
+      "type": "present",
+      "weight": 2,
+      "look_for": [
+        "drift\\.com|intercom|qualified\\.com|crisp\\.chat|hubspot.{0,20}conversations|livechat|tidio|zendesk|freshchat|chat with (?:us|sales)|talk to sales"
+      ],
+      "gap_line": "there's no live chat or instant qualification, so high-intent visitors leave without a conversation"
+    }
+  ],
+  "opener": "Hi {contact_first}, I looked at how {business} handles inbound and noticed {gap_line}. I build the enrichment, routing and follow-up layer on top of the CRM you already have. I mapped what it would look like for {business} on one page; want me to send it? If it's not relevant, say so and I won't follow up."
+}

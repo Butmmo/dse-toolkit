@@ -123,7 +123,10 @@ def check_site(website: str, pack: dict, render: bool = True) -> dict:
             # a named group starting with q (for example (?P<q1>...)) picks the exact words to quote; otherwise the whole match
             picked = next((v for k, v in (hit.groupdict() if hit else {}).items() if k.startswith("q") and v), None)
             quote = re.sub(r"\s+", " ", picked or (hit.group(0) if hit else "")).strip()[:80]
-            out[c["id"]] = f"no ({quote[:60]})" if hit else "yes"
+            if c.get("signal"):                  # a positive signal (hiring, a CRM, a price): "yes (what was found)" reads right
+                out[c["id"]] = f"yes ({quote[:60]})" if hit else "no"
+            else:
+                out[c["id"]] = f"no ({quote[:60]})" if hit else "yes"
             if hit:
                 found_gaps.append((c, {"quote": quote}))
     # weight 0 = a filter, not a selling point: warn instead of counting it as a gap

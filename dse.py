@@ -7,6 +7,8 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py followups tampa-dentists                plan tomorrow's follow-ups (touch 2 and 3) for everyone marked Sent
   python dse.py outcomes tampa-dentists                 what the engine is producing: sent, replies, calls, clients
   python dse.py log tampa-dentists 2026-11-16 3 sent    mark a row by hand (the Send Desk on your phone does this for you)
+  python dse.py import acme-gtm                         check the CSV exports (Go-to-Market) or pasted profiles (Authority) before building a list
+  python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
   python dse.py packs                                   website-check packs (one per path)
   python dse.py build dentist,plumber                   once per business type: download its US business data
@@ -28,7 +30,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import desklog, engines, followups, mystery, outcomes, places, podcasts
+from dse import authority, callscore, desklog, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -68,12 +70,35 @@ def main():
     fu = sub.add_parser("followups"); fu.add_argument("engine"); fu.add_argument("--start"); fu.add_argument("--days", type=int, default=1)
     fu.add_argument("--preview", action="store_true", help="show them, save nothing")
     oc = sub.add_parser("outcomes"); oc.add_argument("engine")
+    im = sub.add_parser("import"); im.add_argument("engine")
+    cs = sub.add_parser("callscore"); cs.add_argument("engine"); cs.add_argument("--offer", required=True)
+    cs.add_argument("--outcome", required=True, choices=list(callscore.OUTCOMES)); cs.add_argument("--cash", type=float, default=0)
+    cs.add_argument("--commission", type=float, default=0); cs.add_argument("--talk", type=int, default=0, help="percent of the call you talked")
+    cs.add_argument("--scores", default="", help="8 scores 0-2, comma separated, in the order of the areas (see python dse.py callscore --help)")
+    for i in range(1, 9):
+        cs.add_argument(f"--a{i}", type=int, choices=[0, 1, 2], default=None, help=argparse.SUPPRESS)
+    ch = sub.add_parser("calls"); ch.add_argument("engine")
     lg = sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
     lg.add_argument("row", help="the row number on that list"); lg.add_argument("status", choices=list(desklog.STATUSES))
     lg.add_argument("--reply", default=""); lg.add_argument("--value", default="")
     a = ap.parse_args()
 
-    if a.cmd == "followups":
+    if a.cmd == "import":
+        cfg = engines.load(a.engine)
+        (authority.preview if cfg.get("path") == "authority" or cfg.get("source") == "pasted" else importer.preview)(a.engine)
+    elif a.cmd == "callscore":
+        engines.load(a.engine)
+        try:
+            given = [getattr(a, f"a{i}") for i in range(1, 9)]
+            sc = ([0] * len(callscore.AREAS) if a.outcome == "no_show"
+                  else callscore.parse_scores(given) if all(x is not None for x in given) else callscore.parse_scores(a.scores))
+        except ValueError as e:
+            sys.exit(f"{e}\nAreas in order: " + "; ".join(f"{i + 1} {x[1]}" for i, x in enumerate(callscore.AREAS)))
+        print(callscore.report(a.engine, a.offer, a.outcome, a.cash, a.commission, a.talk, sc))
+    elif a.cmd == "calls":
+        engines.load(a.engine)
+        print(callscore.history(a.engine))
+    elif a.cmd == "followups":
         followups.report(a.engine, a.start, a.days, write=not a.preview)
     elif a.cmd == "outcomes":
         print(outcomes.report(a.engine))
