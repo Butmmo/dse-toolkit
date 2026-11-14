@@ -4128,6 +4128,127 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dse.reply": {
+      "label": "Reply Desk: what kind of reply, and what to say",
+      "group": "My engines",
+      "help": "Paste a reply you received (line breaks become spaces). It says what kind it is (interested, question, price objection, already has someone, not now, not interested, wrong person, points to someone else, asks to stop, out of office, or unclear), shows the words that decided it, drafts a short honest answer in your name with [brackets] for facts only you know, and works out the day to follow up. Tick Record it, with the list name and row number, to put it in your send log (follow-ups stop) and to put unsubscribes and 'no thanks' on your do-not-contact list. It never sends anything.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "reply"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--text",
+          "field": "text"
+        },
+        {
+          "opt": "--name",
+          "field": "name"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        },
+        {
+          "opt": "--row",
+          "field": "row"
+        },
+        {
+          "opt": "--email",
+          "field": "email"
+        },
+        {
+          "flag": "--log",
+          "field": "log"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "text",
+          "label": "Their reply (paste it)",
+          "type": "text",
+          "required": true,
+          "max": 1500
+        },
+        {
+          "name": "name",
+          "label": "Their first name (optional)",
+          "type": "text",
+          "required": false,
+          "max": 40,
+          "pattern": "^[A-Za-z][A-Za-z .'-]{0,39}$"
+        },
+        {
+          "name": "source",
+          "label": "List it answers (for example 2026-11-09), only to record it",
+          "type": "text",
+          "required": false,
+          "max": 30,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}(-followups)?$"
+        },
+        {
+          "name": "row",
+          "label": "Row number on that list, only to record it",
+          "type": "text",
+          "required": false,
+          "max": 6,
+          "pattern": "^\\d{1,6}$"
+        },
+        {
+          "name": "email",
+          "label": "Their email (only for the do-not-contact list)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        },
+        {
+          "name": "log",
+          "label": "Record it (send log and do-not-contact list)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.dnc": {
+      "label": "Reply Desk: my do-not-contact list",
+      "group": "My engines",
+      "help": "Everyone who asked you to stop or said no, with the date and why. Outreach Preflight checks every list against it. No tool removes an entry.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "dnc"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [

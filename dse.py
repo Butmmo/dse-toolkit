@@ -11,6 +11,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
   python dse.py cash <engine|all> [--month 2026-11] [--target 3000]  the Cash Desk: this month against your target; python dse.py cashin <engine> --amount 450 --kind commission logs money you received
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
+  python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -34,7 +35,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, desklog, enrich, enrich_providers, goals, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, desklog, enrich, enrich_providers, goals, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -95,6 +96,9 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    rp = sub.add_parser("reply"); rp.add_argument("engine"); rp.add_argument("--text", required=True); rp.add_argument("--name", default=""); rp.add_argument("--source", default="")
+    rp.add_argument("--row", default=""); rp.add_argument("--email", default=""); rp.add_argument("--log", action="store_true", help="record it and update the do-not-contact list")
+    dn = sub.add_parser("dnc"); dn.add_argument("engine")
     en = sub.add_parser("enrich"); en.add_argument("source", nargs="?", default="", help="a CSV with a website or domain column"); en.add_argument("--site", default="", help="look at one website instead")
     en.add_argument("--icp", default="", help="words you want to find on their site, comma separated"); en.add_argument("--engine", default="", help="also save an import-ready copy in this engine")
     en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser")
@@ -161,6 +165,13 @@ def main():
                 sys.exit("Give a CSV to enrich (python dse.py enrich leads.csv), or --site https://their-site.com, or --providers.")
         except ValueError as e:
             sys.exit(str(e))
+    elif a.cmd == "reply":
+        try:
+            print(replies.report(a.engine, a.text, a.name, a.source, a.row, a.log, a.email))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "dnc":
+        print(replies.dnc_report(a.engine))
     elif a.cmd == "cashlog":
         print(cashdesk.history(a.engine))
     elif a.cmd == "calls":
