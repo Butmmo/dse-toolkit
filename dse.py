@@ -39,7 +39,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, clients, cuts, desklog, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, clients, cuts, desklog, dfysync, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -100,12 +100,14 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
-    ct = sub.add_parser("cut"); ct.add_argument("action", choices=["add", "report", "paid", "list", "show", "status"]); ct.add_argument("target", help="an engine (add, list) or engine/student (the rest)")
+    ct = sub.add_parser("cut"); ct.add_argument("action", choices=["add", "report", "paid", "list", "show", "status", "sync", "accounts"]); ct.add_argument("target", help="an engine (add, list) or engine/student (the rest)")
     ct.add_argument("--name", default=""); ct.add_argument("--percent", type=float, default=0); ct.add_argument("--basis", default="gross"); ct.add_argument("--currency", default="USD")
     ct.add_argument("--method", default="grey"); ct.add_argument("--email", default=""); ct.add_argument("--due-days", type=int, default=7, dest="due_days"); ct.add_argument("--start", default="")
     ct.add_argument("--month", default=""); ct.add_argument("--earned", type=float, default=-1); ct.add_argument("--fees", type=float, default=0); ct.add_argument("--proof", default="")
     ct.add_argument("--replace", action="store_true"); ct.add_argument("--invoice", default=""); ct.add_argument("--amount", type=float, default=0); ct.add_argument("--date", default="")
     ct.add_argument("--writeoff", action="store_true"); ct.add_argument("--to", default="")
+    ct.add_argument("--program", default="custom", choices=["custom", "dfy"], help="dfy = the DFY terms: 20%% of net, capped at 18000, 12 qualified months")
+    ct.add_argument("--auto", default="", choices=["", "on", "off"]); ct.add_argument("--publish", action="store_true"); ct.add_argument("--example", action="store_true")
     cd = sub.add_parser("client"); cd.add_argument("action", choices=["won", "list", "show", "done", "invoice", "paid"]); cd.add_argument("target", help="an engine (won, list) or engine/client (the rest)")
     cd.add_argument("--proposal", default=""); cd.add_argument("--email", default=""); cd.add_argument("--address", default=""); cd.add_argument("--item", default="")
     cd.add_argument("--date", default=""); cd.add_argument("--kind", default="final"); cd.add_argument("--amount", type=float, default=0); cd.add_argument("--note", default="")
@@ -221,7 +223,7 @@ def main():
     elif a.cmd == "cut":
         try:
             if a.action == "add":
-                print(cuts.add(a.target, a.name, a.percent, a.basis, a.currency, a.method, a.email, a.due_days, a.start))
+                print(cuts.add(a.target, a.name, a.percent, a.basis, a.currency, a.method, a.email, a.due_days, a.start, program=a.program))
             elif a.action == "report":
                 if a.earned < 0:
                     sys.exit("Say what they earned: --earned 3200 (0 if nothing).")
@@ -232,6 +234,10 @@ def main():
                 print(cuts.listing(a.target))
             elif a.action == "show":
                 print(cuts.show(a.target))
+            elif a.action == "sync":
+                print(dfysync.set_auto(a.target, a.auto == "on") if a.auto else dfysync.run(a.target))
+            elif a.action == "accounts":
+                print(dfysync.accounts(a.target, a.publish, a.example))
             else:
                 print(cuts.set_status(a.target, a.to))
         except ValueError as e:

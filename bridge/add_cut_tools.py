@@ -46,5 +46,16 @@ T["dse.cut_show"] = tool("Cut Desk: one student in full", "Every month reported,
 T["dse.cut_status"] = tool("Cut Desk: pause or end an agreement", "Paused or ended students are no longer chased for reports. Unpaid invoices stay payable.", [{"lit": "cut"}, {"lit": "status"}, {"field": "student"}, {"opt": "--to", "field": "to"}],
                            [STUDENT, {"name": "to", "label": "Set to", "type": "choice", "required": True, "choices": [{"value": "active", "label": "Active"}, {"value": "paused", "label": "Paused"}, {"value": "ended", "label": "Ended"}], "default": "paused"}])
 
+T["dse.cut_sync"] = tool("Cut Desk: pull students' DFY months from Citadel", "Students already file their monthly net income in Citadel. This brings every filed month into the Cut Desk as a statement and an invoice (DFY: 20% of net income, capped at $18,000, ending at 12 qualified months), recorded as paid when Citadel already shows it paid. Choose Turn on to let the runner do it every ten minutes. Needs your runner to be an admin's and the DFY bridge SQL run in Supabase. Nothing is sent.",
+                         [{"lit": "cut"}, {"lit": "sync"}, {"field": "engine"}, {"opt": "--auto", "field": "auto"}],
+                         [ENG, {"name": "auto", "label": "Automatic sync", "type": "choice", "required": False, "choices": [{"value": "on", "label": "Turn on (every 10 minutes)"}, {"value": "off", "label": "Turn off"}]}])
+T["dse.cut_accounts"] = tool("Cut Desk: where students pay (check or publish)", "Checks engines/<engine>/payout-accounts.json (Grey, Payoneer or bank accounts) and shows what students currently see on the payment page. Tick Publish to replace what students see. Placeholders in [brackets] are refused so an unfinished list never goes live. This changes what students see, so only publish when the details are right.",
+                             [{"lit": "cut"}, {"lit": "accounts"}, {"field": "engine"}, {"flag": "--publish", "field": "publish"}, {"flag": "--example", "field": "example"}],
+                             [ENG, {"name": "publish", "label": "Publish these accounts to students", "type": "bool", "default": False},
+                              {"name": "example", "label": "Start from the example file (copies it if none exists)", "type": "bool", "default": False}])
+per = [x for x in c["periodic"] if x.get("script") != "bridge/dfy_sync.py"]
+per.append({"script": "bridge/dfy_sync.py", "every_s": 600, "what": "DFY: students' filed months from Citadel into the Cut Desk (only when you turned it on)"})
+c["periodic"] = per
+
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len([k for k in T if k.startswith("dse.cut")]), "cut tools,", len(T), "in all")

@@ -5273,6 +5273,104 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dse.cut_sync": {
+      "label": "Cut Desk: pull students' DFY months from Citadel",
+      "group": "My engines",
+      "help": "Students already file their monthly net income in Citadel. This brings every filed month into the Cut Desk as a statement and an invoice (DFY: 20% of net income, capped at $18,000, ending at 12 qualified months), recorded as paid when Citadel already shows it paid. Choose Turn on to let the runner do it every ten minutes. Needs your runner to be an admin's and the DFY bridge SQL run in Supabase. Nothing is sent.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "sync"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--auto",
+          "field": "auto"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "auto",
+          "label": "Automatic sync",
+          "type": "choice",
+          "required": false,
+          "choices": [
+            {
+              "value": "on",
+              "label": "Turn on (every 10 minutes)"
+            },
+            {
+              "value": "off",
+              "label": "Turn off"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.cut_accounts": {
+      "label": "Cut Desk: where students pay (check or publish)",
+      "group": "My engines",
+      "help": "Checks engines/<engine>/payout-accounts.json (Grey, Payoneer or bank accounts) and shows what students currently see on the payment page. Tick Publish to replace what students see. Placeholders in [brackets] are refused so an unfinished list never goes live. This changes what students see, so only publish when the details are right.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "accounts"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "flag": "--publish",
+          "field": "publish"
+        },
+        {
+          "flag": "--example",
+          "field": "example"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "publish",
+          "label": "Publish these accounts to students",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "example",
+          "label": "Start from the example file (copies it if none exists)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [
@@ -5290,6 +5388,11 @@
       "script": "bridge/goal_sync.py",
       "every_s": 21600,
       "what": "Monthly goals: a suggested goal for the month ahead, written for you to accept (it never changes a goal)"
+    },
+    {
+      "script": "bridge/dfy_sync.py",
+      "every_s": 600,
+      "what": "DFY: students' filed months from Citadel into the Cut Desk (only when you turned it on)"
     }
   ]
 }

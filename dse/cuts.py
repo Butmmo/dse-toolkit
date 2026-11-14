@@ -35,6 +35,11 @@ REPORT_BY_DAY = 7
 SYMBOLS = {"USD": "$", "GBP": "£", "EUR": "€"}
 METHODS = ("grey", "payoneer", "other")
 DROP_RATIO = 0.5
+# The D'Famocious Year (DFY) terms as Citadel's DFY Tracker defines them (src/lib/dfy.ts): 20% of NET income, qualified months are 2,000 or more,
+# the remittance is capped at 18,000 in total, and it ends at 12 qualified months or the cap, whichever comes first.
+DFY = {"percent": 20.0, "cap": 18000.0, "threshold": 2000.0, "months_target": 12}
+DFY_DISCLOSURE = ("DFY is a revenue-share obligation: 20% of your earnings while it's active, capped at $18,000 total, ending at 12 qualified months or the cap, "
+                  "whichever comes first. This is a real, binding financial commitment; plan for it the way you'd plan for any other significant obligation.")
 
 
 def cuts_dir(slug: str) -> Path:
@@ -111,9 +116,13 @@ def next_id(slug: str, today: dt.date) -> str:
 # ------------------------------------------------------------------ actions
 
 def add(slug: str, name: str, percent: float, basis: str = "gross", currency: str = "USD", method: str = "grey", email: str = "", due_days: int = 7, start: str = "",
-        today: dt.date | None = None) -> str:
+        today: dt.date | None = None, program: str = "custom") -> str:
     cfg = load(slug)
     today = today or dt.date.today()
+    if program not in ("custom", "dfy"):
+        raise ValueError("Program is custom or dfy (the D'Famocious Year terms).")
+    if program == "dfy":
+        percent, basis, currency = DFY["percent"], "net", "USD"
     name = re.sub(r"\s+", " ", name or "").strip()[:60]
     if len(name) < 2:
         raise ValueError("Give the student's name.")
@@ -135,7 +144,8 @@ def add(slug: str, name: str, percent: float, basis: str = "gross", currency: st
     if (folder / "student.json").exists():
         raise ValueError(f"{name} is already set up. See: python dse.py cut show {slug}/{sslug}")
     s = {"slug": sslug, "name": name, "engine": slug, "email": email, "percent": float(percent), "basis": basis, "currency": currency, "sym": SYMBOLS[currency], "method": method,
-         "due_days": due_days, "start": st.isoformat(), "created": today.isoformat(), "status": "active", "statements": [], "invoices": []}
+         "due_days": due_days, "start": st.isoformat(), "created": today.isoformat(), "status": "active", "statements": [], "invoices": [], "program": program,
+         "cap": DFY["cap"] if program == "dfy" else None, "threshold": DFY["threshold"] if program == "dfy" else None, "months_target": DFY["months_target"] if program == "dfy" else None}
     folder.mkdir(parents=True, exist_ok=True)
     save(folder / "student.json", s)
     (folder / "agreement.md").write_text(agreement(slug, s, cfg), encoding="utf-8")
@@ -144,7 +154,8 @@ def add(slug: str, name: str, percent: float, basis: str = "gross", currency: st
         notes.append(f"No payment details for {method} yet: put them in engines/{slug}/payment-details-{method}.txt on this PC (they stay off Citadel and Git).")
     if currency != "USD":
         notes.append(f"The Cash Desk adds amounts as they are and does not convert {currency}.")
-    return (f"# Cut Desk: {name} added\n\n- {percent:g}% of their {basis} earnings, reported monthly by the {REPORT_BY_DAY}th, paid within {due_days} days of the invoice, through {method}.\n"
+    terms = ("- D'Famocious Year terms: 20% of net income, capped at $18,000 in total, ending at 12 qualified months (net income of $2,000 or more) or the cap, whichever comes first.\n" if program == "dfy" else "")
+    return (f"# Cut Desk: {name} added\n\n{terms}- {percent:g}% of their {basis} earnings, reported monthly by the {REPORT_BY_DAY}th, paid within {due_days} days of the invoice, through {method}.\n"
             f"- Agreement starter: cuts/{sslug}/agreement.md (a starting point, not legal advice: have it checked before they sign).\n" + "".join(f"- {n}\n" for n in notes)
             + "\nNothing was sent. Share the agreement with the student yourself.\n")
 
@@ -153,6 +164,17 @@ def agreement(slug: str, s: dict, cfg: dict) -> str:
     co = cfg.get("brand_name") or cfg.get("name") or "[your company]"
     sender = cfg.get("sender_name") or "[your name]"
     basis = ("the gross amount you are paid" if s["basis"] == "gross" else "the amount you are paid after the platform's own fees")
+    if s.get("program") == "dfy":
+        return "\n".join([
+            f"# D'Famocious Year (DFY) remittance: {s['name']}", "", "A starting point, not legal advice. Have a lawyer check it.", "", DFY_DISCLOSURE, "",
+            f"1. Parties: D'Famocious Ltd (RC 8867648) trading as {cfg.get('brand_name') or cfg.get('name') or '[your company]'}, and {s['name']}.",
+            "2. The remittance: 20% of the net income you file in Citadel for each month you earn.",
+            "3. A qualified month is one with net income of $2,000 or more. The DFY ends at 12 qualified months or when your total remittances reach $18,000, whichever comes first.",
+            f"4. Reporting: you file each month's net income in Citadel (DFY tracker) by the {REPORT_BY_DAY}th of the next month. File 0 if you earned nothing.",
+            f"5. Payment: each month's remittance is due within {s['due_days']} days of filing, in USD, to the account shown in Citadel (Payments). You cover the transfer fees so the full remittance arrives.",
+            "6. Records: keep your statements for 12 months and show them if asked, in a reasonable way.",
+            "7. If a month looks very different from your usual, we may ask about it. That is a question, not an accusation.",
+            "8. Late payment: [your late-payment terms].", "9. Governing law and disputes: [the law that applies; get advice].", "", f"Signed: {cfg.get('sender_name') or '[your name]'} for D'Famocious Ltd:  ____________    {s['name']}:  ____________    Date: ____________", ""])
     return "\n".join([
         f"# Revenue share agreement: {s['name']}", "", "A starting point, not legal advice. Have a lawyer check it, and check that the platforms you earn on allow you to share earnings.", "",
         f"1. Parties: D'Famocious Ltd (RC 8867648) trading as {co}, and {s['name']}.",
@@ -166,10 +188,22 @@ def agreement(slug: str, s: dict, cfg: dict) -> str:
         f"Signed: {sender} for D'Famocious Ltd:  ____________    {s['name']}:  ____________    Date: ____________", ""])
 
 
-def report(target: str, month: str, earned: float, fees: float = 0, proof: str = "", replace: bool = False, today: dt.date | None = None) -> str:
+def dfy_totals(s: dict, exclude_month: str = "") -> tuple[float, int]:
+    """(remittance already invoiced, qualified months so far) for a DFY student, leaving out one month (for a correction)."""
+    rows = [x for x in s["statements"] if x["month"] != exclude_month]
+    return round(sum(x["cut"] for x in rows), 2), sum(1 for x in rows if x.get("qualified"))
+
+
+def report(target: str, month: str, earned: float, fees: float = 0, proof: str = "", replace: bool = False, today: dt.date | None = None,
+           source: str = "manual", citadel_id: str = "") -> str:
     today = today or dt.date.today()
     f, s = load_student(target)
     slug = s["engine"]
+    dfy = s.get("program") == "dfy"
+    if dfy and fees:
+        raise ValueError("DFY works on the net income the student files, so there are no platform fees to enter.")
+    if s["status"] == "completed":
+        raise ValueError("This DFY is complete (the cap or 12 qualified months was reached): nothing more is owed.")
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month or ""):
         raise ValueError("Month as YYYY-MM, for example 2026-11.")
     if month > month_key(today):
@@ -198,17 +232,26 @@ def report(target: str, month: str, earned: float, fees: float = 0, proof: str =
             (f.parent / "invoices" / f"{inv['id']}.html").unlink(missing_ok=True)
     base = earned if s["basis"] == "gross" else earned - fees
     cut = round(base * s["percent"] / 100, 2)
+    qualified = bool(dfy and earned >= s["threshold"])
+    dfy_notes: list[str] = []
+    if dfy:
+        so_far, q_so_far = dfy_totals(s, month)
+        room = round(s["cap"] - so_far, 2)
+        if cut > room + TOL:
+            dfy_notes.append(f"The $18,000 cap leaves only {money(max(room, 0), s['sym'])} of this month's {money(cut, s['sym'])}, so that is what is invoiced. Citadel still shows the full amount for the month.")
+            cut = max(room, 0)
     prior = [x["earned"] for x in sorted(s["statements"], key=lambda x: x["month"]) if x["month"] < month][-3:]
     notes = []
     if len(prior) >= 2 and sum(prior) / len(prior) > 0 and earned < DROP_RATIO * sum(prior) / len(prior):
         notes.append(f"Earnings of {money(earned, s['sym'])} are less than half of their recent average ({money(sum(prior) / len(prior), s['sym'])}). Worth a friendly question about how the month went.")
     if not proof:
         notes.append("No proof noted. Ask for a statement or screenshot and note where you keep it (re-run with --replace --proof ...).")
-    st = {"month": month, "earned": earned, "fees": fees, "cut": cut, "proof": proof, "reported_on": today.isoformat(), "invoice": ""}
+    st = {"month": month, "earned": earned, "fees": fees, "cut": cut, "proof": proof, "reported_on": today.isoformat(), "invoice": "", "qualified": qualified, "source": source, "citadel_id": citadel_id}
     inv = None
     if cut > TOL:
+        label = "DFY remittance" if dfy else "Revenue share"
         inv = {"id": reuse_id or next_id(slug, today), "month": month, "amount": cut, "issued": today.isoformat(), "due": (today + dt.timedelta(days=s["due_days"])).isoformat(),
-               "note": f"Revenue share {s['percent']:g}% of {s['basis']} earnings for {month}", "payments": [], "writeoff": 0}
+               "note": f"{label} {s['percent']:g}% of {s['basis']} {'net income' if dfy else 'earnings'} for {month}", "payments": [], "writeoff": 0}
         st["invoice"] = inv["id"]
         s["invoices"].append(inv)
         (f.parent / "invoices").mkdir(exist_ok=True)
@@ -216,7 +259,15 @@ def report(target: str, month: str, earned: float, fees: float = 0, proof: str =
         (f.parent / "invoices" / f"{inv['id']}.html").write_text(cl.invoice_html(slug, pseudo, inv, s["method"]), encoding="utf-8")
     s["statements"].append(st)
     s["statements"].sort(key=lambda x: x["month"])
+    if dfy:
+        total, qn = dfy_totals(s)
+        if total + TOL >= s["cap"] or qn >= s["months_target"]:
+            s["status"] = "completed"
+            dfy_notes.append(("The $18,000 cap is reached" if total + TOL >= s["cap"] else f"{qn} qualified months reached") + ": this DFY is complete and nothing more is owed.")
+        else:
+            dfy_notes.append(f"DFY progress: {qn} of {s['months_target']} qualified months, {money(total, s['sym'])} of {money(s['cap'], s['sym'])} remitted so far.")
     save(f, s)
+    notes = dfy_notes + notes
     lines = [f"# Cut Desk: {s['name']}, {month}", "", f"Reported earnings {money(earned, s['sym'])}" + (f", platform fees {money(fees, s['sym'])}" if s["basis"] == "net" or fees else "") + f"; basis {s['basis']}.",
              f"Cut: {s['percent']:g}% of {money(base, s['sym'])} = {money(cut, s['sym'])}."]
     if inv:
@@ -229,7 +280,29 @@ def report(target: str, month: str, earned: float, fees: float = 0, proof: str =
     return "\n".join(lines) + "\nNothing was sent.\n"
 
 
-def paid(target: str, invoice_id: str, amount: float = 0, date: str = "", writeoff: bool = False, today: dt.date | None = None) -> str:
+def push_received(s: dict, st: dict, api=None, note: str = "") -> str:
+    """Tell Citadel this DFY month's money has arrived (what the council's Mark paid does). Never raises: on failure the month is queued for the next sync."""
+    if st.get("citadel_paid") or not st.get("citadel_id"):
+        return ""
+    if api is None:
+        try:
+            from . import dfysync
+            api = dfysync.get_api()
+        except Exception:
+            api = None
+    if api is None:
+        st["push_pending"] = True
+        return "Could not reach Citadel from here: it will be marked received there at the next sync (the runner does this)."
+    try:
+        res = api.rpc("hq_dfy_mark_received", {"p_month_id": st["citadel_id"], "p_note": note or f"Received via {s['method']} (HQ Cut Desk)"})
+        st["citadel_paid"], st["push_pending"] = True, False
+        return "Citadel already showed this month as paid." if isinstance(res, dict) and res.get("already") else "Marked received in Citadel too: the student's DFY page now shows it paid."
+    except Exception as e:
+        st["push_pending"] = True
+        return f"Could not mark it in Citadel yet ({type(e).__name__}): it will retry at the next sync."
+
+
+def paid(target: str, invoice_id: str, amount: float = 0, date: str = "", writeoff: bool = False, today: dt.date | None = None, api=None) -> str:
     today = today or dt.date.today()
     f, s = load_student(target)
     inv = next((i for i in s["invoices"] if i["id"] == invoice_id), None)
@@ -250,11 +323,16 @@ def paid(target: str, invoice_id: str, amount: float = 0, date: str = "", writeo
         inv["writeoff"] = round(inv.get("writeoff", 0) + short, 2)
         msg += f" The shortfall of {money(short, s['sym'])} is written off (your choice, kept on the record)."
         short = 0
+    push_msg = ""
+    if short <= TOL:
+        st = next((x for x in s["statements"] if x.get("invoice") == invoice_id), None)
+        if st:
+            push_msg = push_received(s, st, api)
     save(f, s)
     if short > TOL:
         msg += f"\nIt came in {money(short, s['sym'])} short: usually a transfer fee. Ask the student to cover it (the agreement says they bear the fees), or run again with --writeoff to accept it."
     else:
-        msg += "\nThat invoice is settled."
+        msg += "\nThat invoice is settled." + (f"\n{push_msg}" if push_msg else "")
     if s["currency"] != "USD":
         msg += f"\nNote: the Cash Desk adds amounts as they are; it does not convert {s['currency']}."
     return msg + "\n"
@@ -273,7 +351,11 @@ def show(target: str, today: dt.date | None = None) -> str:
     today = today or dt.date.today()
     f, s = load_student(target)
     sym = s["sym"]
-    L = [f"# {s['name']}: {s['status']}", "", f"{s['percent']:g}% of {s['basis']} earnings, {s['currency']}, through {s['method']}, from {s['start']}.", "", "## Months"]
+    L = [f"# {s['name']}: {s['status']}", "", f"{s['percent']:g}% of {s['basis']} earnings, {s['currency']}, through {s['method']}, from {s['start']}."]
+    if s.get("program") == "dfy":
+        total, qn = dfy_totals(s)
+        L.append(f"D'Famocious Year: {qn} of {s['months_target']} qualified months, {money(total, sym)} of {money(s['cap'], sym)} remitted so far.")
+    L += ["", "## Months"]
     for st in s["statements"]:
         inv = next((i for i in s["invoices"] if i["id"] == st["invoice"]), None)
         pay = "no invoice (nothing earned)" if not inv else (f"{inv['id']} settled" if owed(inv) <= TOL else f"{inv['id']}: {money(owed(inv), sym)} owed" + (" OVERDUE" if inv["due"] < today.isoformat() else f", due {inv['due']}"))

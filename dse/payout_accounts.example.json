@@ -1,0 +1,35 @@
+[
+  {
+    "currency": "USD",
+    "method": "grey",
+    "label": "Grey USD account (company)",
+    "bank_name": "[Grey: the bank name your Grey app shows]",
+    "account_name": "[the account holder name exactly as Grey shows it]",
+    "account_number": "[the USD account number from your Grey app]",
+    "extra": [
+      {"label": "ACH Routing", "value": "[from your Grey app]"},
+      {"label": "Wire Routing", "value": "[from your Grey app]"}
+    ],
+    "note": "[Any instruction Grey gives for receiving, for example the reference to include]"
+  },
+  {
+    "currency": "USD",
+    "method": "payoneer",
+    "label": "Payoneer (pay another Payoneer user)",
+    "bank_name": "Payoneer",
+    "account_name": "[your Payoneer account name]",
+    "account_number": "[your Payoneer email or ID that students send to]",
+    "extra": [],
+    "note": "[Optional: ask students to pay from their Payoneer balance to avoid extra fees]"
+  },
+  {
+    "currency": "NGN",
+    "method": "bank",
+    "label": "Nigerian Naira Account",
+    "bank_name": "[bank]",
+    "account_name": "[account name]",
+    "account_number": "[account number]",
+    "extra": [],
+    "note": ""
+  }
+]
