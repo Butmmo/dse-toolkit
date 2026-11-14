@@ -149,12 +149,24 @@ def resolve_fields(cat: dict) -> dict:
 _OLL = {"t": 0.0, "v": None}
 
 
+def ollama_model() -> str:
+    """The chat model: the OLLAMA_MODEL setting (even one saved after this runner started), else the best installed (chat/ollama_model.py)."""
+    try:
+        import importlib.util as iu
+        spec = iu.spec_from_file_location("hq_ollama_model", HERE.parent / "chat" / "ollama_model.py")
+        mod = iu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.pick()[0]
+    except Exception:
+        return os.environ.get("OLLAMA_MODEL", "gemma3:1b")
+
+
 def ollama_info() -> dict:
     """Is Ollama running, and can the chat model read pictures? (asks Ollama itself: /api/show lists capabilities.)
     Citadel's DBI-AI page only offers the picture button when this says vision is true."""
     if time.time() - _OLL["t"] < 60 and _OLL["v"] is not None:
         return _OLL["v"]
-    model = os.environ.get("OLLAMA_MODEL", "gemma3:1b")
+    model = ollama_model()
     info = {"running": False, "model": model, "vision": False}
     try:
         with urllib.request.urlopen("http://localhost:11434/api/version", timeout=2) as r:

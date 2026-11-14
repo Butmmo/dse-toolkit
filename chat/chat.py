@@ -7,7 +7,7 @@
 How it answers (best available, in this order):
   1. Claude, if you set your own ANTHROPIC_API_KEY (and `pip install anthropic`): the strongest answers. Your question
      and the matching library material are sent to Anthropic; your progress files are sent only if you ask about them.
-  2. Your own free Ollama model on this PC (OLLAMA_MODEL, default gemma3:1b; gemma3:4b or bigger is much better).
+  2. Your own free Ollama model on this PC (OLLAMA_MODEL, else the best model installed, gemma3:4b before gemma3:1b).
   3. The built-in library alone (guides.json and ../howto/recipes.json), shown in full.
 In every case the answer is grounded in the library: researched guides and step-by-step recipes with sources.
 """
@@ -16,7 +16,18 @@ from pathlib import Path
 
 H = Path(__file__).resolve().parent
 NL = chr(10)
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma3:1b")
+def _pick_model():
+    """Which Ollama model to use and why (ollama_model.py): the OLLAMA_MODEL setting, even one set after the runner started, else the best installed."""
+    try:
+        spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.pick()
+    except Exception:
+        return os.environ.get("OLLAMA_MODEL", "gemma3:1b"), "the default"
+
+
+OLLAMA_MODEL, MODEL_WHY = _pick_model()
 CLAUDE_MODEL = os.environ.get("HQ_CHAT_CLAUDE_MODEL", "claude-opus-5-5")
 ENGINE = ""   # set by --engine: an HQ engine folder or one of your own engines (HQ Tools > My engines)
 
@@ -276,7 +287,7 @@ def reply(q, image=None):
         note = NL * 2 + "(" + c[1] + ")"
     out = ollama(q)
     if out:
-        return out + NL * 2 + f"(Answered with your local model {OLLAMA_MODEL}, grounded in the HQ library. A bigger model or your own Claude key gives deeper answers.)" + note
+        return out + NL * 2 + f"(Answered with your local model {OLLAMA_MODEL} (chosen from {MODEL_WHY}), grounded in the HQ library. A bigger model or your own Claude key gives deeper answers.)" + note
     return (from_progress(q) or library_answer(q)) + NL * 2 + "(Answered from the built-in library. Install Ollama for a full AI answer.)" + note
 
 
