@@ -677,51 +677,61 @@
    ],
    "steps": [
     {
-     "do": "On the Clay home page, click the button to create a new table.",
-     "why": "A table is where all your rows and enrichments live.",
-     "check": "You see a source picker or a blank table setup."
+     "do": "On the Clay home page, click Create New Table. The Sources window opens.",
+     "why": "Every list starts from a source.",
+     "check": "A list of data sources shows."
     },
     {
-     "do": "Pick the Companies category and choose the source called 'Find Local Businesses using Google Maps'.",
-     "why": "This source is made for local business lists, so you do not need to scrape Maps yourself.",
-     "check": "A form with search keywords and location filters opens."
+     "do": "Choose Google Maps from the sources.",
+     "why": "This source finds businesses the way a Google Maps search does.",
+     "check": "The Google Maps search screen opens."
     },
     {
-     "do": "Type the business type as the keyword and set the city or area.",
-     "why": "A narrow search gives cleaner rows than a whole country.",
-     "check": "The preview shows businesses of the right type in the right place."
+     "do": "Choose where the results go: a new table, or an existing workbook.",
+     "why": "Keeps each campaign in its own table.",
+     "check": "Your choice shows."
     },
     {
-     "do": "Set the number of results to a small number first, for example 25.",
-     "why": "Credits and result caps apply, so test small.",
-     "check": "The count in the form matches what you typed."
+     "do": "Set the location: a city, a neighbourhood or an exact address.",
+     "why": "Results come from this place.",
+     "check": "A map shows the place."
     },
     {
-     "do": "Click Continue to create the table.",
-     "why": "This runs the search and fills the table.",
-     "check": "Rows appear with business names and, usually, websites and phone numbers."
+     "do": "Set the radius by zooming the map in or out, and drag the map to place the pin.",
+     "why": "A tight radius keeps leads local and useful.",
+     "check": "The search area looks right."
     },
     {
-     "do": "Scan the rows and delete chains, closed businesses and rows with no website.",
-     "why": "Rows without a website cannot be enriched later, so they waste credits.",
-     "check": "Every remaining row has a real website."
+     "do": "Choose how to search. Business Type (recommended): pick a Google business category such as Dentists. Or Free Text: type a keyword such as best dental clinics.",
+     "why": "A business category finds cleaner results than a free keyword.",
+     "check": "Your category or keyword shows."
     },
     {
-     "do": "To get more rows, run a second search with a slightly different area or keyword and add it to the same table.",
-     "why": "A single search has a cap, so several small searches give more coverage.",
-     "check": "New rows appear in the same table without many duplicates."
+     "do": "Click Submit to run the search.",
+     "why": "This creates the rows.",
+     "check": "Rows start to appear."
+    },
+    {
+     "do": "Let the results keep loading. The count can grow from a few dozen to hundreds while you watch.",
+     "why": "The first count is not final.",
+     "check": "The row count stops rising."
+    },
+    {
+     "do": "Scan the rows. Delete chains, closed businesses and rows with no website before you enrich anything.",
+     "why": "Enrichment spends credits on every row, so clean first.",
+     "check": "Only independent businesses with a website remain."
     }
    ],
    "mistakes": [
-    "Pulling a huge batch on day one: start with 25 rows and check quality first.",
-    "Keeping chain stores and rows with no website: they cost credits and give no leads.",
-    "Trusting one number for the cap: the pages disagree (see unverified), so test in your own account.",
-    "Emailing everyone found without checking the rules for your target country."
+    "Enriching before cleaning: every extra row costs credits.",
+    "Treating the first row count as final: wait for loading to stop.",
+    "Too wide a radius: you get leads you cannot serve or visit.",
+    "Skipping the category and typing a vague keyword.",
+    "Assuming a result cap: Clay's own pages differ (see unverified), so check what your account returns."
    ],
    "done_when": [
-    "The table has a business name and a website for each row.",
-    "You removed rows you will not contact.",
-    "You know how many credits the run used."
+    "A table of independent local businesses with websites exists.",
+    "Chains and closed businesses are removed."
    ],
    "free_alternative": "Our own HQ Tools lead finder (dse.py find) or gtm.py in _tools/gtm-toolkit does the same job at $0.",
    "related": [
@@ -730,15 +740,14 @@
     "apollo-email-compliance"
    ],
    "sources": [
-    "https://clay.com/university/lesson/scrape-google-maps",
-    "https://docs.clay.com/enrichments-and-providers/sources/company/find-local-businesses-using-google-maps"
+    "https://university.clay.com/lessons/find-local-businesses-using-google-maps-clay-101"
    ],
    "checked": "2026-11-14",
-   "confidence": "medium",
+   "confidence": "high",
    "unverified": [
-    "Could not fetch the docs page itself (redirect then 404); steps come from search excerpts of Clay docs and University.",
-    "Result cap per search: docs excerpt said 300, University said 1000, a community post said about 200. Not confirmed.",
-    "Exact button labels on the creation screen."
+    "The lesson says Google Maps returns up to 1,000 results by default; other Clay pages and community posts have quoted 300 and about 200. Check the real number in your own account.",
+    "The exact columns returned and the credit cost were not stated on the lesson page.",
+    "Clay's separate docs page for this source could not be loaded, so the steps come from the lesson page only."
    ]
   },
   {
@@ -958,17 +967,18 @@
      "check": "The view appears in your list of views."
     },
     {
-     "do": "On any paid enrichment column, open its run settings and add a run condition, for example only run if the score is at least your cut-off. Clay describes this as an if-else rule: the enrichment runs when the condition is true and is skipped otherwise.",
+     "do": "On any paid enrichment column, scroll to Run settings in its panel and choose Add run condition. Type the condition in plain language, using the forward slash (/) to pick a column (for example: only run if /score is at least 3), then click Generate to turn it into a formula. Clay explains a run condition as if-else logic: the column runs when the condition is true and is skipped when it is false.",
      "why": "You stop spending credits on leads you will never contact.",
-     "check": "The sample outputs beside the condition editor show it behaving as you expect."
+     "check": "The sample outputs on the right show the condition behaving as you expect."
     }
    ],
    "mistakes": [
     "Too many scoring rules: keep it under 5.",
     "Never checking rows by hand.",
     "Deleting low-score rows instead of hiding them in a view.",
-    "Putting the condition in the wrong place: a formula placed in the wrong location can apply to every row. Use the column's run settings for run conditions.",
-    "Setting run conditions on columns that depend on other columns' data before that data exists."
+    "Setting run conditions on columns that depend on other columns' data before that data exists.",
+    "Using a plain formula column where you needed a run condition: a formula does not stop an enrichment from running. Use Run settings, then Add run condition.",
+    "Comparing text carelessly: text values in a condition are written in quotes, for example region == \"North America\"."
    ],
    "done_when": [
     "Rows have a score.",
@@ -980,16 +990,13 @@
     "clay-ai-first-line"
    ],
    "sources": [
-    "https://university.clay.com/docs/formula-generator",
-    "https://university.clay.com/fr/docs/conditional-runs",
-    "https://docs.clay.com/start-here/using-clay/ai-conditional-formulas"
+    "https://university.clay.com/docs/conditional-runs",
+    "https://university.clay.com/docs/formula-generator"
    ],
    "checked": "2026-11-14",
-   "confidence": "medium",
+   "confidence": "high",
    "unverified": [
-    "Clay's pages returned errors to the fetch tool, so the menu wording comes from search excerpts of Clay's own docs.",
-    "The exact label for the view filter option was not confirmed.",
-    "Labels differ slightly between Clay's docs and community posts (run settings, Add run condition, Only run if): look for the closest match on your screen."
+    "The generic menu words for adding a formula column and for filtering a view were not found on a page that loaded; look for the closest labels on your screen."
    ]
   },
   {
@@ -3498,9 +3505,9 @@
      "check": "You have 3 facts written in your notes before the call starts."
     },
     {
-     "do": "Open the call with an up-front contract (Sandler method). Say: 'Thanks for jumping on. We have 30 minutes. I would like to ask about where you are now and what you want, then tell you honestly if I can help. At the end, we will decide together: yes, no, or a clear next step. Does that work for you?'",
-     "why": "You agree on purpose, time, agenda and outcome first, so the lead cannot end the call with 'let me think about it' without a reason.",
-     "check": "The lead says yes or adjusts the agenda. You both now know how the call ends."
+     "do": "Open the call with an up-front contract, which takes 60 to 90 seconds and has five parts. Say something like: 'Thanks for jumping on. We have 30 minutes, does that still work for you? What would you like help with today? I would like to ask a few questions about where you are now, then tell you honestly if I can help. Is it okay if I ask those questions? At the end we will decide together: yes, no, or a clear next step.'",
+     "why": "Sandler's method agrees time, the prospect's agenda, your agenda, permission to ask questions and what a yes, no or next step looks like before you start, so the call cannot end in 'let me think about it' without a reason.",
+     "check": "The lead agrees or adjusts the agenda. You both know how the call ends."
     },
     {
      "do": "Ask Situation questions, but only 2 or 3. Example: 'Tell me what you are doing today to get clients.' and 'How long has it been that way?'",
@@ -3567,18 +3574,15 @@
     "linkedin-ghostwritten-post"
    ],
    "sources": [
-    "https://go.sandler.com/chartwellseventeen/insights/blog/categories/sales-process/the-ufc-strategy-5-elements-of-an-up-front-contr/",
-    "https://www.gong.io/resources/guides/spin-selling-questions",
-    "https://www.oreilly.com/library/view/spin-selling/9781260027099/ch04.html",
-    "https://go.sandler.com/nextlevel/insights/blog/categories/customer-relationships/the-secret-to-running-better-meetings/"
+    "https://info.achievementdynamics.sandler.com/blog/upfront-contracts-in-sales-optimize-your-sales-meetings-for-higher-win-rates",
+    "https://www.gong.io/resources/guides/spin-selling-questions"
    ],
    "checked": "2026-11-14",
    "confidence": "medium",
    "unverified": [
-    "The Sandler 5-element page returned HTTP 403 on direct fetch. Its content was confirmed only through search summaries of several Sandler pages (purpose, time, agendas, outcome).",
-    "SPIN example question wording is a beginner adaptation, not quoted from Rackham's book. The Gong guide gave the four categories and cautions, not sample questions.",
-    "Rackham's research figures were seen only in secondary sources.",
-    "Calendly features and plan limits were not researched here."
+    "Sandler trainers describe the up-front contract with three, four or five elements; this recipe uses the five-part version from the Sandler trainer page it cites.",
+    "The SPIN example question wording is a beginner adaptation, not quoted from Rackham's book. The Gong guide gives the four categories and cautions.",
+    "Calendly features and plan limits were not researched: this recipe is about the call, not the tool."
    ]
   },
   {

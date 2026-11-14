@@ -80,6 +80,27 @@ def main():
         for sub in ("send-lists/drafts", "content", "data"):
             (d / sub).mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(new, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # An engine deleted in Citadel stays on this PC (its lists are never deleted) but is archived and marked, so the tools stop offering it.
+    live = {e.get("slug") for e in engines}
+    gone = []
+    if ENGINES.exists():
+        for d in sorted(ENGINES.iterdir()):
+            f = d / "engine.json"
+            if d.is_dir() and f.is_file() and SLUG.match(d.name) and d.name not in live:
+                try:
+                    cfg = json.loads(f.read_text(encoding="utf-8"))
+                except ValueError:
+                    continue
+                if not cfg.get("removed_in_citadel"):
+                    gone.append((d.name, f, cfg))
+    for slug, f, cfg in gone:
+        if a.dry:
+            print(f"would archive {slug} (deleted in Citadel)")
+            continue
+        cfg.update({"archived": True, "removed_in_citadel": dt.date.today().isoformat()})
+        f.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        changed += 1
+        print(f"{dt.datetime.now():%H:%M:%S} engines sync: '{slug}' was deleted in Citadel; kept on this PC and archived (files are in engines/{slug})")
     if a.dry:
         print(f"{len(engines)} engines in Citadel, {changed} would change")
         return

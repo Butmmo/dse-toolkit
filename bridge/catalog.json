@@ -819,11 +819,11 @@
       "fields": [
         {
           "name": "question",
-          "label": "Your question",
+          "label": "Your question (up to 2000 characters)",
           "type": "text",
           "required": true,
-          "max": 200,
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!-]{2,199}$",
+          "max": 2000,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:;\\\"%+=#@_*$-]{2,1999}$",
           "placeholder": "a client says it is too expensive"
         },
         {
