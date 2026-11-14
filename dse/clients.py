@@ -135,18 +135,23 @@ def next_invoice_id(slug: str, today: dt.date) -> str:
 
 # ------------------------------------------------------------------ pages
 
-def payment_details(slug: str) -> str:
-    p = engine_dir(slug) / "payment-details.txt"
-    return p.read_text(encoding="utf-8", errors="replace").strip()[:600] if p.exists() else ""
+def payment_details(slug: str, method: str = "") -> str:
+    """Your payment details, from a local file that never syncs: payment-details-<method>.txt (grey, payoneer ...) first, then payment-details.txt."""
+    names = ([f"payment-details-{method}.txt"] if re.fullmatch(r"[a-z0-9-]{2,20}", method or "") else []) + ["payment-details.txt"]
+    for n in names:
+        p = engine_dir(slug) / n
+        if p.exists():
+            return p.read_text(encoding="utf-8", errors="replace").strip()[:600]
+    return ""
 
 
-def invoice_html(slug: str, c: dict, inv: dict) -> str:
+def invoice_html(slug: str, c: dict, inv: dict, method: str = "") -> str:
     cfg = load(slug)
     sym = c["sym"]
     e = htmllib.escape
     frm = "<br>".join(e(x) for x in (cfg.get("sender_name") or "[your name]", cfg.get("brand_name") or "", cfg.get("postal_address") or "[your postal address]") if x)
     to = "<br>".join(e(x) for x in (c["client"], c.get("contact") or "", c.get("email") or "", c.get("address") or "") if x)
-    pay = payment_details(slug)
+    pay = payment_details(slug, method)
     pay_html = e(pay).replace("\n", "<br>") if pay else "[Add your payment details: put them in engines/" + e(slug) + "/payment-details.txt on your PC]"
     paid = paid_total(inv)
     css = ("body{font:15px/1.5 Georgia,serif;max-width:720px;margin:40px auto;padding:0 20px;color:#222}h1{font-size:26px}table{border-collapse:collapse;width:100%;margin:16px 0}"

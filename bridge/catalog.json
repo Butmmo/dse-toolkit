@@ -4841,6 +4841,438 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dse.cut_add": {
+      "label": "Cut Desk: add a student's agreement",
+      "group": "My engines",
+      "help": "Sets up the percentage cut a student owes you: your percent, whether it is of their gross earnings or net of the platform's fees, the currency and how they pay you (Grey or Payoneer). Writes an agreement starter to have checked. Nothing is sent. The agreement text is a starting point, not legal advice.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "add"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--name",
+          "field": "name"
+        },
+        {
+          "opt": "--percent",
+          "field": "percent"
+        },
+        {
+          "opt": "--basis",
+          "field": "basis"
+        },
+        {
+          "opt": "--currency",
+          "field": "currency"
+        },
+        {
+          "opt": "--method",
+          "field": "method"
+        },
+        {
+          "opt": "--email",
+          "field": "email"
+        },
+        {
+          "opt": "--due-days",
+          "field": "due_days"
+        },
+        {
+          "opt": "--start",
+          "field": "start"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "name",
+          "label": "Student's name",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "^[A-Za-z][A-Za-z .'-]{1,59}$"
+        },
+        {
+          "name": "percent",
+          "label": "Your cut (% of their earnings, 1 to 60)",
+          "type": "int",
+          "min": 1,
+          "max": 60,
+          "default": 10
+        },
+        {
+          "name": "basis",
+          "label": "Percent of",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "gross",
+              "label": "Their gross earnings"
+            },
+            {
+              "value": "net",
+              "label": "Earnings after the platform's own fees"
+            }
+          ],
+          "default": "gross"
+        },
+        {
+          "name": "currency",
+          "label": "Currency",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "USD",
+              "label": "US dollars"
+            },
+            {
+              "value": "GBP",
+              "label": "British pounds"
+            },
+            {
+              "value": "EUR",
+              "label": "Euros"
+            }
+          ],
+          "default": "USD"
+        },
+        {
+          "name": "method",
+          "label": "How they pay you",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "grey",
+              "label": "Grey"
+            },
+            {
+              "value": "payoneer",
+              "label": "Payoneer"
+            },
+            {
+              "value": "other",
+              "label": "Other"
+            }
+          ],
+          "default": "grey"
+        },
+        {
+          "name": "email",
+          "label": "Their email (optional)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        },
+        {
+          "name": "due_days",
+          "label": "Days to pay after the invoice",
+          "type": "int",
+          "min": 0,
+          "max": 60,
+          "default": 7
+        },
+        {
+          "name": "start",
+          "label": "Agreement starts (empty = this month)",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "engines/*/cuts/*/agreement.md"
+      ]
+    },
+    "dse.cut_report": {
+      "label": "Cut Desk: a student's monthly earnings report",
+      "group": "My engines",
+      "help": "Enter what a student earned in a month (0 is a valid report), the platform fees if their agreement is net, and where the proof is kept. It works out your cut and makes the invoice in the company name as a print-ready page. A big drop against their own recent average gets a friendly prompt, never an accusation. Nothing is sent. The agreement text is a starting point, not legal advice.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "report"
+        },
+        {
+          "field": "student"
+        },
+        {
+          "opt": "--month",
+          "field": "month"
+        },
+        {
+          "opt": "--earned",
+          "field": "earned"
+        },
+        {
+          "opt": "--fees",
+          "field": "fees"
+        },
+        {
+          "opt": "--proof",
+          "field": "proof"
+        },
+        {
+          "flag": "--replace",
+          "field": "replace"
+        }
+      ],
+      "fields": [
+        {
+          "name": "student",
+          "label": "Student",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/cuts/*/student.json"
+        },
+        {
+          "name": "month",
+          "label": "Month they are reporting (YYYY-MM)",
+          "type": "text",
+          "required": true,
+          "max": 7,
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        },
+        {
+          "name": "earned",
+          "label": "What they earned that month",
+          "type": "int",
+          "required": true,
+          "min": 0,
+          "max": 10000000,
+          "default": 0
+        },
+        {
+          "name": "fees",
+          "label": "Platform fees they paid (net agreements only)",
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 10000000,
+          "default": 0
+        },
+        {
+          "name": "proof",
+          "label": "Where the proof is (for example: Nov statement in the proofs folder)",
+          "type": "text",
+          "required": false,
+          "max": 200
+        },
+        {
+          "name": "replace",
+          "label": "Correct a month already reported (only before anything is paid on it)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "engines/*/cuts/*/invoices/*.html"
+      ]
+    },
+    "dse.cut_paid": {
+      "label": "Cut Desk: a student's cut arrived",
+      "group": "My engines",
+      "help": "Records what actually arrived for a cut invoice (leave the amount empty for the whole amount) and adds it to the Cash Desk. If it came in short, usually a transfer fee, it says so; tick Write off the shortfall to accept it.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "paid"
+        },
+        {
+          "field": "student"
+        },
+        {
+          "opt": "--invoice",
+          "field": "invoice"
+        },
+        {
+          "opt": "--amount",
+          "field": "amount"
+        },
+        {
+          "opt": "--date",
+          "field": "date"
+        },
+        {
+          "flag": "--writeoff",
+          "field": "writeoff"
+        }
+      ],
+      "fields": [
+        {
+          "name": "student",
+          "label": "Student",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/cuts/*/student.json"
+        },
+        {
+          "name": "invoice",
+          "label": "Invoice number (like CUT-2026-001)",
+          "type": "text",
+          "required": true,
+          "max": 20,
+          "pattern": "^CUT-\\d{4}-\\d{3,4}$"
+        },
+        {
+          "name": "amount",
+          "label": "Amount that arrived (empty = the whole amount owed)",
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 10000000,
+          "default": 0
+        },
+        {
+          "name": "date",
+          "label": "Date received (empty = today)",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "writeoff",
+          "label": "Write off any shortfall (my choice)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.cut_list": {
+      "label": "Cut Desk: who owes what",
+      "group": "My engines",
+      "help": "Every student with the cut invoiced, received and owed, and what each one needs (a missing report, an overdue invoice).",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "list"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.cut_show": {
+      "label": "Cut Desk: one student in full",
+      "group": "My engines",
+      "help": "Every month reported, the cut, the invoice and whether it is settled, with any month that has no proof noted.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "show"
+        },
+        {
+          "field": "student"
+        }
+      ],
+      "fields": [
+        {
+          "name": "student",
+          "label": "Student",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/cuts/*/student.json"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.cut_status": {
+      "label": "Cut Desk: pause or end an agreement",
+      "group": "My engines",
+      "help": "Paused or ended students are no longer chased for reports. Unpaid invoices stay payable.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cut"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "field": "student"
+        },
+        {
+          "opt": "--to",
+          "field": "to"
+        }
+      ],
+      "fields": [
+        {
+          "name": "student",
+          "label": "Student",
+          "type": "file",
+          "required": true,
+          "glob": "engines/*/cuts/*/student.json"
+        },
+        {
+          "name": "to",
+          "label": "Set to",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "active",
+              "label": "Active"
+            },
+            {
+              "value": "paused",
+              "label": "Paused"
+            },
+            {
+              "value": "ended",
+              "label": "Ended"
+            }
+          ],
+          "default": "paused"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [

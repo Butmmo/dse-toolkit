@@ -15,6 +15,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
   python dse.py proposal <engine> --client "Acme" --problem "..." --offer "..." --price 1500 --deliverables "a; b"  a one-page proposal, cover email and follow-up (it sends nothing)
   python dse.py client won <engine> --proposal NAME   the Client Desk: from a won proposal to onboarding, invoices, delivery and payments (client list|show|done|invoice|paid)
+  python dse.py cut add <engine> --name "Ada" --percent 10   the Cut Desk: the percentage your students owe you (cut report|paid|list|show|status)
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -38,7 +39,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, cashdesk, clients, desklog, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, cashdesk, clients, cuts, desklog, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -99,6 +100,12 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    ct = sub.add_parser("cut"); ct.add_argument("action", choices=["add", "report", "paid", "list", "show", "status"]); ct.add_argument("target", help="an engine (add, list) or engine/student (the rest)")
+    ct.add_argument("--name", default=""); ct.add_argument("--percent", type=float, default=0); ct.add_argument("--basis", default="gross"); ct.add_argument("--currency", default="USD")
+    ct.add_argument("--method", default="grey"); ct.add_argument("--email", default=""); ct.add_argument("--due-days", type=int, default=7, dest="due_days"); ct.add_argument("--start", default="")
+    ct.add_argument("--month", default=""); ct.add_argument("--earned", type=float, default=-1); ct.add_argument("--fees", type=float, default=0); ct.add_argument("--proof", default="")
+    ct.add_argument("--replace", action="store_true"); ct.add_argument("--invoice", default=""); ct.add_argument("--amount", type=float, default=0); ct.add_argument("--date", default="")
+    ct.add_argument("--writeoff", action="store_true"); ct.add_argument("--to", default="")
     cd = sub.add_parser("client"); cd.add_argument("action", choices=["won", "list", "show", "done", "invoice", "paid"]); cd.add_argument("target", help="an engine (won, list) or engine/client (the rest)")
     cd.add_argument("--proposal", default=""); cd.add_argument("--email", default=""); cd.add_argument("--address", default=""); cd.add_argument("--item", default="")
     cd.add_argument("--date", default=""); cd.add_argument("--kind", default="final"); cd.add_argument("--amount", type=float, default=0); cd.add_argument("--note", default="")
@@ -209,6 +216,24 @@ def main():
                 print(clients.invoice(a.target, a.kind, a.amount, a.note, a.terms))
             else:
                 print(clients.paid(a.target, a.invoice, a.amount, a.date))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "cut":
+        try:
+            if a.action == "add":
+                print(cuts.add(a.target, a.name, a.percent, a.basis, a.currency, a.method, a.email, a.due_days, a.start))
+            elif a.action == "report":
+                if a.earned < 0:
+                    sys.exit("Say what they earned: --earned 3200 (0 if nothing).")
+                print(cuts.report(a.target, a.month, a.earned, a.fees, a.proof, a.replace))
+            elif a.action == "paid":
+                print(cuts.paid(a.target, a.invoice, a.amount, a.date, a.writeoff))
+            elif a.action == "list":
+                print(cuts.listing(a.target))
+            elif a.action == "show":
+                print(cuts.show(a.target))
+            else:
+                print(cuts.set_status(a.target, a.to))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "cashlog":

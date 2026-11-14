@@ -11,7 +11,7 @@ It reads (all in engines/<slug>/, nothing is guessed, nothing is sent):
 
 The moves are ranked by one fixed rule, closest to money first, and the report says which file each number came from:
   1 replies waiting for your answer  2 calls booked to prepare for  3 follow-ups due  4 messages on your lists not yet sent
-  2.5 overdue client invoices  3.5 late client deliverables  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
+  2.5 overdue client invoices  2.6 overdue student cuts  3.5 late client deliverables  3.6 students who have not reported  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import datetime as dt
 
 from . import cashdesk as cd
 from . import desklog as dl
-from . import clients, followups, goals, vetting
+from . import clients, cuts, followups, goals, vetting
 from .engines import all_slugs, engine_dir, load
 
 OPEN_OFFERS = ("researching", "applied", "interview")
@@ -56,7 +56,11 @@ def gather(slug: str, today: dt.date) -> dict:
         att = clients.attention(slug, today)
     except Exception:
         att = {"overdue_invoices": [], "late_items": []}
-    return {"clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
+    try:
+        cut = cuts.attention(slug, today)
+    except Exception:
+        cut = {"overdue": [], "quiet": []}
+    return {"cuts": cut, "clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
             "month": month, "target": target, "key": key, "pace": cd.pace(month["received"], today, a, b), "offers": offers,
             "goal_note": (engine_dir(slug) / "next-goal.md").exists()}
 
@@ -73,6 +77,11 @@ def moves(g: dict) -> list[dict]:
         sym = ci[0]["sym"] if len({i["sym"] for i in ci}) == 1 else ""
         out.append({"rank": 2.5, "do": f"{len(ci)} overdue invoice{'s' if len(ci) != 1 else ''}, {sym}{owed:,.0f} owed ({', '.join(i['client'] for i in ci[:3])}).",
                     "how": "Send a polite reminder; when it arrives: python dse.py client paid " + f"{s}/<client> --invoice <id>", "source": "clients/*/client.json (invoice due dates and payments)"})
+    co = g["cuts"]["overdue"]
+    if co:
+        sym = co[0]["sym"] if len({i["sym"] for i in co}) == 1 else ""
+        out.append({"rank": 2.6, "do": f"{len(co)} student cut invoice{'s' if len(co) != 1 else ''} overdue, {sym}{sum(i['owed'] for i in co):,.0f} owed ({', '.join(i['student'] for i in co[:3])}).",
+                    "how": "Send a friendly reminder; when it lands: python dse.py cut paid " + f"{s}/<student> --invoice <id>", "source": "cuts/*/student.json (invoice due dates and payments)"})
     if g["booked"]:
         n = len(g["booked"])
         out.append({"rank": 2, "do": f"Prepare for {n} booked call{'s' if n != 1 else ''} ({', '.join(g['booked'][:3])}{'...' if n > 3 else ''}).",
@@ -84,6 +93,10 @@ def moves(g: dict) -> list[dict]:
         n = len(g["unsent"])
         out.append({"rank": 4, "do": f"{n} message{'s' if n != 1 else ''} on your lists {'are' if n != 1 else 'is'} still not marked Sent.",
                     "how": f"First run python dse.py preflight {s} to catch blockers. Then open the Send Desk, send them yourself and tap Sent (or Skip).", "source": f"send-lists/ ({', '.join(sorted(set(g['unsent']))[:3])})"})
+    cq = g["cuts"]["quiet"]
+    if cq:
+        out.append({"rank": 3.6, "do": f"{len(cq)} student{'s have' if len(cq) != 1 else ' has'} not reported earnings ({'; '.join(q['student'] + ' ' + ', '.join(q['months'][:2]) for q in cq[:3])}).",
+                    "how": "Ask a friendly question. Then: python dse.py cut report " + f"{s}/<student> --month YYYY-MM --earned N (0 if nothing)", "source": "cuts/*/student.json (the agreement: report by the 7th)"})
     li = g["clients"]["late_items"]
     if li:
         out.append({"rank": 3.5, "do": f"{len(li)} deliverable{'s' if len(li) != 1 else ''} late ({'; '.join(x['client'] + ': ' + x['item'] for x in li[:3])}).",
