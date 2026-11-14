@@ -51,8 +51,16 @@ def status_of(slug: str) -> dict:
         except OSError:
             pass
     dates = [p.stem[:10] for p in lists if re.match(r"\d{4}-\d{2}-\d{2}", p.stem)]
-    return {"lists": len(lists), "drafts": len(drafts), "rows": rows, "last_list": max(dates) if dates else None,
-            "checked_at": dt.datetime.now().isoformat(timespec="seconds")}
+    st = {"lists": len(lists), "drafts": len(drafts), "rows": rows, "last_list": max(dates) if dates else None,
+          "checked_at": dt.datetime.now().isoformat(timespec="seconds")}
+    try:                                   # results and follow-ups due: never let a problem here stop the sync
+        sys.path.insert(0, str(ROOT))
+        from dse import followups, outcomes
+        st["results"] = outcomes.summary(slug)
+        st["followups_due"] = followups.due_count(slug)
+    except Exception:
+        pass
+    return st
 
 
 def main():

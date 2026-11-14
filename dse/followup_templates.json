@@ -1,0 +1,35 @@
+{
+  "note": "Follow-up rules and wording for every engine. To change them for ONE engine, copy this file to engines/<slug>/followup-templates.json and edit it. Keep one 'variant' name per wording so the results can tell which wording works. Never put a link in a follow-up: the write-up goes only after a reply. Every message gives an easy way to say no.",
+  "schedule": {
+    "Instagram DM": [3, 7],
+    "Facebook message": [4, 9],
+    "Website form": [5, 12],
+    "Email": [3, 7]
+  },
+  "default_schedule": [4, 9],
+  "max_touches": 3,
+  "touches": {
+    "2": {
+      "nudge": {
+        "variant": "fu2-nudge-v1",
+        "text": "{hi} floating my note back up in case it got buried. When I looked at {business}'s website I noticed {gap_line}. Want me to send the short write-up on how I'd fix it? If it's not for you, just say so and I won't message again."
+      },
+      "comment": {
+        "variant": "fu2-comment-v1",
+        "channel": "Instagram comment",
+        "text": "[one specific, genuine compliment about their newest post: write it yourself]. P.S. I sent you a short note a few days ago. It may be sitting in your message requests.",
+        "note": "Public comment on their NEWEST post. Never say in public what the note is about. Instagram delivers only one DM from an account that does not follow you, so this replaces a second DM."
+      }
+    },
+    "3": {
+      "close": {
+        "variant": "fu3-close-v1",
+        "text": "{hi} last note from me, so I don't fill your inbox. If this is ever on your list ({gap_line}), reply \"yes\" and I'll send the short write-up. Either way, all the best with {business}. Reply \"no thanks\" and I won't message again."
+      },
+      "bridge": {
+        "variant": "fu3-bridge-v1",
+        "text": "{hi} it's {sender}{from_brand}. I sent a note on Instagram a little while ago and wanted to be sure it reached you. I noticed {gap_line}. Reply \"yes\" and I'll send a short write-up on how I'd fix it; reply \"no thanks\" and I won't follow up."
+      }
+    }
+  }
+}

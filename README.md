@@ -24,6 +24,17 @@ Nothing here sends, posts or pays. You do every send.
 | **App Builder** (`python builder/build.py new ...`) | Builds a real, working **website, web app, phone app (iPhone + Android), desktop app or TV app** from a starting point (landing page, dashboard, store, booking). You get the project, a README with the exact commands to run and publish it, a BUILD-BRIEF of what to build next, and `AGENTS.md` so an AI coding agent can carry on safely. Needs Node.js LTS (nodejs.org) except for the plain website. Tick "Install and test the build" to prove it builds. Results go in `builds/`. |
 | **YouTube Launchpad** (`python youtube/launch.py plan ...`) | Plans a YouTube channel from zero, faceless or on camera: niche and promise, setup checklist, the current Partner Program (monetisation) numbers with their source and date, a faceless-safe policy guide, a 13-week roadmap matched to your hours, and 30 video ideas. Then `ideas` (more ideas), `script` (a ready-to-record script plan, optional Ollama first draft), `track` (weekly numbers, distance to monetisation, what to fix next) and `check` (title and thumbnail check). Results go in `youtube/channels/<name>/`. It teaches the method and the honest odds and cannot promise income. |
 
+## Follow-ups and results for your engines
+Once you send from the **Send Desk** (More, or the Send Desk tab) and tap **Sent** on each message, your PC keeps the log and does the rest.
+
+| Tool (HQ Tools, My engines) | What it does |
+|---|---|
+| **Plan follow-ups** (`python dse.py followups <engine>`) | Finds everyone you messaged who has not answered, drafts touch 2 and touch 3 and saves them as a list in the Send Desk. Email and Instagram: 3 and 7 days after the first message. Facebook: 4 and 9. Website form: 5 and 12. Sundays skipped. Never a second Instagram DM: a public comment, then a note by email or form. It stops when they reply, book, are lost or you skip. Only rows you marked **Sent** count; it lists any you forgot to mark. |
+| **Results** (`python dse.py outcomes <engine>`) | Sent, replies, calls booked, clients won and the monthly value, by channel, by the gap you led with, by wording and by touch. It only calls a difference when both sides have **30 or more sends in the same channel**, and says "too early to call" otherwise. |
+
+Your log is `engines/<engine>/data/log.csv`. You can also mark a row from the keyboard: `python dse.py log <engine> 2026-11-16 3 sent`.
+Test everything with `python tests/test_member_desk.py`.
+
 ---
 
 ## Where to type the commands

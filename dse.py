@@ -4,6 +4,9 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
 
   python dse.py engines                                 your engines (made in Citadel: HQ Tools → My engines)
   python dse.py daily tampa-dentists [--days 3]         next dated send lists for one engine (find, check, dedupe, draft)
+  python dse.py followups tampa-dentists                plan tomorrow's follow-ups (touch 2 and 3) for everyone marked Sent
+  python dse.py outcomes tampa-dentists                 what the engine is producing: sent, replies, calls, clients
+  python dse.py log tampa-dentists 2026-11-16 3 sent    mark a row by hand (the Send Desk on your phone does this for you)
   python dse.py kinds                                   business types the lead finder knows, by path
   python dse.py packs                                   website-check packs (one per path)
   python dse.py build dentist,plumber                   once per business type: download its US business data
@@ -25,7 +28,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import engines, mystery, places, podcasts
+from dse import desklog, engines, followups, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -62,9 +65,24 @@ def main():
     sub.add_parser("engines")
     dl = sub.add_parser("daily"); dl.add_argument("engine"); dl.add_argument("--start"); dl.add_argument("--days", type=int, default=1)
     dl.add_argument("--per-day", type=int); dl.add_argument("--fast", action="store_true")
+    fu = sub.add_parser("followups"); fu.add_argument("engine"); fu.add_argument("--start"); fu.add_argument("--days", type=int, default=1)
+    fu.add_argument("--preview", action="store_true", help="show them, save nothing")
+    oc = sub.add_parser("outcomes"); oc.add_argument("engine")
+    lg = sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
+    lg.add_argument("row", help="the row number on that list"); lg.add_argument("status", choices=list(desklog.STATUSES))
+    lg.add_argument("--reply", default=""); lg.add_argument("--value", default="")
     a = ap.parse_args()
 
-    if a.cmd == "kinds":
+    if a.cmd == "followups":
+        followups.report(a.engine, a.start, a.days, write=not a.preview)
+    elif a.cmd == "outcomes":
+        print(outcomes.report(a.engine))
+    elif a.cmd == "log":
+        engines.load(a.engine)
+        desklog.append_events(a.engine, [{"logged_at": desklog.local_now(), "source": a.source, "row_id": a.row, "status": a.status,
+                                          "reply": a.reply, "value": a.value, "list_date": a.source[:10]}])
+        print(f"logged: {a.source} row {a.row} is now '{a.status}'")
+    elif a.cmd == "kinds":
         for pack, kinds in PACK_KINDS.items():
             if kinds:
                 print(f"{pack}:")

@@ -1528,6 +1528,99 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dse.followups": {
+      "label": "My engine: plan follow-ups",
+      "group": "My engines",
+      "help": "Finds everyone you messaged (and marked Sent) who has not answered, works out who is due for a second or third message, drafts it and saves it as a list in the Send Desk. Rules: touch 2 and 3 come due 3 and 7 days after an email or Instagram message (Facebook 4 and 9, website form 5 and 12), Sundays are skipped, there is never a second Instagram DM (a comment, then a note by email or form), and it stops when they reply, book, are lost or you skip. Only rows you marked Sent count; it lists any you never marked. You still send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "followups"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--start",
+          "field": "start"
+        },
+        {
+          "opt": "--days",
+          "field": "days"
+        },
+        {
+          "flag": "--preview",
+          "field": "preview"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "start",
+          "label": "First day (empty = tomorrow)",
+          "type": "date"
+        },
+        {
+          "name": "days",
+          "label": "Days",
+          "type": "int",
+          "min": 1,
+          "max": 7,
+          "default": 1
+        },
+        {
+          "name": "preview",
+          "label": "Preview only (save nothing)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": [
+        {
+          "glob": "engines/*/send-lists/*-followups.csv",
+          "upload": true
+        }
+      ]
+    },
+    "dse.outcomes": {
+      "label": "My engine: results",
+      "group": "My engines",
+      "help": "What the engine is really producing, from the taps you made in the Send Desk: messages sent, replies, calls booked, clients won and the monthly value, by channel, by the gap you led with, by wording and by touch. It only calls a difference when both sides have 30 or more sends in the same channel, and it tells you which first messages were never marked Sent or Skipped.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "outcomes"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": [
+        {
+          "glob": "engines/*/outcomes.md",
+          "upload": true
+        }
+      ]
     }
   },
   "periodic": [
@@ -1535,6 +1628,11 @@
       "script": "bridge/engines_sync.py",
       "every_s": 60,
       "what": "My engines: settings from Citadel onto this PC, progress back"
+    },
+    {
+      "script": "bridge/desk_sync.py",
+      "every_s": 60,
+      "what": "Send Desk: your engines' lists on your phone, your phone taps into your log"
     }
   ]
 }
