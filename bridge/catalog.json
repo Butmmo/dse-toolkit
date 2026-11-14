@@ -1999,6 +1999,787 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "ascent.vet": {
+      "label": "The Ascent: vet a commission offer",
+      "group": "My engines",
+      "help": "Before you give a high-ticket, commission-only offer your time, answer the questions (Yes, No or Not asked yet). You get a verdict (Walk away, Red, Amber, Unchecked, OK or Promising), the exact reasons, a ready message with the questions to put to them in writing, what to get in the contract, and what one sale and a target month would really need from you. Based on the FTC's job-scam advice (never pay for a job, earnings promises, fake checks, unverifiable employers) and practitioner guidance for commission contracts. It informs your decision; it is not legal advice. It saves the offer to your tracker.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "vet"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--offer",
+          "field": "offer"
+        },
+        {
+          "opt": "--url",
+          "field": "url"
+        },
+        {
+          "opt": "--commission",
+          "field": "commission"
+        },
+        {
+          "opt": "--ticket",
+          "field": "ticket"
+        },
+        {
+          "opt": "--status",
+          "field": "status"
+        },
+        {
+          "opt": "--target",
+          "field": "target"
+        },
+        {
+          "opt": "--notes",
+          "field": "notes"
+        },
+        {
+          "opt": "--d_pay",
+          "field": "d_pay"
+        },
+        {
+          "opt": "--d_contract",
+          "field": "d_contract"
+        },
+        {
+          "opt": "--d_earnings",
+          "field": "d_earnings"
+        },
+        {
+          "opt": "--d_money",
+          "field": "d_money"
+        },
+        {
+          "opt": "--d_hidden",
+          "field": "d_hidden"
+        },
+        {
+          "opt": "--s_rate",
+          "field": "s_rate"
+        },
+        {
+          "opt": "--s_payout",
+          "field": "s_payout"
+        },
+        {
+          "opt": "--s_clawback",
+          "field": "s_clawback"
+        },
+        {
+          "opt": "--s_proof",
+          "field": "s_proof"
+        },
+        {
+          "opt": "--s_regulated",
+          "field": "s_regulated"
+        },
+        {
+          "opt": "--s_leads",
+          "field": "s_leads"
+        },
+        {
+          "opt": "--s_exclusive",
+          "field": "s_exclusive"
+        },
+        {
+          "opt": "--s_control",
+          "field": "s_control"
+        },
+        {
+          "opt": "--s_nobody",
+          "field": "s_nobody"
+        },
+        {
+          "opt": "--c_payment",
+          "field": "c_payment"
+        },
+        {
+          "opt": "--c_pressure",
+          "field": "c_pressure"
+        },
+        {
+          "opt": "--c_recordings",
+          "field": "c_recordings"
+        },
+        {
+          "opt": "--c_nda",
+          "field": "c_nda"
+        },
+        {
+          "opt": "--c_refund_rate",
+          "field": "c_refund_rate"
+        },
+        {
+          "opt": "--p_contract",
+          "field": "p_contract"
+        },
+        {
+          "opt": "--p_named",
+          "field": "p_named"
+        },
+        {
+          "opt": "--p_closer",
+          "field": "p_closer"
+        },
+        {
+          "opt": "--p_inbound",
+          "field": "p_inbound"
+        },
+        {
+          "opt": "--p_reviews",
+          "field": "p_reviews"
+        },
+        {
+          "opt": "--p_data",
+          "field": "p_data"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "offer",
+          "label": "Offer or company name",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:-]{1,79}$"
+        },
+        {
+          "name": "url",
+          "label": "Their website (optional)",
+          "type": "url"
+        },
+        {
+          "name": "commission",
+          "label": "Commission they offer (%)",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 10
+        },
+        {
+          "name": "ticket",
+          "label": "Price of the offer they sell ($)",
+          "type": "int",
+          "min": 0,
+          "max": 1000000,
+          "default": 0
+        },
+        {
+          "name": "target",
+          "label": "Monthly income you want from it ($)",
+          "type": "int",
+          "min": 100,
+          "max": 100000,
+          "default": 3000
+        },
+        {
+          "name": "status",
+          "label": "Where you are with them",
+          "type": "choice",
+          "default": "researching",
+          "choices": [
+            {
+              "value": "researching",
+              "label": "Researching"
+            },
+            {
+              "value": "applied",
+              "label": "Applied"
+            },
+            {
+              "value": "interview",
+              "label": "Interview"
+            },
+            {
+              "value": "active",
+              "label": "Active"
+            },
+            {
+              "value": "rejected",
+              "label": "Rejected"
+            },
+            {
+              "value": "walked",
+              "label": "Walked"
+            }
+          ]
+        },
+        {
+          "name": "notes",
+          "label": "Notes (optional)",
+          "type": "text",
+          "max": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;-]{0,199}$"
+        },
+        {
+          "name": "d_pay",
+          "label": "DEALBREAKER: Do they ask you to pay anything to start: training, certification, starter kit, deposit, leads or software?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "d_contract",
+          "label": "DEALBREAKER: Do they refuse to put the commission terms in writing before you start?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "d_earnings",
+          "label": "DEALBREAKER: Did they promise or hint at what you will earn to get you to join (for example 'our closers make $20k a month', guaranteed income)?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "d_money",
+          "label": "DEALBREAKER: Do they ask you to receive money, cash a check, forward payments, or buy gift cards?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "d_hidden",
+          "label": "DEALBREAKER: Is the company impossible to verify: no named owner, no registered business, or a website or contact that does not work?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_rate",
+          "label": "SERIOUS: Is the commission rate, or what it is calculated on (cash collected or contract value), unclear?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_payout",
+          "label": "SERIOUS: Is the payout later than 30 days after the client pays, or is no payout date stated?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_clawback",
+          "label": "SERIOUS: Can they take your commission back (refunds, chargebacks) with no written time window or cap?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_proof",
+          "label": "SERIOUS: Can you not verify real customers or results (no named customers, no reviews outside their own pages)?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_regulated",
+          "label": "SERIOUS: Is the offer in a regulated area (credit repair, lending, trading, investing, insurance) where selling may need a licence?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_leads",
+          "label": "SERIOUS: Will you be cold-calling your own leads, with no stated source or number of booked calls?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_exclusive",
+          "label": "SERIOUS: Do they want exclusivity or a non-compete without a guaranteed base or minimum?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_control",
+          "label": "SERIOUS: Are you called a contractor but told your hours, must follow a script you cannot change, and cannot work for others?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "s_nobody",
+          "label": "SERIOUS: Do they refuse to let you speak to a current closer or the person you would report to?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "c_payment",
+          "label": "CAUTION: Is there no clear way to be paid internationally (for example Wise, Payoneer or bank transfer), or unclear who pays the fees?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "c_pressure",
+          "label": "CAUTION: Do they pressure you to decide fast ('spots are filling', 'offer ends today')?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "c_recordings",
+          "label": "CAUTION: Are your calls recorded without being told how the recordings are used or who owns them?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "c_nda",
+          "label": "CAUTION: Is the NDA or ownership clause broader than the job (for example it stops you working in the industry afterwards)?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "c_refund_rate",
+          "label": "CAUTION: Do they refuse to say their refund or chargeback rate?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "p_contract",
+          "label": "GOOD SIGN: Did they send a written agreement draft showing rate, base, payout date and clawback terms?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "p_named",
+          "label": "GOOD SIGN: Can you name the founder and find the company in a business registry (US state registry or UK Companies House)?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "p_closer",
+          "label": "GOOD SIGN: Did you speak to a current closer who confirmed pay and lead flow?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "p_inbound",
+          "label": "GOOD SIGN: Do they supply warm leads (calls booked from their own content or ads)?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "p_reviews",
+          "label": "GOOD SIGN: Do independent customers or reviews outside their own pages confirm the product works?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        },
+        {
+          "name": "p_data",
+          "label": "GOOD SIGN: Will you see your own call data and results (CRM or recordings) so you can prove your numbers?",
+          "type": "choice",
+          "required": false,
+          "default": "unknown",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            },
+            {
+              "value": "unknown",
+              "label": "Not asked yet"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.offers": {
+      "label": "The Ascent: my offer tracker",
+      "group": "My engines",
+      "help": "Every offer you vetted, best verdict first, with its status, price and commission.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "offers"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [

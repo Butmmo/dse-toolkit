@@ -9,6 +9,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py log tampa-dentists 2026-11-16 3 sent    mark a row by hand (the Send Desk on your phone does this for you)
   python dse.py import acme-gtm                         check the CSV exports (Go-to-Market) or pasted profiles (Authority) before building a list
   python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
+  python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
   python dse.py packs                                   website-check packs (one per path)
   python dse.py build dentist,plumber                   once per business type: download its US business data
@@ -30,7 +31,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, callscore, desklog, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, callscore, desklog, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -77,6 +78,13 @@ def main():
     cs.add_argument("--scores", default="", help="8 scores 0-2, comma separated, in the order of the areas (see python dse.py callscore --help)")
     for i in range(1, 9):
         cs.add_argument(f"--a{i}", type=int, choices=[0, 1, 2], default=None, help=argparse.SUPPRESS)
+    vt = sub.add_parser("vet"); vt.add_argument("engine"); vt.add_argument("--offer", required=True); vt.add_argument("--url", default="")
+    vt.add_argument("--commission", type=float, default=0); vt.add_argument("--ticket", type=float, default=0)
+    vt.add_argument("--status", default="researching", choices=list(vetting.STATUSES)); vt.add_argument("--notes", default="")
+    vt.add_argument("--target", type=float, default=3000, help="the monthly income you want from this offer")
+    for q in vetting.questions():
+        vt.add_argument(f"--{q['id']}", choices=["yes", "no", "unknown"], default="unknown", help=argparse.SUPPRESS)
+    of = sub.add_parser("offers"); of.add_argument("engine")
     ch = sub.add_parser("calls"); ch.add_argument("engine")
     lg = sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
     lg.add_argument("row", help="the row number on that list"); lg.add_argument("status", choices=list(desklog.STATUSES))
@@ -95,6 +103,12 @@ def main():
         except ValueError as e:
             sys.exit(f"{e}\nAreas in order: " + "; ".join(f"{i + 1} {x[1]}" for i, x in enumerate(callscore.AREAS)))
         print(callscore.report(a.engine, a.offer, a.outcome, a.cash, a.commission, a.talk, sc))
+    elif a.cmd == "vet":
+        engines.load(a.engine)
+        print(vetting.report(a.engine, a.offer, a.url, a.commission, a.ticket, a.status, a.notes, {q["id"]: getattr(a, q["id"]) for q in vetting.questions()}, a.target))
+    elif a.cmd == "offers":
+        engines.load(a.engine)
+        print(vetting.listing(a.engine))
     elif a.cmd == "calls":
         engines.load(a.engine)
         print(callscore.history(a.engine))
