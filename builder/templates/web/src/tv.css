@@ -1,0 +1,12 @@
+/* TV (10-foot) layout: bigger type, safe margins, and a strong focus ring you can see from a sofa. */
+.platform-tv{font-size:1.35rem}
+.platform-tv .container{width:min(1500px,100% - 8vw)}
+.platform-tv body{overflow-x:hidden}
+.platform-tv .menu-btn{display:none}
+.platform-tv .nav{display:flex!important;position:static;flex-direction:row}
+.platform-tv .nav a{font-size:1.2rem;padding:.7rem 1.3rem}
+.platform-tv .btn{padding:1rem 1.8rem;font-size:1.2rem}
+.platform-tv .card{padding:1.8rem}
+.platform-tv :focus-visible,.platform-tv a:focus,.platform-tv button:focus{outline:5px solid var(--brand);outline-offset:5px;transform:scale(1.04);transition:transform .15s}
+.platform-tv .field input,.platform-tv .field select,.platform-tv .field textarea{font-size:1.25rem;padding:1rem 1.2rem}
+.platform-tv *{cursor:none}

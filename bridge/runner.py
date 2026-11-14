@@ -96,6 +96,18 @@ def engine_choices() -> list[dict]:
     return out
 
 
+def channel_choices() -> list[dict]:
+    """This PC's YouTube Launchpad channels (youtube/channels/<slug>/channel.json), for "choices_from": "channels"."""
+    out = []
+    for p in sorted((ROOT / "youtube" / "channels").glob("*/channel.json")):
+        try:
+            cfg = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        out.append({"value": p.parent.name, "label": cfg.get("name") or p.parent.name})
+    return out
+
+
 def resolve_fields(cat: dict) -> dict:
     """Fill dynamic choice lists (engines) into the catalog, for both the published forms and the value checks."""
     eng = None
@@ -104,7 +116,33 @@ def resolve_fields(cat: dict) -> dict:
             if f.get("choices_from") == "engines":
                 eng = engine_choices() if eng is None else eng
                 f["choices"] = eng
+            elif f.get("choices_from") == "channels":
+                f["choices"] = channel_choices()
     return cat
+
+
+_OLL = {"t": 0.0, "v": None}
+
+
+def ollama_info() -> dict:
+    """Is Ollama running, and can the chat model read pictures? (asks Ollama itself: /api/show lists capabilities.)
+    Citadel's DBI-AI page only offers the picture button when this says vision is true."""
+    if time.time() - _OLL["t"] < 60 and _OLL["v"] is not None:
+        return _OLL["v"]
+    model = os.environ.get("OLLAMA_MODEL", "gemma3:1b")
+    info = {"running": False, "model": model, "vision": False}
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/version", timeout=2) as r:
+            info["running"] = True
+            info["ollama"] = str(json.loads(r.read()).get("version", ""))[:20]
+        body = json.dumps({"model": model}).encode()
+        req = urllib.request.Request("http://localhost:11434/api/show", body, {"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            info["vision"] = "vision" in (json.loads(r.read()).get("capabilities") or [])
+    except Exception:
+        pass
+    _OLL.update(t=time.time(), v=info)
+    return info
 
 
 def public_catalog(cat: dict) -> dict:
@@ -112,6 +150,7 @@ def public_catalog(cat: dict) -> dict:
     keep = ("label", "group", "help", "fields", "timeout_min")
     resolve_fields(cat)
     return {"version": cat.get("version", 1),
+            "ollama": ollama_info(),
             "tools": {k: {f: t[f] for f in keep if f in t} for k, t in cat["tools"].items()}}
 
 

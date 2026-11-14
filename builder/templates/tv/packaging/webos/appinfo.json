@@ -1,0 +1,12 @@
+{
+  "id": "com.example.__SLUGCLEAN__",
+  "version": "0.1.0",
+  "vendor": "__NAME__",
+  "type": "web",
+  "main": "index.html",
+  "title": "__NAME__",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "resolution": "1920x1080",
+  "disallowScrollingInMainWindow": false
+}

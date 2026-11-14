@@ -806,6 +806,14 @@
         {
           "opt": "--image",
           "field": "image"
+        },
+        {
+          "opt": "--engine",
+          "field": "engine"
+        },
+        {
+          "opt": "--image-id",
+          "field": "image_id"
         }
       ],
       "fields": [
@@ -824,9 +832,689 @@
           "type": "file",
           "glob": "chat/images/*.*",
           "exclude": "\\.keep$"
+        },
+        {
+          "name": "engine",
+          "label": "Engine folder (optional)",
+          "type": "text",
+          "required": false,
+          "max": 60,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$",
+          "placeholder": "engine-b-reviews"
+        },
+        {
+          "name": "image_id",
+          "label": "Picture from Citadel (internal)",
+          "type": "text",
+          "required": false,
+          "max": 36,
+          "pattern": "^[0-9a-f-]{36}$"
         }
       ],
       "timeout_min": 6,
+      "outputs": []
+    },
+    "app.build": {
+      "label": "App Builder: build any website or app",
+      "group": "Build",
+      "help": "Builds a real, working project for you: a website, web app (installs on phones), native phone app (iPhone + Android), desktop app (Windows/Mac) or TV app (Samsung, LG, Android TV). Pick a starting point (landing page, dashboard, store, booking), your name, colour and one line about it. You get a folder in builds/ with the app, a README with the exact commands to run and publish it, a BUILD-BRIEF of what to build next, and rules so an AI coding agent can carry on. Needs Node.js LTS (nodejs.org) for everything except the plain website. Tick 'Install and test the build' to have it prove the app builds (a few minutes). Nothing is published or paid for: you deploy yourself.",
+      "script": "builder/build.py",
+      "args": [
+        {
+          "lit": "new"
+        },
+        {
+          "opt": "--kind",
+          "field": "kind"
+        },
+        {
+          "opt": "--name",
+          "field": "name"
+        },
+        {
+          "opt": "--blueprint",
+          "field": "blueprint"
+        },
+        {
+          "opt": "--color",
+          "field": "color"
+        },
+        {
+          "opt": "--brief",
+          "field": "brief"
+        },
+        {
+          "opt": "--email",
+          "field": "email"
+        },
+        {
+          "opt": "--currency",
+          "field": "currency"
+        },
+        {
+          "flag": "--ai",
+          "field": "ai"
+        },
+        {
+          "flag": "--install",
+          "field": "install"
+        }
+      ],
+      "fields": [
+        {
+          "name": "kind",
+          "label": "What to build",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "website",
+              "label": "Website (plain, fast, host free)"
+            },
+            {
+              "value": "webapp",
+              "label": "Web app (installs on phones, works offline)"
+            },
+            {
+              "value": "mobile",
+              "label": "Phone app (iPhone + Android)"
+            },
+            {
+              "value": "desktop",
+              "label": "Desktop app (Windows/Mac/Linux)"
+            },
+            {
+              "value": "tv",
+              "label": "TV app (Samsung, LG, Android TV)"
+            }
+          ]
+        },
+        {
+          "name": "name",
+          "label": "Name of the app",
+          "type": "text",
+          "required": true,
+          "max": 40,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 '-]{1,39}$",
+          "placeholder": "Acme Desk"
+        },
+        {
+          "name": "blueprint",
+          "label": "Starting point",
+          "type": "choice",
+          "required": true,
+          "default": "landing",
+          "choices": [
+            {
+              "value": "landing",
+              "label": "Landing page: home, pricing, about, contact"
+            },
+            {
+              "value": "dashboard",
+              "label": "Dashboard: overview, items manager, settings"
+            },
+            {
+              "value": "store",
+              "label": "Store: shop, cart, about"
+            },
+            {
+              "value": "booking",
+              "label": "Booking: home, book, bookings list"
+            },
+            {
+              "value": "blank",
+              "label": "Blank: one screen"
+            }
+          ]
+        },
+        {
+          "name": "color",
+          "label": "Brand colour (hex)",
+          "type": "text",
+          "required": true,
+          "default": "#7a1f2b",
+          "max": 7,
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "placeholder": "#7a1f2b"
+        },
+        {
+          "name": "brief",
+          "label": "One line: what it does and who it is for",
+          "type": "text",
+          "required": false,
+          "max": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!-]{0,199}$",
+          "placeholder": "Helps small recruiting agencies track every candidate"
+        },
+        {
+          "name": "email",
+          "label": "Contact email for forms (website only, optional)",
+          "type": "text",
+          "required": false,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9._%+-]{1,60}@[A-Za-z0-9.-]{3,60}$"
+        },
+        {
+          "name": "currency",
+          "label": "Currency code",
+          "type": "text",
+          "required": false,
+          "default": "USD",
+          "max": 3,
+          "pattern": "^[A-Za-z]{3}$"
+        },
+        {
+          "name": "ai",
+          "label": "Let my free local AI (Ollama) write the headline and benefits",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "install",
+          "label": "Install and test the build (a few minutes, needs Node.js)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 25,
+      "outputs": [
+        {
+          "glob": "builds/*.zip",
+          "upload": true
+        },
+        {
+          "glob": "builds/*/BUILD-BRIEF.md",
+          "upload": true
+        }
+      ]
+    },
+    "yt.plan": {
+      "label": "YouTube Launchpad: plan my channel",
+      "group": "YouTube",
+      "help": "Builds your whole YouTube channel plan from zero: your niche and promise, channel name ideas, setup checklist, the exact Partner Program (monetisation) numbers and what they mean in views, a faceless-safe policy guide, tools that cost nothing, a 13-week roadmap matched to your weekly hours, a weekly routine, and 30 video ideas with titles, hooks, thumbnail briefs and Shorts. Works faceless or on camera. Read CHANNEL-PLAN.md first. It teaches the method and the honest odds: it cannot promise income.",
+      "script": "youtube/launch.py",
+      "args": [
+        {
+          "lit": "plan"
+        },
+        {
+          "opt": "--niche",
+          "field": "niche"
+        },
+        {
+          "opt": "--topic",
+          "field": "topic"
+        },
+        {
+          "opt": "--faceless",
+          "field": "faceless"
+        },
+        {
+          "opt": "--goal",
+          "field": "goal"
+        },
+        {
+          "opt": "--hours",
+          "field": "hours"
+        },
+        {
+          "opt": "--name",
+          "field": "name"
+        },
+        {
+          "opt": "--audience",
+          "field": "audience"
+        }
+      ],
+      "fields": [
+        {
+          "name": "niche",
+          "label": "Your topic area",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "ai-tools",
+              "label": "AI tools and automation for work"
+            },
+            {
+              "value": "no-code-building",
+              "label": "Build websites and apps without code"
+            },
+            {
+              "value": "small-business-marketing",
+              "label": "Marketing for local and small businesses"
+            },
+            {
+              "value": "careers-recruiting",
+              "label": "Careers, jobs and recruiting"
+            },
+            {
+              "value": "freelancing",
+              "label": "Freelancing and selling your skills online"
+            },
+            {
+              "value": "personal-finance",
+              "label": "Personal money basics"
+            },
+            {
+              "value": "productivity-study",
+              "label": "Productivity and study skills"
+            },
+            {
+              "value": "faith-reflections",
+              "label": "Faith reflections and parish life"
+            },
+            {
+              "value": "caregiving-info",
+              "label": "Home care and caregiving guidance"
+            },
+            {
+              "value": "ecommerce",
+              "label": "Online stores and email marketing"
+            },
+            {
+              "value": "creators-podcasting",
+              "label": "Podcasting and growing as a creator"
+            },
+            {
+              "value": "tech-how-to",
+              "label": "Everyday tech how-tos"
+            },
+            {
+              "value": "history-explainers",
+              "label": "History and clear explainers"
+            },
+            {
+              "value": "food-cooking",
+              "label": "Cooking and food"
+            },
+            {
+              "value": "interior-home",
+              "label": "Interior design and home improvement"
+            },
+            {
+              "value": "other",
+              "label": "Something else (write it below)"
+            }
+          ]
+        },
+        {
+          "name": "topic",
+          "label": "Your specific angle (required if 'something else')",
+          "type": "text",
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,149}$",
+          "placeholder": "repair phones"
+        },
+        {
+          "name": "faceless",
+          "label": "Show your face?",
+          "type": "choice",
+          "required": true,
+          "default": "yes",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "No: faceless channel"
+            },
+            {
+              "value": "no",
+              "label": "Yes: I will be on camera"
+            }
+          ]
+        },
+        {
+          "name": "goal",
+          "label": "Main goal",
+          "type": "choice",
+          "required": true,
+          "default": "leads",
+          "choices": [
+            {
+              "value": "ads",
+              "label": "Earn from YouTube ads (the Partner Program) as the main income"
+            },
+            {
+              "value": "leads",
+              "label": "Use the channel to bring clients to a service I sell (the most reliable route for new creators)"
+            },
+            {
+              "value": "affiliate",
+              "label": "Earn from affiliate links and sponsors, with ads as a bonus"
+            },
+            {
+              "value": "authority",
+              "label": "Build authority and a following first, income later"
+            }
+          ]
+        },
+        {
+          "name": "hours",
+          "label": "Hours per week you can give",
+          "type": "int",
+          "min": 1,
+          "max": 40,
+          "default": 6
+        },
+        {
+          "name": "name",
+          "label": "Channel name (optional: otherwise ideas are given)",
+          "type": "text",
+          "max": 40,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 '&-]{1,39}$"
+        },
+        {
+          "name": "audience",
+          "label": "Who it is for (optional)",
+          "type": "text",
+          "max": 120,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,149}$"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": [
+        {
+          "glob": "youtube/channels/*/CHANNEL-PLAN.md",
+          "upload": true
+        },
+        {
+          "glob": "youtube/channels/*/ideas.csv",
+          "upload": true
+        }
+      ]
+    },
+    "yt.ideas": {
+      "label": "YouTube Launchpad: more video ideas",
+      "group": "YouTube",
+      "help": "Adds more video ideas to your channel's ideas.csv: titles that fit one window, a hook, a thumbnail brief and a Short for each. Give an angle (something you know well) and it puts a video on that first.",
+      "script": "youtube/launch.py",
+      "args": [
+        {
+          "lit": "ideas"
+        },
+        {
+          "opt": "--channel",
+          "field": "channel"
+        },
+        {
+          "opt": "--count",
+          "field": "count"
+        },
+        {
+          "opt": "--angle",
+          "field": "angle"
+        }
+      ],
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Channel",
+          "type": "choice",
+          "required": true,
+          "choices_from": "channels",
+          "choices": []
+        },
+        {
+          "name": "count",
+          "label": "How many",
+          "type": "int",
+          "min": 1,
+          "max": 40,
+          "default": 10
+        },
+        {
+          "name": "angle",
+          "label": "An angle you know well (optional)",
+          "type": "text",
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,149}$"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": [
+        {
+          "glob": "youtube/channels/*/ideas.csv",
+          "upload": true
+        }
+      ]
+    },
+    "yt.script": {
+      "label": "YouTube Launchpad: write a video script",
+      "group": "YouTube",
+      "help": "Turns a video idea into a ready-to-record script plan: hook options, promise, sections with timing, on-screen cues, call to action, five title options, the thumbnail brief, description and pinned comment, a Short cut-down and a pre-upload checklist. Tick the AI box for a first draft from your own free Ollama (rewrite it in your voice: original content is what YouTube rewards).",
+      "script": "youtube/launch.py",
+      "args": [
+        {
+          "lit": "script"
+        },
+        {
+          "opt": "--channel",
+          "field": "channel"
+        },
+        {
+          "opt": "--title",
+          "field": "title"
+        },
+        {
+          "opt": "--minutes",
+          "field": "minutes"
+        },
+        {
+          "flag": "--ai",
+          "field": "ai"
+        }
+      ],
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Channel",
+          "type": "choice",
+          "required": true,
+          "choices_from": "channels",
+          "choices": []
+        },
+        {
+          "name": "title",
+          "label": "Video title (copy one from ideas.csv)",
+          "type": "text",
+          "required": true,
+          "max": 150,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,149}$"
+        },
+        {
+          "name": "minutes",
+          "label": "Length in minutes",
+          "type": "int",
+          "min": 3,
+          "max": 20,
+          "default": 8
+        },
+        {
+          "name": "ai",
+          "label": "Add an AI first draft (needs Ollama, takes a few minutes)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 8,
+      "outputs": [
+        {
+          "glob": "youtube/channels/*/scripts/*.md",
+          "upload": true
+        }
+      ]
+    },
+    "yt.track": {
+      "label": "YouTube Launchpad: weekly numbers and progress",
+      "group": "YouTube",
+      "help": "Type this week's numbers from YouTube Studio (subscribers, watch hours in the last 12 months, Shorts views in the last 90 days, and if you can the click-through rate and average percentage viewed). It shows how far you are from the Partner Program numbers, your weekly pace, and the three things to fix next. Do it once a week.",
+      "script": "youtube/launch.py",
+      "args": [
+        {
+          "lit": "track"
+        },
+        {
+          "opt": "--channel",
+          "field": "channel"
+        },
+        {
+          "opt": "--subs",
+          "field": "subs"
+        },
+        {
+          "opt": "--watch-hours",
+          "field": "watch_hours"
+        },
+        {
+          "opt": "--shorts-views",
+          "field": "shorts_views"
+        },
+        {
+          "opt": "--views",
+          "field": "views"
+        },
+        {
+          "opt": "--uploads",
+          "field": "uploads"
+        },
+        {
+          "opt": "--ctr",
+          "field": "ctr"
+        },
+        {
+          "opt": "--avd",
+          "field": "avd"
+        }
+      ],
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Channel",
+          "type": "choice",
+          "required": true,
+          "choices_from": "channels",
+          "choices": []
+        },
+        {
+          "name": "subs",
+          "label": "Subscribers",
+          "type": "int",
+          "required": true,
+          "min": 0,
+          "max": 100000000
+        },
+        {
+          "name": "watch_hours",
+          "label": "Public watch hours, last 12 months",
+          "type": "int",
+          "required": true,
+          "min": 0,
+          "max": 10000000
+        },
+        {
+          "name": "shorts_views",
+          "label": "Shorts views, last 90 days",
+          "type": "int",
+          "min": 0,
+          "max": 10000000000,
+          "default": 0
+        },
+        {
+          "name": "views",
+          "label": "Views, last 28 days (optional)",
+          "type": "int",
+          "min": 0,
+          "max": 10000000000
+        },
+        {
+          "name": "uploads",
+          "label": "Videos published so far (optional)",
+          "type": "int",
+          "min": 0,
+          "max": 100000
+        },
+        {
+          "name": "ctr",
+          "label": "Impressions click-through rate % (optional)",
+          "type": "text",
+          "max": 5,
+          "pattern": "^\\d{1,2}(\\.\\d{1,2})?$"
+        },
+        {
+          "name": "avd",
+          "label": "Average percentage viewed % (optional)",
+          "type": "text",
+          "max": 6,
+          "pattern": "^\\d{1,3}(\\.\\d{1,2})?$"
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": [
+        {
+          "glob": "youtube/channels/*/PROGRESS.md",
+          "upload": true
+        }
+      ]
+    },
+    "yt.check": {
+      "label": "YouTube Launchpad: check a title and thumbnail",
+      "group": "YouTube",
+      "help": "Checks a video's packaging before you publish: title length and keyword position, shouting and clickbait wording, thumbnail words, and the first lines of the description. Gives a score and exact fixes.",
+      "script": "youtube/launch.py",
+      "args": [
+        {
+          "lit": "check"
+        },
+        {
+          "opt": "--title",
+          "field": "title"
+        },
+        {
+          "opt": "--keyword",
+          "field": "keyword"
+        },
+        {
+          "opt": "--thumb",
+          "field": "thumb"
+        },
+        {
+          "opt": "--description",
+          "field": "description"
+        }
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "label": "Title",
+          "type": "text",
+          "required": true,
+          "max": 150,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,149}$"
+        },
+        {
+          "name": "keyword",
+          "label": "Main keyword people would type (optional)",
+          "type": "text",
+          "max": 60,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,149}$"
+        },
+        {
+          "name": "thumb",
+          "label": "Words on the thumbnail (optional)",
+          "type": "text",
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,149}$"
+        },
+        {
+          "name": "description",
+          "label": "Start of the description (optional)",
+          "type": "text",
+          "max": 300,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:+-]{1,299}$"
+        }
+      ],
+      "timeout_min": 1,
       "outputs": []
     }
   },

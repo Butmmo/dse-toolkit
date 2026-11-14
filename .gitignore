@@ -5,3 +5,5 @@ bridge/.env
 bridge/logs/
 __pycache__/
 engines/
+builds/
+youtube/channels/

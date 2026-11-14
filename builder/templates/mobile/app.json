@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "__NAME__",
+    "slug": "__SLUG__",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#ffffff",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.example.__SLUGCLEAN__" },
+    "android": { "package": "com.example.__SLUGCLEAN__", "adaptiveIcon": { "backgroundColor": "__COLOR__" } },
+    "web": { "bundler": "metro" }
+  }
+}

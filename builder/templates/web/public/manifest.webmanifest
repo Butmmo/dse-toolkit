@@ -1,0 +1,10 @@
+{
+  "name": "__NAME__",
+  "short_name": "__SHORT__",
+  "description": "__DESC__",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "__COLOR__",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
