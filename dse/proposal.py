@@ -75,8 +75,9 @@ def build_data(slug: str, client: str, contact: str, problem: str, offer: str, p
         raise ValueError("List 1 to 12 deliverables, separated by semicolons.")
     if not 1 <= weeks <= 26:
         raise ValueError("The timeline is 1 to 26 weeks.")
-    if currency not in SYMBOLS:
-        raise ValueError("Currency is USD, GBP or EUR.")
+    currency = (currency or "USD").strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise ValueError("Currency is a 3-letter code such as USD, GBP, EUR, NGN or CAD.")
     if not 0 <= deposit <= 100:
         raise ValueError("The deposit is a percentage from 0 to 100.")
     opts = parse_options(options)
@@ -89,7 +90,7 @@ def build_data(slug: str, client: str, contact: str, problem: str, offer: str, p
     st = dt.date.fromisoformat(start) if start else next_monday(today)
     sender = (cfg.get("sender_name") or "").strip() or "[your name]"
     brand = (cfg.get("brand_name") or cfg.get("name") or "").strip()
-    sym = SYMBOLS[currency]
+    sym = SYMBOLS.get(currency, currency + " ")          # a currency of your own shows its code: NGN 1,500
     said = []
     if with_quotes:
         from . import proof          # only approved, consented quotes that agreed to proposals; their exact words, with the attribution THEY chose

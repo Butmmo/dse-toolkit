@@ -54,6 +54,14 @@ Where the numbers come from, all in `engines/<engine>/data/`: `cash.csv` (money 
 
 `python dse.py call after <engine> --source LIST --row N --outcome follow_up|sold|no_sale|no_show --problem "their words" --cost-month 4000 --price 1500 --agreed "what we agreed"` writes `after.md`: the recap to send within 10 minutes (their problem, their number, what you agreed, signed in your name), the scorecard command, and for a follow-up the `proposal` command already filled in. A sold or lost call is written into the send log (with the value) so your results stay true; `--stop` adds them to the do-not-contact list. The Weekly Review flags a call booked in the last week with no prep sheet and gives the exact prep command. Nothing is sent.
 
+## Make it yours: your own business type, your own website check, your own words
+
+The built-in lists and checks are written for one path each. Every one of them now has a way out:
+- **Your own business type:** in the lead tools (`python dse.py find "wedding photographers" "Tampa FL"`, or HQ Tools, Business type, "Other: type my own") type any business you sell to. It is found among Foursquare's business categories and saved (`data/custom-kinds.json`); if several categories fit, you are shown them and asked to type the exact one (nothing is guessed). The first time it also builds the data (a few minutes, same free `HF_TOKEN`). `python dse.py categories photo` browses the names.
+- **Your own website check:** `python dse.py mypack "Wedding photographers" --sells "fast galleries and a booking page" --checks "online booking, book now => there is no way to book a session online"`. Each check is the words that count as the site having it, then `=>`, then what you would say when none appear. It appears next to the built-in packs in every tool that asks for one (`data/custom-packs/`), and your sentence becomes the gap in the opener. Nothing is invented.
+- **Your own words:** `--words "wedding, bride"` (the business's website must use one of them; replaces the built-in words) and `--skip "studio"` (leave out businesses whose name has them) on `find` and `list`.
+- **Other values:** a currency of your own (any 3-letter code such as NGN or CAD) in proposals, Books, Cut Desk and exchange rates; a podcast genre of your own. In HQ Tools and in the app every such field shows "Other: type my own".
+
 ## Voices: the people worth learning from, with their real words and sources
 
 One library, not a tool per person: `voices/roster.json` holds **10 figures for each of five areas** (wisdom and philosophy, human empowerment and psychology, structure and systems, sales and persuasion, financial development) and **7 for each of the 9 paths**. The roster is my proposal and a plain file you can edit (swap a name, fix a source); `python dse.py voices check` confirms the counts still hold. Entries marked `check` are ones I was not sure of: confirm them before relying on them.

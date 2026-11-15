@@ -36,7 +36,7 @@ NOV14 = dt.date(2026, 11, 14)
 ADA = f"{SLUG}/ada-obi"
 try:
     # ---- add
-    for name, kw in {"no name": {"name": " "}, "percent 0": {"percent": 0}, "percent 70": {"percent": 70}, "bad basis": {"basis": "x"}, "bad currency": {"currency": "NGN"},
+    for name, kw in {"no name": {"name": " "}, "percent 0": {"percent": 0}, "percent 70": {"percent": 70}, "bad basis": {"basis": "x"}, "bad currency": {"currency": "NAIRA"},
                      "bad method": {"method": "cash"}, "bad email": {"email": "nope"}, "due days 99": {"due_days": 99}}.items():
         args = {"name": "Ada Obi", "percent": 10, **kw}
         check(f"add refused: {name}", raises(U.add, SLUG, today=NOV14, **args) is not None)

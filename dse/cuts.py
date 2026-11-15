@@ -130,8 +130,9 @@ def add(slug: str, name: str, percent: float, basis: str = "gross", currency: st
         raise ValueError("The percent is between 1 and 60.")
     if basis not in ("gross", "net"):
         raise ValueError("Basis is gross (what they earn) or net (after the platform's own fees).")
-    if currency not in SYMBOLS:
-        raise ValueError("Currency is USD, GBP or EUR.")
+    currency = (currency or "USD").strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise ValueError("Currency is a 3-letter code such as USD, GBP, EUR, NGN or CAD.")
     if method not in METHODS:
         raise ValueError("Method is grey, payoneer or other.")
     if not 0 <= due_days <= 60:
@@ -143,7 +144,7 @@ def add(slug: str, name: str, percent: float, basis: str = "gross", currency: st
     folder = cuts_dir(slug) / sslug
     if (folder / "student.json").exists():
         raise ValueError(f"{name} is already set up. See: python dse.py cut show {slug}/{sslug}")
-    s = {"slug": sslug, "name": name, "engine": slug, "email": email, "percent": float(percent), "basis": basis, "currency": currency, "sym": SYMBOLS[currency], "method": method,
+    s = {"slug": sslug, "name": name, "engine": slug, "email": email, "percent": float(percent), "basis": basis, "currency": currency, "sym": SYMBOLS.get(currency, currency + " "), "method": method,
          "due_days": due_days, "start": st.isoformat(), "created": today.isoformat(), "status": "active", "statements": [], "invoices": [], "program": program,
          "cap": DFY["cap"] if program == "dfy" else None, "threshold": DFY["threshold"] if program == "dfy" else None, "months_target": DFY["months_target"] if program == "dfy" else None}
     folder.mkdir(parents=True, exist_ok=True)

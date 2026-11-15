@@ -44,7 +44,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -68,16 +68,22 @@ def main():
     sub.add_parser("kinds")
     sub.add_parser("packs")
     b = sub.add_parser("build"); b.add_argument("kinds", help="comma-separated business types, e.g. dentist,plumber")
-    f = sub.add_parser("find"); f.add_argument("kind"); f.add_argument("cities")
+    sub.add_parser("categories").add_argument("search", nargs="?", default="", help="words to find among Foursquare's business categories")
+    mp = sub.add_parser("mypack", help="make your own website check for any kind of business"); mp.add_argument("name")
+    mp.add_argument("--sells", required=True); mp.add_argument("--checks", action="append", required=True, help="words to look for, comma separated => what to say if they are missing (repeat or one per line)")
+    mp.add_argument("--opener", default=""); mp.add_argument("--pages", default="")
+    f = sub.add_parser("find"); f.add_argument("kind", help="a business type from the list, or type your own (like 'wedding photographers')"); f.add_argument("cities")
     for p in (f,):
         p.add_argument("--miles", type=float, default=25.0); p.add_argument("--max", type=int, default=100)
         p.add_argument("--all", action="store_true", help="keep national chains"); p.add_argument("--out", default="")
+        p.add_argument("--words", default="", help="your own words the website must use, comma separated (replaces the built-in ones)")
+        p.add_argument("--skip", default="", help="your own words that put a business out when they are in its name")
     c = sub.add_parser("check"); c.add_argument("pack"); c.add_argument("target", help="a CSV with a website column, or one web address")
     c.add_argument("--fast", action="store_true", help="skip the hidden browser (quicker, misses JavaScript-built sites)")
     c.add_argument("--out", default="")
     l = sub.add_parser("list"); l.add_argument("pack"); l.add_argument("kind"); l.add_argument("cities")
     l.add_argument("--miles", type=float, default=25.0); l.add_argument("--max", type=int, default=40)
-    l.add_argument("--fast", action="store_true"); l.add_argument("--all", action="store_true")
+    l.add_argument("--fast", action="store_true"); l.add_argument("--all", action="store_true"); l.add_argument("--words", default=""); l.add_argument("--skip", default="")
     pc = sub.add_parser("podcasts"); pc.add_argument("terms"); pc.add_argument("--genre", default="business")
     pc.add_argument("--max", type=int, default=60); pc.add_argument("--max-silent", type=int, default=180); pc.add_argument("--out", default="")
     m = sub.add_parser("mystery"); m.add_argument("action", choices=["new", "score"]); m.add_argument("csv")
@@ -369,24 +375,45 @@ def main():
                 for k in kinds:
                     have = "ready" if places.extract_path(k).exists() else "run: python dse.py build " + k
                     print(f"  {k:<20} {places.KINDS[k][0]:<28} {have}")
+        mine = places.custom_kinds()
+        if mine:
+            print("your own:")
+            for k, v in mine.items():
+                print(f"  {k:<20} {v['label']:<28} " + ("ready" if places.extract_path(k).exists() else "built on first use"))
     elif a.cmd == "packs":
         for p in sorted(chk.PACKS.glob("*.json")):
             pk = chk.load_pack(p.stem)
             print(f"{p.stem:<11} {pk['label']}: {pk.get('about', '')}")
+        for pid in custom.pack_ids():
+            pk = chk.load_pack(pid)
+            print(f"{pid:<11} {pk['label']}: {pk.get('about', '')}")
+        print("(make your own check for any business with: python dse.py mypack)")
+    elif a.cmd == "mypack":
+        try:
+            print(custom.make_pack(a.name, a.sells, a.checks, a.opener, a.pages))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "categories":
+        cats = places.categories()
+        hits = places.match_categories(a.search, cats) if a.search.strip() else sorted({n for _, n in cats})
+        print(f"{len(hits)} Foursquare business categories" + (f" like '{a.search}'" if a.search.strip() else "") + ":")
+        for n in hits[:60]:
+            print("  " + n)
+        print("Type any of these (or a plain word like 'photographer') as the business type in the lead tools: it is saved for you.")
         print("podcasts    The Broadcast Engine: python dse.py podcasts \"<topics>\"")
     elif a.cmd == "build":
         places.build([k.strip() for k in a.kinds.split(",") if k.strip()])
     elif a.cmd == "find":
-        places.find(a.kind, a.cities, a.miles, a.max, a.all, a.out)
+        places.find(a.kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip)
     elif a.cmd == "check":
         if a.target.lower().startswith(("http://", "https://", "www.")) or (a.target.count(".") and not a.target.lower().endswith(".csv")):
             chk.check_one(a.pack, a.target, render=not a.fast)
         else:
             chk.check_file(a.pack, a.target, render=not a.fast, out=a.out)
     elif a.cmd == "list":
-        if a.pack in PACK_KINDS and PACK_KINDS[a.pack] and a.kind not in PACK_KINDS[a.pack]:
-            print(f"Note: '{a.kind}' isn't one of the {a.pack} business types ({', '.join(PACK_KINDS[a.pack])}).", file=sys.stderr)
-        src = places.find(a.kind, a.cities, a.miles, a.max, a.all)
+        if a.pack in PACK_KINDS and PACK_KINDS[a.pack] and a.kind not in PACK_KINDS[a.pack] and not places.kind_info(a.kind):
+            print(f"Note: '{a.kind}' isn't one of the {a.pack} business types: treating it as a business type of your own.", file=sys.stderr)
+        src = places.find(a.kind, a.cities, a.miles, a.max, a.all, "", a.words, a.skip)
         chk.check_file(a.pack, src, render=not a.fast)
     elif a.cmd == "podcasts":
         podcasts.find(a.terms, a.genre, a.max, a.max_silent, a.out)

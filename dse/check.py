@@ -27,9 +27,12 @@ HAND = "check by hand"
 
 
 def load_pack(name: str) -> dict:
+    from . import custom
     p = PACKS / f"{name}.json"
+    if not p.exists() and re.fullmatch(r"my-[a-z0-9-]{1,40}", name) and (custom.PACK_DIR / f"{name}.json").is_file():
+        p = custom.PACK_DIR / f"{name}.json"            # a pack you made yourself (python dse.py mypack)
     if not p.exists():
-        sys.exit(f"No pack '{name}'. Packs: {', '.join(sorted(x.stem for x in PACKS.glob('*.json')))}")
+        sys.exit(f"No pack '{name}'. Packs: {', '.join(sorted([x.stem for x in PACKS.glob('*.json')] + custom.pack_ids()))}. Make your own with: python dse.py mypack")
     pack = json.loads(p.read_text(encoding="utf-8"))
     for c in pack.get("checks", []):
         c["_re"] = re.compile("|".join(c["look_for"]), re.I) if c.get("look_for") else None

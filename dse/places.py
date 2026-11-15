@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import csv
+import json
 import math
 import os
 import re
@@ -102,6 +103,92 @@ NOT_A_SITE = re.compile(r"yelp\.com|google\.com|mapquest|yellowpages|facebook\.c
                         r"healthgrades|zocdoc|vitals\.com|caring\.com|aplaceformom", re.I)
 
 
+# ---- business types you define yourself (any Foursquare category), saved on this PC
+CUSTOM_KINDS = DATA / "custom-kinds.json"
+CATEGORY_CACHE = DATA / "fsq-categories.csv"
+
+
+def custom_kinds() -> dict:
+    try:
+        return json.loads(CUSTOM_KINDS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def kind_info(kind: str) -> tuple[str, list[str], str] | None:
+    """(label, Foursquare category names, words a real site of that type uses) for a built-in or a saved custom business type."""
+    if kind in KINDS:
+        return KINDS[kind][0], KINDS[kind][1], KIND_WORDS.get(kind, "")
+    c = custom_kinds().get(kind)
+    return (c["label"], c["names"], c.get("words", "")) if c else None
+
+
+def _stem(w: str) -> str:
+    w = w.lower()
+    for suf in ("ers", "ies", "es", "s"):
+        if w.endswith(suf) and len(w) - len(suf) >= 4:
+            return w[:-len(suf)] + ("y" if suf == "ies" else "")
+    return w
+
+
+def categories() -> list[tuple[str, str]]:
+    """Foursquare's category list (id, name), cached on this PC. Needs the free HF_TOKEN once (README, One-time: business data)."""
+    if not CATEGORY_CACHE.exists():
+        token = os.environ.get("HF_TOKEN")
+        if not token:
+            sys.exit("To look up a business type of your own, set HF_TOKEN once (README, 'One-time: business data': a free Hugging Face read token).")
+        r = requests.get("https://huggingface.co/api/datasets/foursquare/fsq-os-places/tree/main/release", headers={"Authorization": f"Bearer {token}"}, timeout=30)
+        r.raise_for_status()
+        dt = sorted(x["path"].split("dt=")[1] for x in r.json() if "dt=" in x["path"])[-1]
+        con = _con()
+        con.sql(f"CREATE SECRET hf (TYPE huggingface, TOKEN '{token}')")
+        cats = con.sql(f"SELECT category_id, category_name FROM '{HF}/release/dt={dt}/categories/parquet/*.parquet'").fetchall()
+        DATA.mkdir(exist_ok=True)
+        with open(CATEGORY_CACHE, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["id", "name"])
+            w.writerows((i, n) for i, n in cats if n)
+    with open(CATEGORY_CACHE, newline="", encoding="utf-8") as f:
+        return [(r["id"], r["name"]) for r in csv.DictReader(f)]
+
+
+def match_categories(term: str, cats: list[tuple[str, str]]) -> list[str]:
+    """Category names that fit what you typed: an exact name, else every word you typed appears in the name."""
+    t = re.sub(r"\s+", " ", term.lower()).strip()
+    names = sorted({n for _, n in cats})
+    exact = [n for n in names if n.lower() == t or _stem(n.lower()) == _stem(t)]
+    if exact:
+        return exact[:1]
+    want = [_stem(w) for w in re.findall(r"[a-z]{3,}", t)]
+    def same(a: str, b: str) -> bool:           # photography, photographer and photographers are one word here
+        a, b = _stem(a), _stem(b)
+        return a == b or a.startswith(b) or b.startswith(a) or len(os.path.commonprefix([a, b])) >= 7
+    return [n for n in names if want and all(any(same(w, x) for x in re.findall(r"[a-z]{3,}", n.lower())) for w in want)]
+
+
+def resolve_kind(term: str, words: str = "") -> str:
+    """A built-in business type, one saved before, or a new one you typed: found among Foursquare's categories and saved. Never guesses between several."""
+    term = re.sub(r"\s+", " ", (term or "").strip())
+    if not term or term.startswith("-") or len(term) > 60:
+        sys.exit("Give a business type: pick one from the list or type your own (like 'wedding photographers').")
+    s = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", term.lower())).strip("-")
+    if kind_info(s) or kind_info(term):
+        return s if kind_info(s) else term
+    found = match_categories(term, categories())
+    if not found:
+        sys.exit(f"Foursquare has no business category like '{term}'. Try a simpler word (for example 'photographer'), or browse: python dse.py categories photo")
+    if len(found) > 1:
+        sys.exit(f"'{term}' fits {len(found)} Foursquare categories. Type the exact name of the one you mean:\n  - " + "\n  - ".join(found[:15]) + ("\n  ..." if len(found) > 15 else ""))
+    name = found[0]
+    site_words = "|".join(sorted({re.escape(_stem(w)) for w in re.findall(r"[a-z]{3,}", (term + " " + name).lower())}))
+    data = custom_kinds()
+    data[s] = {"label": name, "names": [name], "words": site_words, "typed": term}
+    DATA.mkdir(exist_ok=True)
+    CUSTOM_KINDS.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    log(f"Saved your business type '{term}' as the Foursquare category '{name}'.")
+    return s
+
+
 def _con():
     import duckdb
     con = duckdb.connect()
@@ -117,9 +204,9 @@ def build(kinds: list[str]):
     token = os.environ.get("HF_TOKEN")
     if not token:
         sys.exit("Set HF_TOKEN first (README, 'One-time: business data'). It's a free Hugging Face read token.")
-    bad = [k for k in kinds if k not in KINDS]
+    bad = [k for k in kinds if not kind_info(k)]
     if bad:
-        sys.exit(f"Unknown business type(s): {', '.join(bad)}. Run: python dse.py kinds")
+        sys.exit(f"Unknown business type(s): {', '.join(bad)}. Run: python dse.py kinds (or type your own in the lead tool: it is saved for you)")
     DATA.mkdir(exist_ok=True)
     r = requests.get("https://huggingface.co/api/datasets/foursquare/fsq-os-places/tree/main/release",
                      headers={"Authorization": f"Bearer {token}"}, timeout=30)
@@ -129,7 +216,7 @@ def build(kinds: list[str]):
     con.sql(f"CREATE SECRET hf (TYPE huggingface, TOKEN '{token}')")
     cats = con.sql(f"SELECT category_id, category_name FROM '{HF}/release/dt={dt}/categories/parquet/*.parquet'").fetchall()
     for kind in kinds:
-        names = {n.lower() for n in KINDS[kind][1]}
+        names = {n.lower() for n in kind_info(kind)[1]}
         ids = [cid for cid, name in cats if (name or "").lower() in names]
         if not ids:
             log(f"  {kind}: no Foursquare category found, skipped")
@@ -201,14 +288,25 @@ def site_live(url: str, words: str = "") -> bool:
     return True
 
 
-def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "") -> str:
-    if kind not in KINDS:
-        sys.exit(f"Unknown business type '{kind}'. Run: python dse.py kinds")
+def own_words(text: str) -> str:
+    """Your own words as a pattern: 'wedding, bride' -> wedding|bride (letters, digits and spaces only, so nothing you type can break the pattern)."""
+    ws = [re.escape(w.strip().lower()) for w in re.split(r"[,;]", text or "") if 2 <= len(w.strip()) <= 40]
+    return "|".join(ws[:12])
+
+
+def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "", words: str = "", skip: str = "") -> str:
+    """kind: a built-in or saved business type, or one you type (found among Foursquare's categories, saved, and its data built on first use).
+    words: your own words the business's website must use (replaces the built-in ones). skip: words that put a business out when they are in its name."""
+    kind = resolve_kind(kind)
+    info = kind_info(kind)
     src = extract_path(kind)
     if not src.exists():
-        sys.exit(f"No business data for '{kind}' yet. Run once: python dse.py build {kind}")
+        log(f"No business data for '{kind}' yet: building it now (once, a few minutes).")
+        build([kind])
     con = _con()
-    names = [n.lower() for n in KINDS[kind][1]]
+    names = [n.lower() for n in info[1]]
+    site_words = own_words(words) or info[2]
+    skip_re = re.compile(own_words(skip), re.I) if own_words(skip) else None
     places = [c.strip() for c in re.split(r"[;|]", cities) if c.strip()]
     if not places:
         sys.exit("Give at least one city, like 'Tampa FL; Orlando FL'.")
@@ -234,6 +332,8 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
                 web = ""
             if not keep_all and (CHAINS.search(p["name"] or "") or CHAINS.search(web)):
                 continue
+            if skip_re and skip_re.search(p["name"] or ""):
+                continue
             dom = re.sub(r"^www\.", "", web.split("/")[2].lower()) if web else ""
             if dom and dom in seen:
                 continue
@@ -246,7 +346,7 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
                 "instagram": f"https://instagram.com/{p['instagram']}" if p["instagram"] else "",
                 "facebook": f"https://facebook.com/{p['facebook_id']}" if p["facebook_id"] else "",
                 "address": ", ".join(x for x in (p["address"], p["locality"], f"{p['region'] or ''} {p['postcode'] or ''}".strip()) if x),
-                "category": KINDS[kind][0], "distance_mi": round(dist, 1), "search_city": place,
+                "category": info[0], "distance_mi": round(dist, 1), "search_city": place,
                 "last_refreshed": str(p["date_refreshed"] or ""),
                 "source": f"Foursquare Open Source Places, {time.strftime('%Y-%m-%d')}",
             })
@@ -258,12 +358,12 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
                 break
             batch = pool[i:i + 40]
             with cf.ThreadPoolExecutor(16) as ex:
-                for r, live in zip(batch, ex.map(lambda u: site_live(u, KIND_WORDS.get(kind, "")), (b["website"] for b in batch))):
+                for r, live in zip(batch, ex.map(lambda u: site_live(u, site_words), (b["website"] for b in batch))):
                     if live and len(kept) < per_city:
                         kept.append(r)
         rows += kept
-        log(f"  {place}: {found} independent {KINDS[kind][0].lower()} in range, kept {len(kept)} with a live website")
+        log(f"  {place}: {found} independent {info[0].lower()} in range, kept {len(kept)} with a live website")
     dst = out or str(out_path(kind, places[0] + (f"-plus{len(places) - 1}" if len(places) > 1 else "")))
     write_csv(dst, rows)
-    print(f"{len(rows)} {KINDS[kind][0].lower()} -> {dst}")
+    print(f"{len(rows)} {info[0].lower()} -> {dst}")
     return dst

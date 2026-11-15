@@ -102,15 +102,14 @@ OPENER = ("Hi {host}, I came across {show} while looking at {genre} podcasts. On
 
 
 def find(terms: str, genre: str = "business", cap: int = 60, max_silent: int = 180, out: str = "") -> str:
-    gid = GENRES.get(genre.lower())
-    if not gid:
-        raise SystemExit(f"genre must be one of: {', '.join(GENRES)}")
+    genre = re.sub(r"\s+", " ", genre or "business").strip()[:40] or "business"
+    gid = GENRES.get(genre.lower())          # a genre of your own (not in the list) searches Apple Podcasts by your topics without a genre filter
     shows, seen = [], set()
     for term in [t.strip() for t in re.split(r"[;|]", terms) if t.strip()]:
         hits = search(term, gid)
         log(f"  '{term}': {len(hits)} shows from Apple Podcasts")
         for h in hits:
-            if h.get("feedUrl") and h["collectionId"] not in seen and str(gid) in [str(x) for x in h.get("genreIds", [])]:
+            if h.get("feedUrl") and h["collectionId"] not in seen and (not gid or str(gid) in [str(x) for x in h.get("genreIds", [])]):
                 seen.add(h["collectionId"])
                 shows.append(h)
     log(f"Reading {len(shows)} feeds...")

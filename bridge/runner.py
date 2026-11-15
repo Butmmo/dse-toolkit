@@ -129,6 +129,20 @@ def provider_choices() -> list[dict]:
     return out
 
 
+def pack_choices() -> list[dict]:
+    """Website-check packs: the built-in ones (packs/*.json) and the ones you made yourself (data/custom-packs), for "choices_from": "packs"."""
+    out = []
+    for folder, mine in ((ROOT / "packs", False), (ROOT / "data" / "custom-packs", True)):
+        for p in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+            try:
+                label = str(json.loads(p.read_text(encoding="utf-8")).get("label") or p.stem)[:70]
+            except ValueError:
+                continue
+            if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", p.stem):
+                out.append({"value": p.stem, "label": label + (" (made by me)" if mine and "(my own)" not in label else "")})
+    return out
+
+
 def figure_choices(with_any: bool = True) -> list[dict]:
     """The Voices roster (voices/roster.json), for "choices_from": "figures" (with an Everyone entry) and "figure_ids" (a real figure only)."""
     out = [{"value": "any", "label": "Everyone in the library"}] if with_any else []
@@ -155,6 +169,8 @@ def resolve_fields(cat: dict) -> dict:
                 f["choices"] = workspace_choices()
             elif f.get("choices_from") == "providers":
                 f["choices"] = provider_choices()
+            elif f.get("choices_from") == "packs":
+                f["choices"] = pack_choices()
             elif f.get("choices_from") == "figures":
                 f["choices"] = figure_choices(True)
             elif f.get("choices_from") == "figure_ids":
@@ -325,7 +341,10 @@ def check_value(field: dict, value):
     if kind == "choice":
         allowed = [c["value"] for c in field["choices"]]
         if s not in allowed:
-            raise Bad(f"{name}: must be one of {', '.join(allowed)}")
+            # "allow_custom": the form offers "Other: type my own". Only for fields whose tool can honour a value of your own, and only plain words.
+            if field.get("allow_custom") and re.fullmatch(field.get("custom_pattern") or r"[A-Za-z][A-Za-z0-9 &'/-]{1,59}", s):
+                return s
+            raise Bad(f"{name}: must be one of {', '.join(allowed)}" + (" (or your own, using letters, numbers and spaces)" if field.get("allow_custom") else ""))
         return s
     if kind == "date":
         try:

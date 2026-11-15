@@ -89,9 +89,13 @@ try:
 
     # validation
     for name, kw in {"client too short": {"client": "A"}, "problem too short": {"problem": "bad"}, "no deliverables": {"deliverables": " ; "}, "13 deliverables": {"deliverables": ";".join("x%d" % i for i in range(13))},
-                     "weeks 0": {"weeks": 0}, "weeks 40": {"weeks": 40}, "bad currency": {"currency": "XYZ"}, "deposit 150": {"deposit": 150}, "no price": {"price": 0}, "negative cost": {"cost_month": -5}}.items():
+                     "weeks 0": {"weeks": 0}, "weeks 40": {"weeks": 40}, "bad currency": {"currency": "DOLLARS"}, "deposit 150": {"deposit": 150}, "no price": {"price": 0}, "negative cost": {"cost_month": -5}}.items():
         check(f"refused: {name}", raises(P.report, **{**ARGS, **kw}) is not None)
     check("unknown engine exits", True)
+    # a currency of your own: any 3-letter code, shown with its code
+    P.report(**{**ARGS, "client": "Naira Client Ltd", "currency": "ngn"})
+    ng = next((d / "proposals").glob("*naira*.html")).read_text(encoding="utf-8")
+    check("a currency of your own is accepted and shown by its code", "NGN " in ng, ng[:80])
 finally:
     shutil.rmtree(d, ignore_errors=True)
 
