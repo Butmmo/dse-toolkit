@@ -239,7 +239,7 @@ def won(slug: str, proposal: str, email: str = "", address: str = "", today: dt.
     start = dt.date.fromisoformat(pr["start"])
     start = max(start, today) if start < today else start
     c = {"slug": cslug, "client": pr["client"], "contact": pr.get("contact", ""), "email": email, "address": re.sub(r"\s+", " ", address or "").strip()[:200], "engine": slug, "offer": pr["offer"],
-         "problem": pr.get("problem", ""), "currency": pr["currency"], "sym": SYMBOLS.get(pr["currency"], "$"), "price": float(pr["price"]), "deposit_pct": int(pr["deposit"]), "start": start.isoformat(),
+         "problem": pr.get("problem", ""), "cost_month": float(pr.get("cost_month") or 0), "currency": pr["currency"], "sym": SYMBOLS.get(pr["currency"], "$"), "price": float(pr["price"]), "deposit_pct": int(pr["deposit"]), "start": start.isoformat(),
          "weeks": int(pr["weeks"]), "created": today.isoformat(), "proposal": pr.get("stem", name), "items": items_with_dates(pr["items"], int(pr["weeks"]), start), "invoices": [], "onboarding": []}
     c["onboarding"] = [{"task": t, "by": (start + dt.timedelta(days=d)).isoformat(), "done_on": ""} for t, d in ONBOARD]
     notes = []

@@ -19,6 +19,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py match <engine> statement.csv [--apply]   the Statement Matcher: match Grey, Payoneer or bank credits to your open invoices (only SURE matches are ever applied)
   python dse.py success <engine>   the Student Success Desk: DFY progress, who needs a check-in (with draft messages) and the expected DFY income
   python dse.py books <engine> [--month 2026-11]   the Books Desk: a monthly pack for your accountant (received, invoiced, owed, ageing, rates); python dse.py fx add <engine> --from GBP --to USD --rate 1.27 enters an exchange rate
+  python dse.py proof due <engine>   the Referral and Testimonial Desk: who to ask, exactly what they agreed to, only approved and true quotes (proof ask|mark|quote|claim|quotes|withdraw|refer|thanked|list)
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -42,7 +43,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, books, callscore, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, books, callscore, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -103,6 +104,14 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    pf_ = sub.add_parser("proof"); pf_.add_argument("action", choices=["due", "ask", "mark", "quote", "claim", "excerpt", "quotes", "withdraw", "refer", "referral", "thanked", "list"]); pf_.add_argument("engine")
+    pf_.add_argument("item", nargs="?", default="", help="ASK-001, Q-001 or REF-001, where the action needs one")
+    pf_.add_argument("--who", default=""); pf_.add_argument("--source", default=""); pf_.add_argument("--kind", default="both"); pf_.add_argument("--trigger", default="manual"); pf_.add_argument("--sent", action="store_true")
+    pf_.add_argument("--to", default=""); pf_.add_argument("--role", default=""); pf_.add_argument("--text", default=""); pf_.add_argument("--channel", default=""); pf_.add_argument("--ask", default="")
+    pf_.add_argument("--consent", default="no", choices=["yes", "no"]); pf_.add_argument("--consent-how", default="", dest="consent_how"); pf_.add_argument("--name", default="anonymous")
+    pf_.add_argument("--company", default="no", choices=["yes", "no"]); pf_.add_argument("--numbers", default="no", choices=["yes", "no"]); pf_.add_argument("--scope", default="")
+    pf_.add_argument("--number", default=""); pf_.add_argument("--reason", default=""); pf_.add_argument("--from", dest="from_who", default=""); pf_.add_argument("--contact", default="")
+    pf_.add_argument("--referred", default=""); pf_.add_argument("--status", default=""); pf_.add_argument("--value", type=float, default=0); pf_.add_argument("--date", default="")
     bk = sub.add_parser("books"); bk.add_argument("engine"); bk.add_argument("--month", default=""); bk.add_argument("--base", default="USD")
     fxp = sub.add_parser("fx"); fxp.add_argument("action", choices=["add", "list"]); fxp.add_argument("engine"); fxp.add_argument("--from", dest="from_cur", default=""); fxp.add_argument("--to", dest="to_cur", default="USD")
     fxp.add_argument("--rate", type=float, default=0); fxp.add_argument("--date", default=""); fxp.add_argument("--note", default="")
@@ -124,7 +133,7 @@ def main():
     pr = sub.add_parser("proposal"); pr.add_argument("engine"); pr.add_argument("--client", required=True); pr.add_argument("--contact", default=""); pr.add_argument("--problem", required=True)
     pr.add_argument("--offer", required=True); pr.add_argument("--price", type=float, default=0); pr.add_argument("--deliverables", required=True); pr.add_argument("--weeks", type=int, default=3)
     pr.add_argument("--cost-month", type=float, default=0, dest="cost_month"); pr.add_argument("--options", default=""); pr.add_argument("--deposit", type=int, default=50)
-    pr.add_argument("--currency", default="USD"); pr.add_argument("--excludes", default=""); pr.add_argument("--start", default="")
+    pr.add_argument("--currency", default="USD"); pr.add_argument("--excludes", default=""); pr.add_argument("--start", default=""); pr.add_argument("--quotes", action="store_true", help="add approved testimonials (their exact words, the attribution they chose)")
     pf = sub.add_parser("preflight"); pf.add_argument("target", nargs="?", default="", help="an engine (newest list) or a path to a list"); pf.add_argument("--domain", default="")
     pf.add_argument("--clean", action="store_true", help="write a copy without the blocked rows")
     rp = sub.add_parser("reply"); rp.add_argument("engine"); rp.add_argument("--text", required=True); rp.add_argument("--name", default=""); rp.add_argument("--source", default="")
@@ -210,7 +219,7 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "proposal":
         try:
-            print(proposal.report(a.engine, a.client, a.contact, a.problem, a.offer, a.price, a.deliverables, a.weeks, a.cost_month, a.options, a.deposit, a.currency, a.excludes, a.start))
+            print(proposal.report(a.engine, a.client, a.contact, a.problem, a.offer, a.price, a.deliverables, a.weeks, a.cost_month, a.options, a.deposit, a.currency, a.excludes, a.start, with_quotes=a.quotes))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "client":
@@ -269,6 +278,35 @@ def main():
     elif a.cmd == "fx":
         try:
             print(fx.add_rate(a.engine, a.from_cur, a.to_cur, a.rate, a.date, a.note) if a.action == "add" else fx.listing(a.engine))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "proof":
+        try:
+            x = a.action
+            if x == "due":
+                print(proof.due(a.engine))
+            elif x == "ask":
+                print(proof.ask(a.engine, a.who, a.source or "manual", a.kind, a.trigger, a.sent))
+            elif x == "mark":
+                print(proof.mark(a.engine, a.item, a.to, date=a.date))
+            elif x == "quote":
+                print(proof.quote(a.engine, a.who, a.text, a.role, a.channel, a.ask, a.consent == "yes", a.consent_how, a.name, a.company == "yes", a.numbers == "yes", a.scope))
+            elif x == "claim":
+                print(proof.claim(a.engine, a.item, a.number, a.source))
+            elif x == "excerpt":
+                print(proof.excerpt(a.engine, a.item, a.text))
+            elif x == "quotes":
+                print(proof.quotes(a.engine, a.scope))
+            elif x == "withdraw":
+                print(proof.withdraw(a.engine, a.item, a.reason))
+            elif x == "refer":
+                print(proof.refer(a.engine, a.from_who, a.referred, a.contact, a.ask))
+            elif x == "referral":
+                print(proof.referral(a.engine, a.item, a.status, a.value))
+            elif x == "thanked":
+                print(proof.thanked(a.engine, a.item))
+            else:
+                print(proof.listing(a.engine))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "cashlog":

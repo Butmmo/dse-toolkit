@@ -25,7 +25,7 @@ import subprocess
 from pathlib import Path
 
 from . import desklog as dl
-from . import replies
+from . import proof, replies
 from .common import ROOT, write_csv
 from .engines import engine_dir, load
 
@@ -108,6 +108,10 @@ def check_list(slug: str, path: Path) -> dict:
     with path.open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     hist = dl.history(slug)
+    try:
+        withdrawn = proof.withdrawn_texts(slug)
+    except Exception:
+        withdrawn = []
     earlier = {}
     for r in dl.load_lists(slug):
         if r["_source"] != path.stem and r["_date"] <= re.match(r"\d{4}-\d{2}-\d{2}", path.stem).group(0):
@@ -125,6 +129,9 @@ def check_list(slug: str, path: Path) -> dict:
         if reason:
             row_issues.append(("block", f"on your do-not-contact list: {reason}"))
         row_issues += check_message(r.get("opener", ""), ch)
+        for qid, qtext, shortest in withdrawn:
+            if proof.shares_words(qtext, r.get("opener") or "", shortest):
+                row_issues.append(("block", f"it contains words from a quote whose consent was withdrawn ({qid}): remove them"))
         key = dl.thread_key({**r, "business": r.get("business", "")})
         if key in seen_here:
             row_issues.append(("block", f"the same business appears twice on this list (row {rows[seen_here[key]].get('row', seen_here[key] + 1)})"))

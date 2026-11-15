@@ -64,7 +64,7 @@ def next_monday(today: dt.date) -> dt.date:
 
 
 def build_data(slug: str, client: str, contact: str, problem: str, offer: str, price: float, deliverables: str, weeks: int, cost_month: float = 0, options: str = "",
-               deposit: int = 50, currency: str = "USD", excludes: str = "", start: str = "", today: dt.date | None = None) -> dict:
+               deposit: int = 50, currency: str = "USD", excludes: str = "", start: str = "", today: dt.date | None = None, with_quotes: bool = False) -> dict:
     cfg = load(slug)
     today = today or dt.date.today()
     client, contact, problem, offer = clean(client, 80), clean(contact, 40), clean(problem, 300), clean(offer, 120)
@@ -90,7 +90,14 @@ def build_data(slug: str, client: str, contact: str, problem: str, offer: str, p
     sender = (cfg.get("sender_name") or "").strip() or "[your name]"
     brand = (cfg.get("brand_name") or cfg.get("name") or "").strip()
     sym = SYMBOLS[currency]
-    d = {"slug": slug, "client": client, "contact": contact, "problem": problem, "offer": offer, "price": price, "items": items, "weeks": weeks, "cost_month": cost_month, "options": opts,
+    said = []
+    if with_quotes:
+        from . import proof          # only approved, consented quotes that agreed to proposals; their exact words, with the attribution THEY chose
+        for q in proof.load_data(slug)["quotes"]:
+            if not proof.usable_reason(q, "proposals"):
+                said.append({"text": q.get("excerpt") or q["text"], "by": proof.attribution(q), "numbers": [c["text"] for c in proof.verified_claims(q)]})
+        said = said[:2]
+    d = {"quotes": said, "slug": slug, "client": client, "contact": contact, "problem": problem, "offer": offer, "price": price, "items": items, "weeks": weeks, "cost_month": cost_month, "options": opts,
          "deposit": deposit, "currency": currency, "sym": sym, "excludes": clean(excludes, 200), "start": st, "today": today, "valid": today + dt.timedelta(days=14), "sender": sender, "brand": brand,
          "calendar": (cfg.get("calendar_url") or cfg.get("calendar") or "").strip(), "notes": []}
     if cost_month:
@@ -113,6 +120,10 @@ def markdown(d: dict) -> str:
     L += ["## What I will do", d["offer"] + ".", "", "| When | What you get |", "|---|---|"]
     L += [f"| {w} | {it} |" for w, it in schedule(d["items"], d["weeks"], d["start"])]
     L += ["", f"Work starts {d['start'].strftime('%B %d').replace(' 0', ' ')} and takes {d['weeks']} week{'s' if d['weeks'] != 1 else ''}.", ""]
+    if d.get("quotes"):
+        L += ["## What clients say"]
+        for q in d["quotes"]:
+            L += [f"\"{q['text']}\"", f"{q['by']}" + (f" (numbers they confirmed or that match my records: {'; '.join(q['numbers'])})" if q["numbers"] else ""), ""]
     L += ["## Not included", (d["excludes"] or "[List what you will not do]") + " Anything not listed above is not included.", ""]
     L += ["## Investment"]
     if d["options"]:
@@ -175,8 +186,8 @@ def html_page(d: dict, md: str) -> str:
 
 
 def report(slug: str, client: str, contact: str, problem: str, offer: str, price: float, deliverables: str, weeks: int, cost_month: float = 0, options: str = "", deposit: int = 50,
-           currency: str = "USD", excludes: str = "", start: str = "", today: dt.date | None = None) -> str:
-    d = build_data(slug, client, contact, problem, offer, price, deliverables, weeks, cost_month, options, deposit, currency, excludes, start, today)
+           currency: str = "USD", excludes: str = "", start: str = "", today: dt.date | None = None, with_quotes: bool = False) -> str:
+    d = build_data(slug, client, contact, problem, offer, price, deliverables, weeks, cost_month, options, deposit, currency, excludes, start, today, with_quotes)
     md, mail, fu = markdown(d), cover_email(d), follow_up(d)
     folder = engine_dir(slug) / "proposals"
     folder.mkdir(parents=True, exist_ok=True)

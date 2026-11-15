@@ -5739,6 +5739,632 @@
       ],
       "timeout_min": 2,
       "outputs": []
+    },
+    "dse.proof_due": {
+      "label": "Proof Desk: who to ask, follow up or thank",
+      "group": "My engines",
+      "help": "Shows who is at a good moment to ask for a testimonial and a referral (a client whose work is delivered, a DFY student at 6 and at 12 qualified months), who needs one gentle follow-up, and which referrals have not been thanked, each with the command to run. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "due"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_ask": {
+      "label": "Proof Desk: draft a testimonial or referral request",
+      "group": "My engines",
+      "help": "Writes a kind, optional request in your name: three easy questions for a testimonial and a referral ask, with how they would like their name shown and whether numbers may be used. A DFY student's request says it is separate from their DFY and that no changes nothing. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "ask"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--who",
+          "field": "who"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        },
+        {
+          "opt": "--kind",
+          "field": "kind"
+        },
+        {
+          "flag": "--sent",
+          "field": "sent"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "who",
+          "label": "Their name",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "^[A-Za-z][A-Za-z .'-]{1,59}$"
+        },
+        {
+          "name": "source",
+          "label": "About (client:acme-dental, student:ada-obi or manual)",
+          "type": "text",
+          "required": false,
+          "max": 60,
+          "pattern": "^(manual|(client|student):[a-z0-9-]{1,40})$"
+        },
+        {
+          "name": "kind",
+          "label": "Ask for",
+          "type": "choice",
+          "required": false,
+          "default": "both",
+          "choices": [
+            {
+              "value": "both",
+              "label": "Testimonial and referral"
+            },
+            {
+              "value": "testimonial",
+              "label": "Testimonial only"
+            },
+            {
+              "value": "referral",
+              "label": "Referral only"
+            }
+          ]
+        },
+        {
+          "name": "sent",
+          "label": "I have already sent it",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_mark": {
+      "label": "Proof Desk: mark an ask sent, answered, declined or closed",
+      "group": "My engines",
+      "help": "Keeps the record straight so the desk knows who still needs a follow-up. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "mark"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "field": "item"
+        },
+        {
+          "opt": "--to",
+          "field": "to"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "item",
+          "label": "Ask number (like ASK-001)",
+          "type": "text",
+          "required": true,
+          "max": 12,
+          "pattern": "^ASK-\\d{3,4}$"
+        },
+        {
+          "name": "to",
+          "label": "Now",
+          "type": "choice",
+          "required": true,
+          "default": "sent",
+          "choices": [
+            {
+              "value": "sent",
+              "label": "sent"
+            },
+            {
+              "value": "answered",
+              "label": "answered"
+            },
+            {
+              "value": "declined",
+              "label": "declined"
+            },
+            {
+              "value": "no-reply",
+              "label": "no-reply"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_quote": {
+      "label": "Proof Desk: record what someone said, and what they agreed to",
+      "group": "My engines",
+      "help": "Keeps their EXACT words and exactly what they agreed to: that you may use the text, how their name is shown (full, first or anonymous), whether the company and any numbers may be shown, and where (proposals, website, social, outreach). Without recorded consent the quote cannot be used anywhere, and you get the message to send them showing exactly how it would appear. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "quote"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--who",
+          "field": "who"
+        },
+        {
+          "opt": "--text",
+          "field": "text"
+        },
+        {
+          "opt": "--role",
+          "field": "role"
+        },
+        {
+          "opt": "--channel",
+          "field": "channel"
+        },
+        {
+          "opt": "--ask",
+          "field": "ask"
+        },
+        {
+          "opt": "--consent",
+          "field": "consent"
+        },
+        {
+          "opt": "--consent-how",
+          "field": "consent_how"
+        },
+        {
+          "opt": "--name",
+          "field": "name"
+        },
+        {
+          "opt": "--company",
+          "field": "company"
+        },
+        {
+          "opt": "--numbers",
+          "field": "numbers"
+        },
+        {
+          "opt": "--scope",
+          "field": "scope"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "who",
+          "label": "Their name",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "^[A-Za-z][A-Za-z .'-]{1,59}$"
+        },
+        {
+          "name": "text",
+          "label": "Their exact words (paste them)",
+          "type": "text",
+          "required": true,
+          "max": 1200
+        },
+        {
+          "name": "role",
+          "label": "Their role and business (optional)",
+          "type": "text",
+          "required": false,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.&'()/-]{0,79}$"
+        },
+        {
+          "name": "channel",
+          "label": "Where you got it (for your records)",
+          "type": "text",
+          "required": false,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.&'()/:-]{0,79}$"
+        },
+        {
+          "name": "ask",
+          "label": "The ask it answers (optional, like ASK-001)",
+          "type": "text",
+          "required": false,
+          "max": 12,
+          "pattern": "^ASK-\\d{3,4}$"
+        },
+        {
+          "name": "consent",
+          "label": "They agreed to my using it",
+          "type": "choice",
+          "required": false,
+          "default": "no",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes, they agreed"
+            },
+            {
+              "value": "no",
+              "label": "Not yet"
+            }
+          ]
+        },
+        {
+          "name": "consent_how",
+          "label": "How they agreed (for example: replied yes on WhatsApp, 15 Nov)",
+          "type": "text",
+          "required": false,
+          "max": 160
+        },
+        {
+          "name": "name",
+          "label": "How their name is shown",
+          "type": "choice",
+          "required": false,
+          "default": "anonymous",
+          "choices": [
+            {
+              "value": "full",
+              "label": "Full name"
+            },
+            {
+              "value": "first",
+              "label": "First name only"
+            },
+            {
+              "value": "anonymous",
+              "label": "Anonymous"
+            }
+          ]
+        },
+        {
+          "name": "company",
+          "label": "May their role and business be shown",
+          "type": "choice",
+          "required": false,
+          "default": "no",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "name": "numbers",
+          "label": "May numbers they mention be used",
+          "type": "choice",
+          "required": false,
+          "default": "no",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "name": "scope",
+          "label": "Where it may be used (comma list: proposals,website,social,outreach)",
+          "type": "text",
+          "required": false,
+          "max": 60,
+          "pattern": "^(proposals|website|social|outreach)(,(proposals|website|social|outreach)){0,3}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_quotes": {
+      "label": "Proof Desk: the quotes I may use",
+      "group": "My engines",
+      "help": "Only approved, consented and not-withdrawn quotes, word for word, with the attribution THEY chose, and only the numbers that are in their own words or match your records. Everything else is listed with the reason it cannot be used. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "quotes"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--scope",
+          "field": "scope"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "scope",
+          "label": "For",
+          "type": "choice",
+          "required": false,
+          "choices": [
+            {
+              "value": "proposals",
+              "label": "proposals"
+            },
+            {
+              "value": "website",
+              "label": "website"
+            },
+            {
+              "value": "social",
+              "label": "social"
+            },
+            {
+              "value": "outreach",
+              "label": "outreach"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_withdraw": {
+      "label": "Proof Desk: someone withdrew their quote",
+      "group": "My engines",
+      "help": "Takes effect at once: the quote is never usable again, and Outreach Preflight blocks any message that still contains it. Remove it from anything already published or sent. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "withdraw"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "field": "item"
+        },
+        {
+          "opt": "--reason",
+          "field": "reason"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "item",
+          "label": "Quote number (like Q-001)",
+          "type": "text",
+          "required": true,
+          "max": 12,
+          "pattern": "^Q-\\d{3,4}$"
+        },
+        {
+          "name": "reason",
+          "label": "Why (optional)",
+          "type": "text",
+          "required": false,
+          "max": 120
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_refer": {
+      "label": "Proof Desk: record a referral",
+      "group": "My engines",
+      "help": "Records who introduced whom, so you can write to them this week, mention who suggested you, and thank the referrer (a thank-you draft is shown). Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "refer"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--from",
+          "field": "from_who"
+        },
+        {
+          "opt": "--referred",
+          "field": "referred"
+        },
+        {
+          "opt": "--contact",
+          "field": "contact"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "from_who",
+          "label": "Who referred them",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "^[A-Za-z][A-Za-z .'-]{1,59}$"
+        },
+        {
+          "name": "referred",
+          "label": "Who they referred (name or business)",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 .,&'()-]{1,79}$"
+        },
+        {
+          "name": "contact",
+          "label": "Their contact (optional)",
+          "type": "text",
+          "required": false,
+          "max": 120
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_thanked": {
+      "label": "Proof Desk: I thanked the referrer",
+      "group": "My engines",
+      "help": "Takes the referral off the thank-you list. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "thanked"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "field": "item"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "item",
+          "label": "Referral number (like REF-001)",
+          "type": "text",
+          "required": true,
+          "max": 12,
+          "pattern": "^REF-\\d{3,4}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.proof_list": {
+      "label": "Proof Desk: everything at a glance",
+      "group": "My engines",
+      "help": "Every ask, quote (usable or not, and why) and referral for this engine. Nothing is sent: you send every message yourself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "proof"
+        },
+        {
+          "lit": "list"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [

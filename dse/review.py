@@ -11,7 +11,7 @@ It reads (all in engines/<slug>/, nothing is guessed, nothing is sent):
 
 The moves are ranked by one fixed rule, closest to money first, and the report says which file each number came from:
   1 replies waiting for your answer  2 calls booked to prepare for  3 follow-ups due  4 messages on your lists not yet sent
-  2.5 overdue client invoices  2.6 overdue student cuts  3.5 late client deliverables  3.6 students who have not reported  3.7 students who need a check-in  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
+  2.5 overdue client invoices  2.6 overdue student cuts  3.5 late client deliverables  3.6 students who have not reported  3.7 students who need a check-in  4.7 a good moment to ask for a testimonial or referral, or a thank-you due  5 sold calls whose money is not logged  6 nothing sent for 7 days  7 offers still being vetted  8 a goal suggestion to accept, or a goal you are behind on
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import datetime as dt
 
 from . import cashdesk as cd
 from . import desklog as dl
-from . import clients, cuts, followups, goals, success, vetting
+from . import clients, cuts, followups, goals, proof, success, vetting
 from .engines import all_slugs, engine_dir, load
 
 OPEN_OFFERS = ("researching", "applied", "interview")
@@ -64,7 +64,11 @@ def gather(slug: str, today: dt.date) -> dict:
         suc = success.attention(slug, today)
     except Exception:
         suc = {"needs": [], "next": None}
-    return {"success": suc, "cuts": cut, "clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
+    try:
+        prf = proof.attention(slug, today)
+    except Exception:
+        prf = {"asks": [], "thanks": [], "follow": []}
+    return {"proof": prf, "success": suc, "cuts": cut, "clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
             "month": month, "target": target, "key": key, "pace": cd.pace(month["received"], today, a, b), "offers": offers,
             "goal_note": (engine_dir(slug) / "next-goal.md").exists()}
 
@@ -101,6 +105,14 @@ def moves(g: dict) -> list[dict]:
     if sn:
         out.append({"rank": 3.7, "do": f"{len(sn)} student{'s need' if len(sn) != 1 else ' needs'} a check-in ({', '.join(r['student'] for r in sn[:5])}{f' and {len(sn) - 5} more' if len(sn) > 5 else ''}). Most urgent: {sn[0]['student']}: {sn[0]['why']}.",
                     "how": f"python dse.py success {s} --view drafts gives a kind message for each; you send them yourself.", "source": "cuts/*/student.json (DFY filings and invoices)"})
+    pa, pt = g["proof"]["asks"], g["proof"]["thanks"]
+    if pa or pt:
+        bits = []
+        if pa:
+            bits.append(f"{len(pa)} good moment{'s' if len(pa) != 1 else ''} to ask for a testimonial and a referral ({', '.join(pa[:3])})")
+        if pt:
+            bits.append(f"thank {', '.join(pt[:3])} for a referral")
+        out.append({"rank": 4.7, "do": "; ".join(bits).capitalize() + ".", "how": f"python dse.py proof due {s} lists them with the command and a draft message for each; you send them yourself.", "source": "data/proof.json, clients/*/client.json, cuts/*/student.json"})
     cq = g["cuts"]["quiet"]
     if cq:
         out.append({"rank": 3.6, "do": f"{len(cq)} student{'s have' if len(cq) != 1 else ' has'} not reported earnings ({'; '.join(q['student'] + ' ' + ', '.join(q['months'][:2]) for q in cq[:3])}).",
