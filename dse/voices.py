@@ -367,7 +367,11 @@ def verify_source(f: dict, s: dict) -> dict:
             return {"ok": False, "detail": "no feed found (" + ("channel not found" if t == "youtube" else "the homepage advertises no RSS or Atom feed") + ")"}
         code, body = http_get(url)
         items = parse_feed(body) if code == 200 else []
-        return {"ok": bool(items), "detail": f"{len(items)} recent item(s) at {url}" if items else f"feed did not answer or had no items ({url})", "url": url}
+        if items:
+            return {"ok": True, "detail": f"{len(items)} recent item(s) at {url}", "url": url}
+        if t == "youtube":
+            return {"ok": False, "detail": "the channel was found, but YouTube's official feed is not answering right now (it is tried again automatically; follow the channel by hand meanwhile)", "url": url}
+        return {"ok": False, "detail": f"feed did not answer or had no items ({url})", "url": url}
     if t == "books":
         bad = []
         sur = [w for w in re.findall(r"[a-z]{4,}", f["name"].lower())][-1:] or [""]
