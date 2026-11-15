@@ -7547,6 +7547,51 @@
       "fields": [],
       "timeout_min": 2,
       "outputs": []
+    },
+    "dse.claude_status": {
+      "label": "Claude: is my key connected?",
+      "group": "Setup",
+      "help": "Says whether your own Claude key is saved on this PC and whether the package is installed, and asks Anthropic whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py claude setup.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "claude"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "flag": "--test",
+          "field": "test"
+        }
+      ],
+      "fields": [
+        {
+          "name": "test",
+          "label": "Ask Anthropic if the key works",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.claude_sdk": {
+      "label": "Claude: install the package it needs",
+      "group": "Setup",
+      "help": "Installs the official `anthropic` Python package on this PC (pip install anthropic), which DBI-AI needs to use your Claude key. Safe to run again.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "claude"
+        },
+        {
+          "lit": "sdk"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 10,
+      "outputs": []
     }
   },
   "periodic": [

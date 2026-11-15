@@ -209,6 +209,14 @@ def check_local(now: float) -> list[dict]:
     out.append(item(a, "Python packages", "ok" if not missing else "optional", "requests, beautifulsoup4, openpyxl and duckdb are installed" if not missing else f"Not installed: {', '.join(missing)}.",
                     "" if not missing else "pip install " + " ".join({"bs4": "beautifulsoup4"}.get(m, m) for m in missing)))
     try:
+        from . import claudekey
+        k, sdk = bool(claudekey.current_key()), claudekey.sdk_installed()
+        out.append(item(a, "Claude (your own key, the strongest DBI-AI answers)", "ok" if (k and sdk) else "optional",
+                        "a key is saved and the package is installed" if (k and sdk) else f"key: {'yes' if k else 'no'}; package: {'installed' if sdk else 'not installed'}. DBI-AI answers with your local model or the library meanwhile.",
+                        "" if (k and sdk) else "DBI-AI, Connect Claude (or: python dse.py claude setup, then python dse.py claude sdk)."))
+    except Exception:
+        pass
+    try:
         import urllib.request
         with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2) as r:
             models = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]

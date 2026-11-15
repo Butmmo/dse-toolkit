@@ -266,6 +266,8 @@ def ollama_info() -> dict:
         spec.loader.exec_module(mod)
         info["models"] = mod.models_info()
         info["claude"] = bool(mod.claude_ready())
+        info["claude_key"] = bool(mod.has_claude_key())              # the app shows "key missing" or "package missing": yes or no only, never the key
+        info["claude_sdk"] = iu.find_spec("anthropic") is not None
     except Exception:
         info.setdefault("models", [])
         info.setdefault("claude", False)
@@ -739,6 +741,7 @@ def loop(once=False):
         write_status("helpers.json", {}, replace=True)
         start_periodic(cat)
     last_files_json, last_full = json.dumps(files, sort_keys=True), time.time()
+    last_oll = json.dumps(ollama_info(), sort_keys=True)
     wait = POLL_S
     while True:
         try:
@@ -746,10 +749,11 @@ def loop(once=False):
             cat = load_catalog()                          # edits to catalog.json apply without a restart
             files = file_index(cat)
             fj = json.dumps(files, sort_keys=True)
-            full = fj != last_files_json or time.time() - last_full > 600
+            oj = json.dumps(ollama_info(), sort_keys=True)     # cached for a minute: a saved Claude key or a new model reaches the app within about a minute
+            full = fj != last_files_json or oj != last_oll or time.time() - last_full > 600
             api.beat(public_catalog(cat) if full else None, files if full else None)
             if full:
-                last_files_json, last_full = fj, time.time()
+                last_files_json, last_full, last_oll = fj, time.time(), oj
             job = api.claim()
             if job:
                 run_job(api, cat, job)

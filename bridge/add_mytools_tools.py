@@ -45,5 +45,11 @@ T["dse.studio_disable"] = tool("Studio: switch a tool off", S, "Stops one of you
 T["dse.studio_publish"] = tool("Studio: publish for everyone (through the repository)", S, "Copies an approved tool into the toolkit's extras folder and tells you the commit to make. Nothing is sent to anyone: code never travels through Citadel. After you review and commit it, every student gets it with the next toolkit update, under the same guard.",
                                [{"lit": "studio"}, {"lit": "publish"}, {"field": "studio"}], [PICK], 2)
 T["dse.studio_list"] = tool("Studio: my tools", S, "Your Studio tools and whether each is a draft, tested or enabled, and the extra tools that came with the toolkit.", [{"lit": "studio"}, {"lit": "list"}], [], 2)
+for k in ("dse.claude_status", "dse.claude_sdk"):
+    T.pop(k, None)
+T["dse.claude_status"] = tool("Claude: is my key connected?", "Setup", "Says whether your own Claude key is saved on this PC and whether the package is installed, and asks Anthropic whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py claude setup.",
+                              [{"lit": "claude"}, {"lit": "status"}, {"flag": "--test", "field": "test"}], [{"name": "test", "label": "Ask Anthropic if the key works", "type": "bool", "default": True}], 2)
+T["dse.claude_sdk"] = tool("Claude: install the package it needs", "Setup", "Installs the official `anthropic` Python package on this PC (pip install anthropic), which DBI-AI needs to use your Claude key. Safe to run again.",
+                           [{"lit": "claude"}, {"lit": "sdk"}], [], 10)
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len(T), "tools in all")
