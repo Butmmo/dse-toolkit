@@ -44,7 +44,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import brief, crmsync, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -159,6 +159,7 @@ def main():
     rv = sub.add_parser("review"); rv.add_argument("engine", help="an engine, or all"); rv.add_argument("--top", type=int, default=5)
     ch = sub.add_parser("calls"); ch.add_argument("engine")
     cr = sub.add_parser("crm", help="keep your engines' leads, replies and calls in your BPS CRM"); cr.add_argument("action", choices=["status", "preview", "on", "off", "sync"]); cr.add_argument("engine", nargs="?", default="")
+    dc = sub.add_parser("doctor", help="the System check: what is on, what is missing, and the exact fix"); dc.add_argument("--offline", action="store_true", help="skip the questions to the Citadel database")
     bf = sub.add_parser("brief", help="what to do first today, across all your engines"); bf.add_argument("--top", type=int, default=3)
     vc = sub.add_parser("voices", help="the Voices library: figures worth learning from, real passages with sources")
     vc.add_argument("action", choices=["list", "show", "verify", "fetch", "update", "ask", "today", "note", "check", "setup"])
@@ -346,6 +347,8 @@ def main():
                 print(crmsync.set_enabled(e, x == "on"))
         except ValueError as ex:
             sys.exit(str(ex))
+    elif a.cmd == "doctor":
+        print(doctor.run(a.offline))
     elif a.cmd == "brief":
         print(brief.run(a.top))
     elif a.cmd == "voices":

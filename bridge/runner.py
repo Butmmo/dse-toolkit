@@ -62,6 +62,28 @@ def say(*a):
     print(dt.datetime.now().strftime("%H:%M:%S"), *a, flush=True)
 
 
+# What the System check (dse/doctor.py) reads: when this runner started, that it is alive, and how each background helper last did. Small files in data/; best effort, never fatal.
+STATUS_DIR = ROOT / "data"
+_STATUS_LOCK = threading.Lock()
+
+
+def write_status(name: str, patch: dict, replace: bool = False):
+    try:
+        with _STATUS_LOCK:
+            STATUS_DIR.mkdir(exist_ok=True)
+            f = STATUS_DIR / name
+            cur = {}
+            if not replace:
+                try:
+                    cur = json.loads(f.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    cur = {}
+            cur.update(patch)
+            f.write_text(json.dumps(cur), encoding="utf-8")
+    except Exception:
+        pass
+
+
 # ----------------------------------------------------------------- config
 
 def load_env() -> dict:
@@ -653,13 +675,17 @@ def start_periodic(cat: dict):
             env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HQ_BRIDGE_ENV": str(ENV_FILE)}
             while True:
                 try:
+                    t0 = time.time()
                     r = subprocess.run([sys.executable, "-u", str(script)], cwd=str(ROOT), capture_output=True,
                                        timeout=300, env=env, stdin=subprocess.DEVNULL)
                     out = (r.stdout + r.stderr).decode("utf-8", "replace").strip()
+                    write_status("helpers.json", {script.relative_to(ROOT).as_posix(): {"last_run": time.time(), "ok": r.returncode == 0, "seconds": round(time.time() - t0, 1),
+                                                                                    "last_line": (out.splitlines()[-1] if out else "")[:240]}})
                     if r.returncode != 0 or (out and "0 phone taps logged" not in out):
                         say(out.splitlines()[-1] if out else f"{script.name} exited {r.returncode}")
                 except Exception as e:
                     say(f"{script.name}: {e}")
+                    write_status("helpers.json", {script.relative_to(ROOT).as_posix(): {"last_run": time.time(), "ok": False, "seconds": 0, "last_line": f"{type(e).__name__}: {str(e)[:200]}"}})
                 time.sleep(every)
 
         threading.Thread(target=run_forever, daemon=True, name=f"periodic-{script.stem}").start()
@@ -681,11 +707,15 @@ def loop(once=False):
         raise
     say(f"runner '{api.runner_id}' v{VERSION} online with {len(cat['tools'])} tools; checking every {POLL_S}s")
     if not once:
+        write_status("runner-status.json", {"started_at": time.time(), "pid": os.getpid(), "version": VERSION, "runner_id": api.runner_id, "tools": len(cat["tools"]),
+                                           "helpers": [x.get("script", "") for x in cat.get("periodic", [])], "heartbeat": time.time()}, replace=True)
+        write_status("helpers.json", {}, replace=True)
         start_periodic(cat)
     last_files_json, last_full = json.dumps(files, sort_keys=True), time.time()
     wait = POLL_S
     while True:
         try:
+            write_status("runner-status.json", {"heartbeat": time.time()})
             cat = load_catalog()                          # edits to catalog.json apply without a restart
             files = file_index(cat)
             fj = json.dumps(files, sort_keys=True)
