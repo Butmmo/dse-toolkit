@@ -294,10 +294,22 @@ Then, in HQ Tools:
    - the gaps found
    - your path's own details (for example a podcast's episode gap, or an agency's mystery-shop reply time)
 
+## Building lists: what helps on each path
+
+| Path | How the list is built now |
+|---|---|
+| **SMB Optimization, AI Voice Receptionist, AI Automation** | The lead pack (niche or business type, cities; type your own business type), the website problem check, enrichment (owners, emails, phones), then "Add to my CRM" or CRM sync. |
+| **The Broadcast Engine** | The podcast finder (Apple Podcasts, by genre), with what each show is missing and the host's public email. |
+| **Revenue Recovery, The Ascent, Go-to-Market** | You bring the names (store URLs from the Meta Ad Library, companies from search and YouTube, an export from your own Clay, Apollo or HubSpot account); the tools read each site, enrich it, score it and draft the opener. |
+| **The Authority Engine** | You paste each expert's headline, post dates and posts (nothing is read from LinkedIn); the audit finds who posts little. DBI-AI or Claude can arrange what you paste into the columns. |
+| **Digital Ministry** | Warm network only, by design. |
+
+Everywhere: no scraping of LinkedIn, Instagram, Facebook or Google Maps pages, and nothing is sent for you.
+
 ## The rules this toolkit follows (DSE Constitution)
 - **No free work for cold prospects.** The openers offer to *send what you found*, never to do the job free.
 - **Read the gap before you send.** The checker leans towards "has it", so a gap it reports is real, but open the site and confirm. "Check by hand" means the site blocked the script: look yourself.
-- **SMB is manual-first.** Scout your first leads by hand, as the playbook says, before using the finder.
+- **Build lists with the tools, then look at every lead.** The old SMB rule (scout 50 leads by hand before using the finder) is retired: use the lead pack, enrichment and the website check from day one, and DBI-AI (or Claude with your own API key) to shortlist, score and draft openers. An AI can invent a business and cannot browse sites or social networks, so open each lead before you contact it.
 - **Ministry is warm-network only.** Check your own parish and churches you're introduced to.
 - **No scraping** of LinkedIn, Instagram, Facebook or Google Maps. It breaks their terms and gets accounts banned.
 
