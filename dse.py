@@ -10,6 +10,8 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py import acme-gtm                         check the CSV exports (Go-to-Market) or pasted profiles (Authority) before building a list
   python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
   python dse.py cash <engine|all> [--month 2026-11] [--target 3000]  the Cash Desk: this month against your target; python dse.py cashin <engine> --amount 450 --kind commission logs money you received
+  python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
+  python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
@@ -62,6 +64,9 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "dev":      # the Dev workspace has its own commands: python dse.py dev --help
         from dev import cli
         sys.exit(cli.main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] in ("mytool", "studio"):      # My tools and Tool Studio take their own words, e.g. --in-city Tampa: python dse.py mytool --help
+        from dse import cli_tools
+        sys.exit(cli_tools.main(sys.argv[1], sys.argv[2:]))
     ap = argparse.ArgumentParser(prog="dse.py", description=f"DSE Toolkit {VERSION}", formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=__doc__.split("\n", 2)[2])
     sub = ap.add_subparsers(dest="cmd", required=True)

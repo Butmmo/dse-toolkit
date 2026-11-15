@@ -101,8 +101,20 @@ def load_env() -> dict:
     return env
 
 
-def load_catalog() -> dict:
-    return resolve_fields(json.loads(CATALOG_FILE.read_text(encoding="utf-8")))
+def load_catalog(base_only: bool = False) -> dict:
+    """The tools this PC offers: catalog.json, plus (unless base_only) the recipes in my-tools/ and, while Tool Studio is on, your approved studio tools and the toolkit's extras."""
+    cat = resolve_fields(json.loads(CATALOG_FILE.read_text(encoding="utf-8")))
+    if base_only:
+        return cat
+    try:
+        sys.path.insert(0, str(ROOT))
+        from dse import mytools, studio
+        cat = studio.apply(cat)
+        cat["tools"].update(mytools.entries(cat))
+        cat["tools"].update(studio.entries(cat))
+    except Exception as e:                   # a broken recipe or studio file must never take the runner's own tools away
+        say(f"My tools / Tool Studio not loaded: {type(e).__name__}: {str(e)[:150]}")
+    return cat
 
 
 def engine_choices() -> list[dict]:

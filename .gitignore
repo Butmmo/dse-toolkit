@@ -12,3 +12,7 @@ youtube/channels/
 workspaces/
 dev/dev.config.json
 enrich-providers/
+
+# My tools (your recipes), Tool Studio (your own tools and their work files): yours, never in Git. extras/ IS committed (reviewed tools for everyone)
+my-tools/
+studio/

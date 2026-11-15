@@ -1,0 +1,45 @@
+{
+  "name": "Find and check",
+  "help": "Finds leads then checks their websites.",
+  "inputs": [
+    {
+      "name": "s1_kind",
+      "label": "Business type",
+      "type": "text",
+      "required": true,
+      "from": {
+        "step": 1,
+        "field": "kind"
+      }
+    },
+    {
+      "name": "s1_cities",
+      "label": "Cities",
+      "type": "text",
+      "required": true,
+      "from": {
+        "step": 1,
+        "field": "cities"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "tool": "dse.find",
+      "label": "Leads only",
+      "values": {
+        "kind": "{{s1_kind}}",
+        "cities": "{{s1_cities}}",
+        "max": 40
+      }
+    },
+    {
+      "tool": "dse.check",
+      "label": "Check websites",
+      "values": {
+        "list": "{{prev.file}}",
+        "pack": "smb"
+      }
+    }
+  ]
+}
