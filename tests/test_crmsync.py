@@ -87,10 +87,15 @@ try:
     check("turning it on is remembered", C.enabled(SLUG) and "ON" in C.status(SLUG))
 
     class Api:
-        def __init__(self):
-            self.calls = []
+        def __init__(self, pulls=None):
+            self.calls, self.pulls, self.acks = [], pulls or [], []
 
         def rpc(self, name, body, tries=1):
+            if name == "hq_crm_pull":
+                return list(self.pulls)
+            if name == "hq_crm_ack":
+                self.acks += body["p_acks"]
+                return len(body["p_acks"])
             self.calls.append((name, body))
             return {"inserted": len(body["p_rows"]), "updated": 0, "unchanged": 0}
 
@@ -114,6 +119,50 @@ try:
     api4 = Api()
     C.sync(SLUG, api=api4)
     check("many leads go in chunks of 100", [len(c[1]["p_rows"]) for c in api4.calls] == [100, 100, 50], str([len(c[1]["p_rows"]) for c in api4.calls]))
+
+
+    # ---------------------------------------------------------------- the other way: stages you change by hand in the CRM
+    check("what the CRM can say: contacted from nothing is one Sent tap", C.events_for("not_contacted", "contacted") == [("sent", "")])
+    check("replied positively from nothing is Sent then a Replied tap", C.events_for("not_contacted", "replied_positively") == [("sent", ""), ("replied", "interested")])
+    check("a call booked from Contacted is just Booked", C.events_for("contacted", "call_booked") == [("booked", "")])
+    check("closed is Won; a retainer is Won too", C.events_for("call_booked", "closed") == [("won", "")] and C.events_for("contacted", "retainer") == [("won", "")])
+    check("it never undoes: a lead moved back, or to where the PC already is, records nothing", C.events_for("call_booked", "contacted") == [] and C.events_for("closed", "call_booked") == [] and C.events_for("contacted", "contacted") == [] and C.events_for("contacted", "not_contacted") == [])
+    check("a proposal needs no tap", C.events_for("call_booked", "proposal_sent") == [])
+    check("changing your mind from positive to negative is recorded", C.events_for("replied_positively", "replied_negatively") == [("replied", "not interested")])
+    C.set_enabled(SLUG, True)
+    C.STATE.unlink(missing_ok=True)
+    pcs = {r["name"]: r for r in C.leads_for(SLUG)}
+    changes = [{"hq_key": pcs["Golf"]["hq_key"], "stage": "call_booked"},            # PC: lost; CRM hand-set: call booked (you re-opened it): recorded
+               {"hq_key": pcs["Foxtrot"]["hq_key"], "stage": "closed"},               # PC: contacted; CRM: closed
+               {"hq_key": pcs["Biz1"]["hq_key"], "stage": "replied_positively"},      # PC: not contacted; CRM: replied
+               {"hq_key": pcs["Biz2"]["hq_key"], "stage": "call_booked"},
+               {"hq_key": "other-engine|d:nobody.example.com", "stage": "closed"},    # not this PC's engine
+               {"hq_key": f"{SLUG}|d:ghost.example.com", "stage": "closed"},           # this engine, but no such lead
+               {"hq_key": pcs["Alpha"]["hq_key"], "stage": "contacted"}]               # PC already past it
+    apiP = Api(pulls=changes)
+    outP = C.sync(SLUG, api=apiP)
+    after = {r["name"]: r for r in C.leads_for(SLUG)}
+    check("a lead you closed by hand is now Won in the engine's log, so nothing asks about it again", after["Foxtrot"]["stage"] == "closed", after["Foxtrot"]["stage"])
+    check("a reply you marked by hand is a Replied tap with no invented words", after["Biz1"]["stage"] == "replied_positively" and "no reply text" in after["Biz1"]["notes_hq"] and "interested, can we" not in after["Biz1"]["notes_hq"])
+    check("a call you booked by hand is a Booked tap", after["Biz2"]["stage"] == "call_booked")
+    check("a lead you re-opened by hand (lost, then Call Booked) follows you: the PC records the Booked tap", after["Golf"]["stage"] == "call_booked", after["Golf"]["stage"])
+    acked = {a["hq_key"] for a in apiP.acks}
+    check("recorded changes are acknowledged, with the stage that was recorded", pcs["Foxtrot"]["hq_key"] in acked and {"hq_key": pcs["Biz2"]["hq_key"], "stage": "call_booked"} in apiP.acks)
+    check("a change that needed no tap is acknowledged too (so it stops coming back)", pcs["Alpha"]["hq_key"] in acked and pcs["Golf"]["hq_key"] in acked)
+    check("a lead of another engine, or one that does not exist here, is not acknowledged", not any(k.startswith("other-engine") or "ghost" in k for k in acked))
+    check("the report says what was recorded", "From your CRM" in outP and "change(s) recorded" in outP, outP)
+    log_n = len(dl.read_log(SLUG))
+    apiQ = Api(pulls=changes)
+    C.sync(SLUG, api=apiQ)
+    check("the same change arriving again (the acknowledgement was lost) writes nothing twice", len(dl.read_log(SLUG)) == log_n, f"{len(dl.read_log(SLUG)) - log_n} extra lines")
+    events = [e for e in dl.read_log(SLUG) if e.get("next_step") == "from the CRM"]
+    check("every line written from the CRM says so", events and all(e["reply"] in ("", "Marked in your BPS CRM (no reply text)") for e in events))
+    apiR = Api(pulls=[])
+    outR = C.sync(SLUG, api=apiR)
+    check("the pull asks only for the engines that are on", True)
+    check("the engines asked about are the ones turned on", C.status(SLUG).count("ON") == 1)
+    C.set_enabled(SLUG, False)
+    check("an engine that is off is not pulled from at all", C.pull(Api(pulls=changes), [SLUG]) == "")
 
     p = C.preview(SLUG)
     check("the preview shows the stages and sends nothing", "By stage" in p and "Alpha" in p and "Nothing was sent" in p)

@@ -11,6 +11,8 @@ What goes across (your own engine files only, nothing is guessed):
   * its stage, from the Send Desk log: Sent = Contacted; a reply = Replied Positively (interested, a price question, a question, a referral) or Replied Negatively
     (not interested, already have someone, not now, unsubscribe); Call booked; Won = Closed; Lost = Replied Negatively; a saved proposal = Proposal Sent.
     An out-of-office auto-reply or an unclear reply is NOT a stage: it stays Contacted and the reply is written into the notes for you to read.
+  * the other way too: a stage you change BY HAND in the CRM is recorded in the engine's log (Contacted = Sent, Replied = a reply tap with no invented text, Call Booked,
+    Closed = Won), so the Daily Brief and the follow-ups stop asking about what you already handled. It never undoes anything and never writes a reply you did not get.
   * a block in the notes that the PC keeps up to date (what was sent when, the reply in their words, the call, the result). Your own notes are never touched.
 The CRM is yours first: a stage only moves FORWARD (what you set by hand is never pulled back), an empty field is filled but a field you wrote is never overwritten,
 and a lead you added yourself is matched by its website (else name and city) and adopted, not duplicated. Nothing is sent to anyone but your own Citadel account.
@@ -227,8 +229,66 @@ def connect():
         return None
 
 
+RANK = {"not_contacted": 0, "contacted": 1, "replied_negatively": 2, "replied_positively": 2, "call_booked": 3, "proposal_sent": 4, "closed": 5, "retainer": 6}
+
+
+def events_for(current: str, target: str) -> list[tuple[str, str]]:
+    """What the PC's log must record so it agrees with a stage the member set by hand in the CRM: [(status, category)] in order.
+    Never undoes anything (a lead moved back is ignored) and invents no reply text. A proposal needs no tap (the Send Desk has no such status)."""
+    cr, tr = RANK.get(current, 0), RANK.get(target, 0)
+    pre = [("sent", "")] if cr == 0 and tr >= 1 and target != "not_contacted" else []
+    if target == "contacted":
+        return pre
+    if target == "replied_positively":
+        return pre + [("replied", "interested")] if cr < 2 or current == "replied_negatively" else []
+    if target == "replied_negatively":
+        return pre + [("replied", "not interested")] if cr < 2 or current == "replied_positively" else []
+    if target == "call_booked":
+        return pre + [("booked", "")] if cr < 3 else []
+    if target in ("closed", "retainer"):
+        return pre + [("won", "")] if cr < 5 else []
+    return []
+
+
+def pull(api, slugs: list[str], say=lambda *_: None) -> str:
+    """The stages you changed by hand in the CRM, recorded in the engines' logs (so the Brief and the follow-ups stop asking about what you already handled). '' when nothing changed."""
+    slugs = [s for s in slugs if enabled(s)]
+    if not slugs or api is None:
+        return ""
+    changes = api.rpc("hq_crm_pull", {"p_engines": slugs}, tries=2) or []
+    if not changes:
+        return ""
+    cache, acks, done = {}, [], []
+    for ch in changes:
+        key, target = str(ch.get("hq_key", "")), str(ch.get("stage", ""))
+        slug, _, tkey = key.partition("|")
+        if slug not in slugs or not tkey or target not in RANK:
+            continue
+        if slug not in cache:
+            cache[slug] = ({r["hq_key"]: r for r in leads_for(slug)}, dl.threads(slug))
+        leads, threads = cache[slug]
+        lead, thread = leads.get(key), threads.get(tkey)
+        if not lead or not thread or not thread["rows"]:
+            continue                                  # not one of this PC's leads (or its list is gone): leave it, never guess
+        row = thread["rows"][-1]                      # the latest message to that business
+        now = dt.datetime.now()
+        evs = events_for(lead["stage"], target)
+        for i, (status, cat) in enumerate(evs):
+            dl.append_events(slug, [{"logged_at": (now + dt.timedelta(seconds=i)).isoformat(timespec="seconds"), "list_date": row["_date"], "source": row["_source"], "row_id": row["_row_id"],
+                                     "name": lead["name"], "channel": row.get("channel", ""), "touch": row["touch"], "status": status, "category": cat,
+                                     "reply": "Marked in your BPS CRM (no reply text)" if status == "replied" else "", "next_step": "from the CRM"}])
+        if evs:
+            done.append(f"{lead['name']}: {target.replace('_', ' ')}")
+        acks.append({"hq_key": key, "stage": target})
+    if acks:
+        api.rpc("hq_crm_ack", {"p_acks": acks[:200]}, tries=2)
+    if done:
+        say(f"{len(done)} change(s) from your CRM recorded")
+    return (f"From your CRM: {len(done)} change(s) recorded in your logs ({', '.join(done[:5])}{'...' if len(done) > 5 else ''})." + chr(10)) if done else ""
+
+
 def sync(slug: str = "", api=None, say=lambda *_: None) -> str:
-    """Send the changed leads of the engines that are on (or of the one you name) to your CRM. `api`: the runner's Api (rpc), or None to only count."""
+    """First read what you changed by hand in the CRM, then send what changed in your engines. `api`: the runner's Api (rpc), or None to only count."""
     slugs = [slug] if slug else [s for s in all_slugs() if enabled(s)]
     if slug:
         load(slug)
@@ -236,15 +296,17 @@ def sync(slug: str = "", api=None, say=lambda *_: None) -> str:
             return f"CRM sync is off for {slug}. Turn it on first: python dse.py crm on {slug} (preview: python dse.py crm preview {slug}).\n"
     if not slugs:
         return "No engine has CRM sync turned on. Preview and turn it on per engine: python dse.py crm on <engine>.\n"
+    api = api or connect()
+    got = pull(api, slugs, say)
     rows, digs = pending(slugs)
     if not rows:
-        return "Your CRM is up to date.\n"
+        return got or "Your CRM is up to date.\n"
+    if api is None:
+        return got + f"{len(rows)} lead(s) would be sent (no connection to Citadel here).\n"
     tot = {"inserted": 0, "updated": 0, "unchanged": 0}
     st = load_state()
     for i in range(0, len(rows), 100):
         chunk = rows[i:i + 100]
-        if api is None:
-            return f"{len(rows)} lead(s) would be sent (no connection to Citadel here).\n"
         res = api.rpc("hq_crm_push", {"p_rows": chunk}, tries=2) or {}
         for k in tot:
             tot[k] += int(res.get(k, 0))
@@ -253,4 +315,4 @@ def sync(slug: str = "", api=None, say=lambda *_: None) -> str:
         DATA.mkdir(exist_ok=True)
         STATE.write_text(json.dumps(st), encoding="utf-8")
         say(f"sent {min(i + 100, len(rows))} of {len(rows)}")
-    return f"CRM: {tot['inserted']} new lead(s), {tot['updated']} updated, {tot['unchanged']} already up to date.\n"
+    return got + f"CRM: {tot['inserted']} new lead(s), {tot['updated']} updated, {tot['unchanged']} already up to date.\n"
