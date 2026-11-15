@@ -6365,6 +6365,204 @@
       ],
       "timeout_min": 1,
       "outputs": []
+    },
+    "dse.call_prep": {
+      "label": "Call Desk: prepare for a booked call",
+      "group": "My engines",
+      "help": "A one-page brief for a booked call, built only from your own records: what you sent, what they wrote in their own words, what their website check or enrichment found (each fact says where it came from), three facts to open with, a question plan under the five scorecard headings with their gap woven in, your up-front contract script, and what must be in hand before you speak. What is not known is listed as not known. Also creates a notes sheet. Nothing is sent.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "call"
+        },
+        {
+          "lit": "prep"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        },
+        {
+          "opt": "--row",
+          "field": "row"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "source",
+          "label": "List the lead is on (like 2026-11-09, see the Send Desk)",
+          "type": "text",
+          "required": true,
+          "max": 30,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}(-followups)?$"
+        },
+        {
+          "name": "row",
+          "label": "Row number on that list",
+          "type": "text",
+          "required": true,
+          "max": 6,
+          "pattern": "^\\d{1,6}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "engines/*/calls/*/prep.md",
+        "engines/*/calls/*/notes.md"
+      ]
+    },
+    "dse.call_after": {
+      "label": "Call Desk: what to do the minute the call ends",
+      "group": "My engines",
+      "help": "Type what you heard (their problem in their words, the monthly cost they gave, the price, what you agreed) and get the recap message to send within 10 minutes, the scorecard command, and for a follow-up call the proposal command already filled in. A sold or lost call is written into your send log so your results stay true. Tick Stop to put them on your do-not-contact list if they asked not to be contacted. Nothing is sent.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "call"
+        },
+        {
+          "lit": "after"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        },
+        {
+          "opt": "--row",
+          "field": "row"
+        },
+        {
+          "opt": "--outcome",
+          "field": "outcome"
+        },
+        {
+          "opt": "--problem",
+          "field": "problem"
+        },
+        {
+          "opt": "--cost-month",
+          "field": "cost_month"
+        },
+        {
+          "opt": "--price",
+          "field": "price"
+        },
+        {
+          "opt": "--agreed",
+          "field": "agreed"
+        },
+        {
+          "flag": "--stop",
+          "field": "stop"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "source",
+          "label": "List the lead is on (like 2026-11-09, see the Send Desk)",
+          "type": "text",
+          "required": true,
+          "max": 30,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}(-followups)?$"
+        },
+        {
+          "name": "row",
+          "label": "Row number on that list",
+          "type": "text",
+          "required": true,
+          "max": 6,
+          "pattern": "^\\d{1,6}$"
+        },
+        {
+          "name": "outcome",
+          "label": "How it went",
+          "type": "choice",
+          "required": true,
+          "default": "follow_up",
+          "choices": [
+            {
+              "value": "follow_up",
+              "label": "Follow-up (a proposal or next call)"
+            },
+            {
+              "value": "sold",
+              "label": "Sold"
+            },
+            {
+              "value": "no_sale",
+              "label": "Not a fit"
+            },
+            {
+              "value": "no_show",
+              "label": "No show"
+            }
+          ]
+        },
+        {
+          "name": "problem",
+          "label": "Their problem, in their words",
+          "type": "text",
+          "required": false,
+          "max": 300
+        },
+        {
+          "name": "cost_month",
+          "label": "What they said it costs them each month ($, 0 if not said)",
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 100000000,
+          "default": 0
+        },
+        {
+          "name": "price",
+          "label": "The price you agreed or will quote ($, 0 if not yet)",
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 10000000,
+          "default": 0
+        },
+        {
+          "name": "agreed",
+          "label": "What you agreed as the next step",
+          "type": "text",
+          "required": false,
+          "max": 200
+        },
+        {
+          "name": "stop",
+          "label": "They asked not to be contacted again",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "engines/*/calls/*/after.md"
+      ]
     }
   },
   "periodic": [

@@ -19,7 +19,7 @@ import datetime as dt
 
 from . import cashdesk as cd
 from . import desklog as dl
-from . import clients, cuts, followups, goals, proof, success, vetting
+from . import calls, clients, cuts, followups, goals, proof, success, vetting
 from .engines import all_slugs, engine_dir, load
 
 OPEN_OFFERS = ("researching", "applied", "interview")
@@ -68,7 +68,11 @@ def gather(slug: str, today: dt.date) -> dict:
         prf = proof.attention(slug, today)
     except Exception:
         prf = {"asks": [], "thanks": [], "follow": []}
-    return {"proof": prf, "success": suc, "cuts": cut, "clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
+    try:
+        cps = calls.attention(slug, today)
+    except Exception:
+        cps = []
+    return {"calls": cps, "proof": prf, "success": suc, "cuts": cut, "clients": att, "slug": slug, "replies": replies, "booked": booked, "unsent": unsent, "sent_week": len(sent_week), "has_lists": bool(rows), "due": due, "unmarked": unmarked,
             "month": month, "target": target, "key": key, "pace": cd.pace(month["received"], today, a, b), "offers": offers,
             "goal_note": (engine_dir(slug) / "next-goal.md").exists()}
 
@@ -93,7 +97,8 @@ def moves(g: dict) -> list[dict]:
     if g["booked"]:
         n = len(g["booked"])
         out.append({"rank": 2, "do": f"Prepare for {n} booked call{'s' if n != 1 else ''} ({', '.join(g['booked'][:3])}{'...' if n > 3 else ''}).",
-                    "how": f"After each call: python dse.py callscore {s} --offer ... then, if it went well, python dse.py proposal {s} --client ...", "source": "data/log.csv: rows whose latest tap is Call booked"})
+                    "how": (f"No prep sheet yet for {g['calls'][0]['name']}: python dse.py call prep {s} --source {g['calls'][0]['source']} --row {g['calls'][0]['row']}. " if g["calls"] else "")
+                           + f"After each call: python dse.py call after {s} --source LIST --row N --outcome follow_up --problem \"...\" (it prepares the recap, the scorecard and the proposal)", "source": "data/log.csv: rows whose latest tap is Call booked"})
     if g["due"]:
         out.append({"rank": 3, "do": f"Send {g['due']} follow-up{'s' if g['due'] != 1 else ''} that {'are' if g['due'] != 1 else 'is'} due.",
                     "how": f"python dse.py followups {s}, then send them from the Send Desk.", "source": "send-lists/ and data/log.csv (the follow-up rules)"})

@@ -20,6 +20,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py success <engine>   the Student Success Desk: DFY progress, who needs a check-in (with draft messages) and the expected DFY income
   python dse.py books <engine> [--month 2026-11]   the Books Desk: a monthly pack for your accountant (received, invoiced, owed, ageing, rates); python dse.py fx add <engine> --from GBP --to USD --rate 1.27 enters an exchange rate
   python dse.py proof due <engine>   the Referral and Testimonial Desk: who to ask, exactly what they agreed to, only approved and true quotes (proof ask|mark|quote|claim|quotes|withdraw|refer|thanked|list)
+  python dse.py call prep <engine> --source LIST --row N   the Call Desk: a one-page brief before a booked call, and (call after) the recap, scorecard and proposal commands once it ends
   python dse.py review <engine|all>                    the Weekly Review: the 5 things to do first this week; python dse.py goal <engine> suggests next month's goal from your history
   python dse.py vet the-ascent --offer "Name" --d_pay no ... check a commission-only offer for red flags BEFORE you work for it; python dse.py offers <engine>
   python dse.py kinds                                   business types the lead finder knows, by path
@@ -43,7 +44,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, books, callscore, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -104,6 +105,9 @@ def main():
     ci = sub.add_parser("cashin"); ci.add_argument("engine"); ci.add_argument("--amount", type=float, required=True)
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
+    cx = sub.add_parser("call"); cx.add_argument("action", choices=["prep", "after"]); cx.add_argument("engine"); cx.add_argument("--source", required=True); cx.add_argument("--row", required=True)
+    cx.add_argument("--outcome", default="follow_up", choices=list(calls.OUTCOMES)); cx.add_argument("--problem", default=""); cx.add_argument("--cost-month", type=float, default=0, dest="cost_month")
+    cx.add_argument("--price", type=float, default=0); cx.add_argument("--agreed", default=""); cx.add_argument("--stop", action="store_true"); cx.add_argument("--name", default="")
     pf_ = sub.add_parser("proof"); pf_.add_argument("action", choices=["due", "ask", "mark", "quote", "claim", "excerpt", "quotes", "withdraw", "refer", "referral", "thanked", "list"]); pf_.add_argument("engine")
     pf_.add_argument("item", nargs="?", default="", help="ASK-001, Q-001 or REF-001, where the action needs one")
     pf_.add_argument("--who", default=""); pf_.add_argument("--source", default=""); pf_.add_argument("--kind", default="both"); pf_.add_argument("--trigger", default="manual"); pf_.add_argument("--sent", action="store_true")
@@ -307,6 +311,11 @@ def main():
                 print(proof.thanked(a.engine, a.item))
             else:
                 print(proof.listing(a.engine))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "call":
+        try:
+            print(calls.prep(a.engine, a.source, a.row) if a.action == "prep" else calls.after(a.engine, a.source, a.row, a.outcome, a.problem, a.cost_month, a.price, a.agreed, a.stop, name=a.name))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "cashlog":
