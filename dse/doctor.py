@@ -40,12 +40,13 @@ PROBES = [
     ("hq_member_desk_pull", {}, "20261118120000_member_desk.sql", "the Send Desk on your phone"),
     ("hq_dfy_pull", {}, "20261118140000_dfy_bridge_payout_accounts.sql", "the DFY bridge and payout accounts (only matters on the HQ admin PC)"),
     ("hq_tools_pull", {}, "20261120090000_my_tools.sql", "My tools (your own tools, and the ones DBI shares)"),
+    ("hq_schedules_pull", {}, "20261121090000_schedules.sql", "Schedules (tools that run by themselves)"),
 ]
 
 AGAIN = {"20261119100000_crm_sync.sql"}            # files that grew after first use: an older run of them is not enough
 HELPER_NAMES = {"bridge/engines_sync.py": "your engines (Citadel to this PC)", "bridge/desk_sync.py": "the Send Desk (lists to your phone, taps back)", "bridge/goal_sync.py": "monthly goal suggestions",
                 "bridge/dfy_sync.py": "DFY months from Citadel", "bridge/brief_sync.py": "the Daily Brief and its notifications", "bridge/crm_sync.py": "CRM sync",
-                "bridge/voices_sync.py": "the Voices library", "bridge/mytools_sync.py": "My tools (made in Citadel, and shared by DBI)"}
+                "bridge/voices_sync.py": "the Voices library", "bridge/mytools_sync.py": "My tools (made in Citadel, and shared by DBI)", "bridge/schedule_sync.py": "Schedules (your tools that run by themselves)"}
 
 
 def item(area: str, name: str, state: str, detail: str = "", fix: str = "") -> dict:

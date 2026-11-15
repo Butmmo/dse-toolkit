@@ -7634,6 +7634,11 @@
       "script": "bridge/mytools_sync.py",
       "every_s": 60,
       "what": "My tools: the tools you made in Citadel, and the ones DBI shared, onto this PC"
+    },
+    {
+      "script": "bridge/schedule_sync.py",
+      "every_s": 60,
+      "what": "Schedules: run your scheduled tools when they are due (an ordinary job in your Jobs list)"
     }
   ]
 }

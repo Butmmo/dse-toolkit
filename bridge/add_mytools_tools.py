@@ -9,6 +9,8 @@ for k in [k for k in T if k.startswith(("dse.mytool_", "dse.studio_"))]:
     T.pop(k)
 c["periodic"] = [x for x in c.get("periodic", []) if x.get("script") != "bridge/mytools_sync.py"]
 c["periodic"].append({"script": "bridge/mytools_sync.py", "every_s": 60, "what": "My tools: the tools you made in Citadel, and the ones DBI shared, onto this PC"})
+c["periodic"] = [x for x in c["periodic"] if x.get("script") != "bridge/schedule_sync.py"]
+c["periodic"].append({"script": "bridge/schedule_sync.py", "every_s": 60, "what": "Schedules: run your scheduled tools when they are due (an ordinary job in your Jobs list)"})
 
 SLUG = {"name": "slug", "label": "A short name (lowercase letters, digits and -)", "type": "text", "required": True, "max": 41, "pattern": "[a-z0-9][a-z0-9-]{1,40}", "placeholder": "my-tool"}
 PICK = {"name": "studio", "label": "Which of your Studio tools", "type": "choice", "required": True, "choices_from": "studio_tools", "choices": []}
