@@ -263,6 +263,28 @@ V.STORE = TMP / "voices2"
 t_ = V.today("finance", d1)
 check("an area with nothing fetched offers a passage from another area and says so", "Nothing is fetched yet for Financial development" in t_ and "Marcus Aurelius" in t_, t_)
 
+
+# ---------------------------------------------------------------- mentor passages beside a chat answer
+V.STORE = TMP / "voices2"
+check("a name in the question finds the figure (full name or a last name nobody else has)", V.detect_figures("what did Marcus Aurelius say about anger") == ["marcus-aurelius"] and V.detect_figures("what does Aurelius think about time") == ["marcus-aurelius"])
+check("no name, no figure", V.detect_figures("how do I set up an n8n webhook") == [] and V.detect_figures("hello") == [])
+check("a mentor is wanted when asked for or named, never otherwise", V.wants_mentor("give me a quote about courage") and V.wants_mentor("what would a stoic say about stress") and V.wants_mentor("what did Marcus Aurelius say about anger")
+      and not V.wants_mentor("how do I set up an n8n webhook") and not V.wants_mentor("a client says it is too expensive"))
+check("discipline, disciplined and disciplining are one word; so are procrastinate and procrastinating", V.stem("disciplined") == V.stem("discipline") == V.stem("disciplining") and V.stem("procrastinating") == V.stem("procrastinate"))
+check("everyday filler does not count as a match", "stay" not in V.query_weights("how do I stay disciplined") and "feel" not in V.query_weights("I feel tired") and V.stem("disciplined") in V.query_weights("how do I stay disciplined"))
+w = V.query_weights("I keep procrastinating")
+check("what a student types counts most, the words the old texts use for the same idea count half", w[V.stem("procrastinating")] == 1.0 and w.get(V.stem("idleness")) == 0.5)
+hits = V.search("what did Marcus Aurelius say about anger", n=2, strict=True)
+check("naming a figure searches only that figure's library", hits and all(h["who"] == "Marcus Aurelius" for h in hits) and all(h["credit"] for h in hits), str(hits))
+check("a question with nothing in the library gives nothing, not padding", V.search("how do I set up an n8n webhook", n=2, strict=True) == [])
+blk = V.mentor_block("what did Marcus Aurelius say about anger", 2)
+check("the mentor block shows real passages with their sources and says how they were found", "From the library" in blk and "Marcus Aurelius" in blk and "not their meaning" in blk and "No AI model wrote" in blk, blk)
+check("an ordinary question gets no block", V.mentor_block("how do I set up an n8n webhook", 2) == "")
+check("a mentor-only request with no match says so plainly", "Nothing in the library fits" in V.mentor_block("xyzzy quantum zebra", 3, only=True))
+V.STORE = TMP / "voices3"
+check("a mentor-only request with an empty library says how to set it up", "set up" in V.mentor_block("anything about courage", 3, only=True).lower())
+V.STORE = TMP / "voices2"
+
 # ---------------------------------------------------------------- the module itself
 src = (ROOT / "dse" / "voices.py").read_text(encoding="utf-8")
 check("no em dash in voices.py", chr(0x2014) not in src)

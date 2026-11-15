@@ -484,40 +484,87 @@ def fetch(fid: str) -> str:
 
 # ------------------------------------------------------------------ search (plain BM25, no AI model)
 
-STOP = set("a an and are as at be but by for from has have how i in is it its my of on or so than that the their them then there these they this to was were what when which who why will with you your do does did should would could can me we our".split())
+STOP = set("a an and are as at be but by for from has have how i in is it its my of on or so than that the their them then there these they this to was were what when which who why will with you your do does did should would could can me we our like also very much more most some any all too just not nor yet about into over under out off than".split())
 
 
 def tokens(s: str) -> list[str]:
-    return [w for w in re.findall(r"[a-z]{3,}", (s or "").lower()) if w not in STOP]
+    t = re.sub(r"[’']\w{0,3}", " ", (s or "").lower())            # don't, it's, I'll: the tail is not a word
+    return [w for w in re.findall(r"[a-z]{3,}", t) if w not in STOP]
 
 
 def stem(w: str) -> str:
-    for suf in ("ing", "ers", "ed", "es", "er", "ly", "s"):
+    """Plain suffix stripping, then the first 7 letters: discipline, disciplined and disciplining are one word; so are procrastinate and procrastinating."""
+    for suf in ("ing", "ers", "ed", "es", "er", "ly", "s", "e"):
         if w.endswith(suf) and len(w) - len(suf) >= 4:
-            return w[:-len(suf)]
-    return w
+            w = w[:-len(suf)]
+            break
+    return w[:7]
 
 
-def bm25(query: str, passages: list[dict]) -> list[tuple[float, dict]]:
-    q = [stem(w) for w in tokens(query)]
-    if not q or not passages:
+# What a student means is not always the word the old writers used: a worry about "procrastinating" is a question about idleness, habit and time. Each line maps
+# words a student types (stems) to words the texts use. They count for half, so the student's own words always count most. Plain lists, nothing hidden.
+CONCEPTS = [
+    ("disciplin motivat lazy procrastinat habit consisten focus distract", "discipline habit idle idleness diligence effort labour virtue custom practice attention"),
+    ("fear afraid anxious anxiety worr stress panic nervous", "fear anxiety tranquillity calm courage trouble disturb peace"),
+    ("angry anger frustrat annoy temper rage furious", "anger passion wrath patience temper gentle gentleness"),
+    ("money save saving debt wealth rich budget invest spend income broke poor", "money wealth saving thrift debt gold riches frugal industry spend poverty"),
+    ("sell sales price expensive objection client customer negotiat close", "persuade persuasion price bargain buyer customer offer value gift trade"),
+    ("fail failure reject quit giv defeat setback mistake", "failure adversity persevere obstacle defeat endure misfortune"),
+    ("time busy hour hurry waste schedule", "time hours busy idle brief short life days"),
+    ("confiden doubt imposter insecure worth esteem shy", "confidence doubt courage worth esteem self trust"),
+    ("lead leader team manag boss employee delegat", "lead govern command example duty rule order"),
+    ("friend relationship people influenc network trust lonel", "friend friendship kindness people society companion"),
+    ("purpose meaning direction goal ambition dream career calling", "purpose meaning duty calling end aim goal work vocation"),
+    ("decid decision choice choos uncertain overwhelm", "decide decision choice judgment deliberate counsel"),
+    ("learn study read knowledge skill teach", "learn learning study knowledge wisdom teach education"),
+    ("death loss grief sick health suffer pain", "death loss grief suffer pain mortal endure"),
+    ("honest honesty lie cheat ethic integrity moral", "honest truth lie justice virtue integrity right wrong"),
+]
+_CONCEPTS = [(set(a.split()), b.split()) for a, b in CONCEPTS]
+
+
+WEAK = set("giv give giving up stay feel feeling work working worked make making get getting need needs know thing things say says said think want way best good keep going come take use used try new first right set".split())
+
+
+def query_weights(question: str) -> dict[str, float]:
+    """{stem: weight} for what the student typed (1) and the words the texts would use for the same idea (0.5). Everyday filler words (stay, feel, work, way...) count for nothing:
+    they would make any passage look like a match."""
+    words = tokens(question)
+    base = [stem(w) for w in words if w not in WEAK and stem(w) not in WEAK]
+    out = {w: 1.0 for w in base}
+    for triggers, extras in _CONCEPTS:
+        if any(any(w.startswith(t) for t in triggers) for w in words):
+            for e in extras:
+                out.setdefault(stem(e), 0.5)
+    return out
+
+
+def bm25(query: str, passages: list[dict], weights: dict[str, float] | None = None) -> list[tuple[float, dict]]:
+    wts = weights if weights is not None else {stem(w): 1.0 for w in tokens(query)}
+    if not wts or not passages:
         return []
     docs = [[stem(w) for w in tokens(p["text"])] for p in passages]
     n, avg = len(docs), (sum(len(d) for d in docs) / len(docs)) or 1
-    df = {w: sum(1 for d in docs if w in d) for w in set(q)}
+    df = {w: sum(1 for d in docs if w in d) for w in wts}
     out = []
     for d, p in zip(docs, passages):
         if not d:
             continue
         score = 0.0
-        for w in set(q):
+        for w, wt in wts.items():
             tf = d.count(w)
             if tf:
                 idf = math.log(1 + (n - df[w] + 0.5) / (df[w] + 0.5))
-                score += idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * len(d) / avg))
+                score += wt * idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * len(d) / avg))
         if score > 0:
             out.append((score, p))
     return sorted(out, key=lambda x: -x[0])
+
+
+def coverage(wts: dict[str, float], text: str) -> float:
+    """How much of what the student asked is in the passage: the weights of the question's words (and their concept words) that appear in it."""
+    have = {stem(w) for w in tokens(text)}
+    return sum(wt for w, wt in wts.items() if w in have)
 
 
 def shorten(text: str, words: int = SHOW_WORDS) -> str:
@@ -530,6 +577,81 @@ def pool(figure_id: str = "", stratum: str = "", path: str = "") -> list[tuple[d
     return [(f, load_index(f["id"]) or [{"text": n["text"], "locator": n["source"], "kind": "note", "credit": f"your own note ({n['source']})"} for n in load_notes(f["id"])]) for f in fs]
 
 
+def detect_figures(question: str) -> list[str]:
+    """Figures the question names (their name, or their last name when it is not shared with another figure): 'what did Seneca say about anger' names seneca."""
+    low = " " + re.sub(r"[^a-z0-9 ]+", " ", (question or "").lower()) + " "
+    fs = roster()
+    last: dict[str, list[str]] = {}
+    for f in fs:
+        parts = re.sub(r"[^a-z ]+", " ", f["name"].lower()).split()
+        if parts:
+            last.setdefault(parts[-1], []).append(f["id"])
+    out = []
+    for f in fs:
+        full = " " + re.sub(r"[^a-z0-9 ]+", " ", f["name"].lower()) + " "
+        parts = re.sub(r"[^a-z ]+", " ", f["name"].lower()).split()
+        if full in low or (parts and len(parts[-1]) >= 5 and len(last[parts[-1]]) == 1 and f" {parts[-1]} " in low) or (f" {f['id'].replace('-', ' ')} " in low):
+            out.append(f["id"])
+    return out[:4]
+
+
+ASKS_FOR_MENTOR = re.compile(r"\b(quote|quotes|quotation|mentor|mentors|philosoph\w*|stoic\w*|wisdom|thinkers?|great minds|ancient|the library|what (would|did|does|do) [\w .'-]{2,40} (say|write|wrote|teach|taught|think))\b", re.I)
+
+
+def wants_mentor(question: str) -> bool:
+    """Automatic mentor passages appear only when the student asked for them (a quote, a mentor, wisdom, what someone said) or named a figure. Matching is by words, not by meaning:
+    padding an ordinary answer with whatever shares a word would be noise, so it is never done unasked."""
+    return bool(ASKS_FOR_MENTOR.search(question or "")) or bool(detect_figures(question))
+
+
+MIN_SCORE, MIN_COVER = 4.0, 1.0
+
+
+def search(question: str, figure_id: str = "", stratum: str = "", path: str = "", n: int = 3, strict: bool = False) -> list[dict]:
+    """The best real passages for a question: [{text, credit, who, fid, score}]. strict=True keeps only passages that really fit (a clear score and enough of the question's words),
+    so a general chat answer is never padded with a quote that merely shares a word. Naming a figure in the question searches only their library, with the bar lowered."""
+    q = (question or "").strip()
+    wts = query_weights(q)
+    named = [] if figure_id else detect_figures(q)
+    allp = []
+    for fid in ([figure_id] if figure_id else (named or [None])):
+        for f, ps in (pool(fid, stratum, path) if fid else pool("", stratum, path)):
+            for p in ps:
+                if strict and not (named or figure_id) and p["kind"] not in ("quote", "note"):
+                    continue                  # a general answer is only padded with short, single-idea quotations, never with a stretch of a book
+                allp.append({**p, "who": f["name"], "fid": f["id"]})
+    hits = bm25(q, allp, wts)
+    min_score, min_cover = (MIN_SCORE * (0.4 if (named or figure_id) else 1), MIN_COVER * (0.7 if (named or figure_id) else 1))
+    out, seen_f = [], {}
+    many = len({h[1]["fid"] for h in hits}) > 1
+    for score, p in hits:
+        if strict and (score < min_score or coverage(wts, p["text"]) < min_cover or len(p["text"].split()) < 8):
+            continue                          # too weak a match, or a heading rather than a thought
+        if seen_f.get(p["fid"], 0) >= 2 and many:
+            continue
+        seen_f[p["fid"]] = seen_f.get(p["fid"], 0) + 1
+        out.append({**p, "score": round(score, 2)})
+        if len(out) >= n:
+            break
+    return out
+
+
+def mentor_block(question: str, n: int = 2, only: bool = False) -> str:
+    """The passages to show beside (or instead of) a chat answer: '' when nothing fits. only=True is the student's own request for a mentor, so it always answers, even if only to say nothing fits."""
+    hits = search(question, n=n, strict=True)
+    if not hits:
+        if not only:
+            return ""
+        have = sum(len(load_index(f["id"])) for f in roster())
+        return ("Nothing in the library fits those words. Try other words, or name someone (for example: what did Seneca say about anger?)."
+                if have else "The library is empty on this PC. Set it up once: HQ Tools, Voices: set up the library.")
+    out = ["From the library (real passages with their sources, found by matching your words, not their meaning: read them as prompts, not as answers):", ""]
+    for i, p in enumerate(hits, 1):
+        out += [f"{i}. \"{shorten(p['text'], 70)}\"", f"   {p['credit']}", ""]
+    out.append("No AI model wrote or changed these, and they are not the person speaking now.")
+    return chr(10).join(out)
+
+
 def ask(question: str, figure_id: str = "", stratum: str = "", path: str = "", n: int = 3) -> str:
     if len((question or "").strip()) < 4:
         raise ValueError("Ask a question or give a topic (at least a few letters).")
@@ -539,28 +661,14 @@ def ask(question: str, figure_id: str = "", stratum: str = "", path: str = "", n
         raise ValueError("Path is one of: " + ", ".join(PATHS))
     if not 1 <= n <= 8:
         raise ValueError("Ask for 1 to 8 passages.")
-    scoped = pool(figure_id, stratum, path)
-    allp, empty = [], []
-    for f, ps in scoped:
-        if not ps:
-            empty.append(f["name"])
-        for p in ps:
-            allp.append({**p, "who": f["name"], "fid": f["id"]})
-    hits = bm25(question, allp)
+    hits = search(question, figure_id, stratum, path, n)
     out = [f"# Voices: \"{question.strip()[:80]}\"", ""]
     if not hits:
+        empty = [f["name"] for f, ps in pool(figure_id, stratum, path) if not ps]
         out.append("Nothing in the library matches that yet." + (f" Nothing is fetched yet for: {', '.join(empty[:6])}{'...' if len(empty) > 6 else ''}. Set the library up once: HQ Tools, Voices: set up the library (or python dse.py voices setup)." if empty else " Try other words."))
         return "\n".join(out) + "\n"
-    seen_f: dict[str, int] = {}
-    shown = 0
-    for score, p in hits:
-        if seen_f.get(p["fid"], 0) >= 2 and len({h[1]["fid"] for h in hits}) > 1 and shown < n:
-            continue
-        seen_f[p["fid"]] = seen_f.get(p["fid"], 0) + 1
-        shown += 1
-        out += [f"{shown}. \"{shorten(p['text'])}\"", f"   {p['credit']}", ""]
-        if shown >= n:
-            break
+    for i, p in enumerate(hits, 1):
+        out += [f"{i}. \"{shorten(p['text'])}\"", f"   {p['credit']}", ""]
     out.append("From the Voices library: real passages with their sources, found by matching your words. No AI model wrote or changed them, and they are not the person speaking now.")
     return "\n".join(out) + "\n"
 

@@ -333,7 +333,7 @@ def library_reply(q, why):
     return (from_progress(q) or library_answer(q)) + NL * 2 + f"({why})"
 
 
-def reply(q, image=None, mode="auto"):
+def _answer(q, image=None, mode="auto"):
     """mode: auto (best available), library (the built-in guides and recipes only, no AI model), claude (your Anthropic key), or ollama:<model> (one installed model)."""
     global OLLAMA_MODEL, MODEL_WHY
     if not image:
@@ -377,10 +377,58 @@ def reply(q, image=None, mode="auto"):
     return library_reply(q, why) + note
 
 
+MENTORS = ("auto", "off", "only")
+
+
+def _voices():
+    """The Voices library (dse/voices.py), found next to this folder or in the DSE Toolkit; None when this install does not have it."""
+    for root in (H.parent, H.parents[1] / "dse-toolkit"):
+        if (root / "dse" / "voices.py").is_file():
+            try:
+                if str(root) not in sys.path:
+                    sys.path.insert(0, str(root))
+                from dse import voices
+                return voices
+            except Exception:
+                return None
+    return None
+
+
+def mentor_text(q, mentors):
+    """Real passages from the Voices library beside the answer: when you ask for a mentor or a quote, or name someone ('what did Seneca say about anger'); 'only' is a pure
+    mentor answer (no AI); 'off' never. Matching is by words, so it is never added to an ordinary answer unasked."""
+    if mentors == "off":
+        return ""
+    v = _voices()
+    if not v:
+        return "The Voices library is not on this PC (it comes with the DSE Toolkit)." if mentors == "only" else ""
+    try:
+        if mentors == "only":
+            return v.mentor_block(q, 3, only=True)
+        return v.mentor_block(q, 2) if v.wants_mentor(q) else ""
+    except Exception:
+        return ""
+
+
+def reply(q, image=None, mode="auto", mentors="auto"):
+    """The answer (see _answer) plus, when wanted, mentor passages from the Voices library. mentors: auto (only if you ask for a mentor or name one), only (library passages, no AI), off."""
+    mentors = mentors if mentors in MENTORS else "auto"
+    if mentors == "only" and not image:
+        return mentor_text(q, "only") + NL * 2 + "(Answered from the Voices library: no AI model was used.)"
+    out = _answer(q, image, mode)
+    if image or out.endswith("this chat only answers questions. It cannot see files, build, commit, push or send. No AI model was used.)"):
+        return out
+    blk = mentor_text(q, mentors)
+    return out + NL * 2 + blk if blk else out
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     img = None
     mode = "auto"
+    mentors = "auto"
+    if "--mentors" in args:
+        i = args.index("--mentors"); mentors = args[i + 1]; del args[i:i + 2]
     if "--model" in args:
         i = args.index("--model"); mode = args[i + 1]; del args[i:i + 2]
     if "--engine" in args:
@@ -391,10 +439,10 @@ if __name__ == "__main__":
         i = args.index("--image"); img = args[i + 1]; del args[i:i + 2]
     if args:
         try:
-            print(reply(" ".join(args), img, mode))
+            print(reply(" ".join(args), img, mode, mentors))
         finally:
             if img and Path(img).name.startswith("dbi-ai-"):
                 Path(img).unlink(missing_ok=True)
     else:
         while (q := input("You: ").strip()).lower() not in ("bye", "exit", ""):
-            print(reply(q, None, mode), NL)
+            print(reply(q, None, mode, mentors), NL)
