@@ -1,0 +1,227 @@
+[
+  {
+    "id": "leads-and-contacts",
+    "name": "Local leads, then owners and emails",
+    "for": "Any path that sells to local businesses",
+    "recipe": {
+      "name": "Local leads, then owners and emails",
+      "help": "Builds a list of local businesses with a website problem check, then finds owners, emails and phones from each business's own website.",
+      "inputs": [
+        {
+          "name": "pack",
+          "label": "Which problem check",
+          "type": "choice",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "pack"
+          }
+        },
+        {
+          "name": "kind",
+          "label": "Business type (type any business)",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "kind"
+          }
+        },
+        {
+          "name": "cities",
+          "label": "Cities",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "cities"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.list",
+          "label": "Find the businesses and check their websites",
+          "values": {
+            "pack": "{{pack}}",
+            "kind": "{{kind}}",
+            "cities": "{{cities}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "podcast-leads-and-contacts",
+    "name": "Podcast leads, then contact details",
+    "for": "Broadcast: podcasts that could use your service",
+    "recipe": {
+      "name": "Podcast leads, then contact details",
+      "help": "Finds podcasts on a topic, then looks for the owner, email and phone on each podcast's own website.",
+      "inputs": [
+        {
+          "name": "terms",
+          "label": "Podcast topics",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "terms"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.podcasts",
+          "label": "Find podcasts",
+          "values": {
+            "terms": "{{terms}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find contact details",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "one-website-deep-look",
+    "name": "One website: problems, then contact details",
+    "for": "Before you reach out to one business",
+    "recipe": {
+      "name": "One website: problems, then contact details",
+      "help": "Checks one business's website for the problems your path looks for, then reads the same site for owner names, emails and phones.",
+      "inputs": [
+        {
+          "name": "pack",
+          "label": "Which problem check",
+          "type": "choice",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "pack"
+          }
+        },
+        {
+          "name": "site",
+          "label": "The website address",
+          "type": "url",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "url"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.check_one",
+          "label": "Check the website for problems",
+          "values": {
+            "pack": "{{pack}}",
+            "url": "{{site}}"
+          }
+        },
+        {
+          "tool": "dse.enrich_site",
+          "label": "Find who to contact",
+          "values": {
+            "site": "{{site}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "prepare-todays-sends",
+    "name": "Prepare today's sends for an engine",
+    "for": "Anyone with an engine: new send lists plus follow-ups",
+    "recipe": {
+      "name": "Prepare today's sends for an engine",
+      "help": "Builds the engine's next send list, then plans the follow-ups that are due, so the Send Desk has everything for today.",
+      "inputs": [
+        {
+          "name": "engine",
+          "label": "Which engine",
+          "type": "choice",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "engine"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.daily",
+          "label": "Build the next send list",
+          "values": {
+            "engine": "{{engine}}"
+          }
+        },
+        {
+          "tool": "dse.followups",
+          "label": "Plan the follow-ups",
+          "values": {
+            "engine": "{{engine}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "morning-routine",
+    "name": "Morning routine: brief, then the week's priorities",
+    "for": "Everyone. Schedule it for weekday mornings",
+    "recipe": {
+      "name": "Morning routine: brief, then the week's priorities",
+      "help": "Builds today's brief for all your engines, then the Weekly Review of what to do first this week. Asks for nothing, so it is ready to schedule.",
+      "inputs": [],
+      "steps": [
+        {
+          "tool": "dse.brief",
+          "label": "Build today's brief",
+          "values": {}
+        },
+        {
+          "tool": "dse.review_all",
+          "label": "Weekly Review of all engines",
+          "values": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "monday-money-check",
+    "name": "Monday check: money and priorities",
+    "for": "Everyone. Schedule it for Monday mornings",
+    "recipe": {
+      "name": "Monday check: money and priorities",
+      "help": "Shows where all your engines stand against this month's money target, then the Weekly Review of what to do first. Asks for nothing, so it is ready to schedule.",
+      "inputs": [],
+      "steps": [
+        {
+          "tool": "dse.cash_all",
+          "label": "Cash Desk: all engines",
+          "values": {}
+        },
+        {
+          "tool": "dse.review_all",
+          "label": "Weekly Review of all engines",
+          "values": {}
+        }
+      ]
+    }
+  }
+]

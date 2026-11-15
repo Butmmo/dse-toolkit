@@ -286,12 +286,14 @@ def check_all(only: str = "") -> list[dict]:
 
 
 def newest_output(r, globs: list[str], before: dict):
+    """The file a step made that the next step should get: the newest one, a .csv before anything else (a tool that writes a list and a summary hands on the list)."""
     best = None
     for g in globs:
         for fp, m in r.snapshot([g]).items():
             if before.get(fp) != m and fp.suffix.lower() in (".csv", ".json", ".txt", ".md", ".xlsx"):
-                if best is None or m > best[0]:
-                    best = (m, fp)
+                rank = (fp.suffix.lower() == ".csv", m)
+                if best is None or rank > best[0]:
+                    best = (rank, fp)
     return best[1] if best else None
 
 

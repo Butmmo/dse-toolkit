@@ -148,6 +148,13 @@ check("an unknown recipe is said plainly", M.run("my.nope", [], lines.append) ==
 NOFILE = {"name": "Count without a file", "inputs": [], "steps": [{"tool": "t.fail", "values": {}}, {"tool": "t.count", "values": {"file": "{{prev.file}}"}}]}
 (M.MINE / "no-file.json").write_text(json.dumps({"slug": "no-file", "name": "Count without a file", "spec": NOFILE}), encoding="utf-8")
 
+# ---------------------------------------------------------------- which file is handed on
+from types import SimpleNamespace  # noqa: E402
+fake_r = SimpleNamespace(snapshot=lambda g: {Path("x/a-enriched.md"): 200.0, Path("x/a-enriched.csv"): 100.0})
+check("a tool that writes a list and a summary hands on the list, even when the summary is newer", M.newest_output(fake_r, ["x/*"], {}) == Path("x/a-enriched.csv"))
+check("with only a summary, that is handed on", M.newest_output(SimpleNamespace(snapshot=lambda g: {Path("x/s.md"): 5.0}), ["x/*"], {}) == Path("x/s.md"))
+check("files that did not change are not handed on", M.newest_output(fake_r, ["x/*"], {Path("x/a-enriched.csv"): 100.0, Path("x/a-enriched.md"): 200.0}) is None)
+
 # ---------------------------------------------------------------- saving
 rf = TMP / "r.json"
 rf.write_text(json.dumps(GOOD), encoding="utf-8")
