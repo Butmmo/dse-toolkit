@@ -49,8 +49,26 @@ SHOW_WORDS = 110
 
 # ------------------------------------------------------------------ roster and state
 
+def fixes_path() -> Path:
+    return STORE / "fixes.json"
+
+
+def load_fixes() -> dict:
+    """Repairs found by `voices repair`, kept apart from the roster (which stays exactly as shipped): {original source key: fields to replace}."""
+    try:
+        return json.loads(fixes_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def roster() -> list[dict]:
-    return json.loads(ROSTER.read_text(encoding="utf-8"))["figures"]
+    fs = json.loads(ROSTER.read_text(encoding="utf-8"))["figures"]
+    fx = load_fixes()
+    if fx:
+        for f in fs:
+            for s in f.get("sources", []):
+                s.update(fx.get(src_key(f, s), {}))
+    return fs
 
 
 def figure(fid: str) -> dict:
@@ -410,6 +428,146 @@ def verify(fid: str = "") -> str:
             time.sleep(PAUSE)
     save_state(st)
     return "\n".join(["# Voices: source check", "", *lines, "", f"{ok_n} source(s) verified, {bad_n} failed. Only verified sources are ever fetched or used. A failed source can be fixed in voices/roster.json (a different title, page or homepage) and checked again.", ""])
+
+
+# ------------------------------------------------------------------ repair (the fix-it button for a failing source)
+
+def failing(recorded_only: bool = False) -> list[dict]:
+    """Every source that is not verified: [{value 'figure:index', figure, name, type, label, detail, tried}]. recorded_only: only those a check has actually failed."""
+    st = load_state()
+    out = []
+    for f in roster():
+        for i, s in enumerate(f.get("sources", [])):
+            if s["type"] == "links":
+                continue
+            key = src_key(f, s)
+            v = st["verified"].get(key)
+            if v and v.get("ok"):
+                continue
+            if recorded_only and not v:
+                continue
+            what = s.get("title") or s.get("search") or s.get("page") or s.get("handle") or s.get("home") or s.get("url") or ""
+            out.append({"value": f"{f['id']}:{i}", "figure": f["id"], "name": f["name"], "type": s["type"], "label": f"{f['name']}: {s['type']} {what}"[:90],
+                        "detail": (v or {}).get("detail", "not checked yet"), "tried": key in st.get("repaired", {})})
+    return out
+
+
+def _save_fix(f: dict, idx: int, new: dict) -> None:
+    """Remember a repair under the source's ORIGINAL roster key (the shipped roster stays untouched; roster() applies the repair on load)."""
+    raw = next(x for x in json.loads(ROSTER.read_text(encoding="utf-8"))["figures"] if x["id"] == f["id"])
+    key = src_key(f, raw["sources"][idx])
+    fx = load_fixes()
+    fx[key] = {**fx.get(key, {}), **new}
+    STORE.mkdir(parents=True, exist_ok=True)
+    fixes_path().write_text(json.dumps(fx, indent=1), encoding="utf-8")
+
+
+def _remedy(f: dict, s: dict) -> tuple[dict, str]:
+    """Try the repairs a person would try. Returns (fields to replace in the source, what was done) or ({}, why nothing worked)."""
+    t = s["type"]
+    if t == "gutenberg":
+        surname = [w for w in re.findall(r"[a-z]{4,}", f["name"].lower()) if w not in ("saint", "bishop")][-1:] or [""]
+        used = {int(x["id"]) for x in f.get("sources", []) if x["type"] == "gutenberg" and x.get("id")}
+        seen = set()
+        for q in dict.fromkeys([f["name"], surname[0]]):
+            for b in pg_search(q)[:8]:
+                if b["id"] in seen or b["id"] in used or re.search(r"index|catalog", b["title"], re.I):
+                    continue
+                seen.add(b["id"])
+                head = pg_head(b["id"])
+                m = re.search(r"^Author:\s*(.+)$", head, re.M)
+                lang = re.search(r"^Language:\s*(.+)$", head, re.M)
+                if head and (not lang or "english" in lang.group(1).lower()) and m and surname[0] in m.group(1).lower():
+                    tm = re.search(r"^Title:\s*(.+)$", head, re.M)
+                    title = (tm.group(1).strip() if tm else b["title"])[:120]
+                    return {"id": b["id"], "title": title}, f"the book you named was not found, so a different public-domain book by {f['name']} was used: {title} (Project Gutenberg #{b['id']})"
+                time.sleep(PAUSE / 2)
+        return {}, "Project Gutenberg has no English book by this author that could be confirmed from its own header"
+    if t == "wikiquote":
+        code, body = http_get("https://en.wikiquote.org/w/api.php?action=opensearch&format=json&limit=6&search=" + requests.utils.quote(f["name"]))
+        try:
+            titles = json.loads(body)[1] if code == 200 else []
+        except (ValueError, IndexError, TypeError):
+            titles = []
+        for title in titles:
+            if title != s.get("page") and len(wikiquote_get(title)) >= 3:
+                return {"page": title}, f"found the Wikiquote page '{title}'"
+            time.sleep(PAUSE / 2)
+        return {}, "Wikiquote has no page for this figure with sourced quotations"
+    if t == "feed":
+        home = s.get("home") or ""
+        base = re.match(r"https?://[^/]+", home or s.get("url", ""))
+        for cand in dict.fromkeys([x for x in (home, base.group(0) if base else "") if x]):
+            u = discover_feed(cand)
+            if u and parse_feed(http_get(u)[1]):
+                return {"url": u}, f"found the feed at {u}"
+        return {}, "no feed was found on the site (it may not publish one: follow it by hand)"
+    if t == "youtube":
+        for _ in range(2):
+            url = youtube_feed_url(s.get("handle", ""))
+            if url and parse_feed(http_get(url)[1]):
+                return {}, "the channel's feed answers again"
+            time.sleep(PAUSE * 2)
+        return {}, "YouTube's own feed is not answering for this channel right now (it is tried again on every setup run; follow the channel by hand meanwhile)"
+    if t == "books":
+        keep, drop = [], []
+        for b in s.get("list", []):
+            code, body = http_get("https://openlibrary.org/search.json?limit=5&title=" + requests.utils.quote(re.split(r"[:(]", b["title"])[0].strip()))
+            try:
+                docs = json.loads(body).get("docs", []) if code == 200 else []
+            except ValueError:
+                docs = []
+            sur = [w for w in re.findall(r"[a-z]{4,}", f["name"].lower())][-1:] or [""]
+            (keep if any(sur[0] in " ".join(d.get("author_name", [])).lower() for d in docs) else drop).append(b)
+            time.sleep(PAUSE / 3)
+        if keep and drop:
+            return {"list": keep}, "dropped the title(s) Open Library could not confirm under this author: " + "; ".join(b["title"] for b in drop)
+        return {}, "Open Library could not confirm these titles under this author; correct them in voices/roster.json"
+    return {}, "nothing to repair for this kind of source"
+
+
+def repair(target: str = "", say=lambda *_: None) -> str:
+    """The fix-it button. target: '' or 'any' (every failing source), a figure id, or 'figure:index'. For each failing source it tries the repairs, checks the result,
+    downloads what became lawful to keep, and says what it did or why it could not. Repairs are kept in data/voices/fixes.json (the roster file is never changed)."""
+    target = (target or "").strip().lower()
+    todo = [x for x in failing() if target in ("", "any") or x["value"] == target or x["figure"] == target]
+    if not todo:
+        return "# Voices: repair\n\nNothing to repair" + (f" for '{target}'" if target not in ("", "any") else "") + ": every source is either verified or links only.\n"
+    lines, fixed, still, refetch = [], 0, 0, set()
+    for x in todo:
+        idx = int(x["value"].split(":")[1])
+        f = figure(x["figure"])
+        s = f["sources"][idx]
+        say(f"Repairing {x['label']} ...")
+        new, why = _remedy(f, s)
+        if new:
+            _save_fix(f, idx, new)
+            f = figure(x["figure"])
+            s = f["sources"][idx]
+        res = verify_source(f, s)
+        st = load_state()
+        st["verified"][src_key(f, s)] = {**res, "checked": dt.date.today().isoformat(), "v": CHECK_VERSION}
+        if res["ok"]:
+            st.get("repaired", {}).pop(src_key(f, s), None)
+        else:
+            st.setdefault("repaired", {})[src_key(f, s)] = dt.date.today().isoformat()
+        save_state(st)
+        if res["ok"]:
+            fixed += 1
+            if s["type"] in ("gutenberg", "wikiquote"):
+                refetch.add(f["id"])
+            lines.append(f"- FIXED {x['label']}: {why if new else 'it checks out now (it was a temporary problem)'}. {res['detail']}")
+        else:
+            still += 1
+            lines.append(f"- STILL FAILING {x['label']}: {why}. Last check: {res['detail']}")
+        time.sleep(PAUSE)
+    for fid in sorted(refetch):
+        try:
+            fetch(fid)
+        except Exception:
+            pass
+    return "\n".join(["# Voices: repair", "", f"{fixed} source(s) fixed, {still} still failing.", "", *lines, "",
+                      "A repair never edits voices/roster.json: it is kept in data/voices/fixes.json (delete that file to go back to the shipped roster). A source that stays failing is tried again by setup.", ""])
 
 
 # ------------------------------------------------------------------ fetch and index

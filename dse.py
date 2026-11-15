@@ -162,7 +162,7 @@ def main():
     dc = sub.add_parser("doctor", help="the System check: what is on, what is missing, and the exact fix"); dc.add_argument("--offline", action="store_true", help="skip the questions to the Citadel database")
     bf = sub.add_parser("brief", help="what to do first today, across all your engines"); bf.add_argument("--top", type=int, default=3)
     vc = sub.add_parser("voices", help="the Voices library: figures worth learning from, real passages with sources")
-    vc.add_argument("action", choices=["list", "show", "verify", "fetch", "update", "ask", "today", "note", "check", "setup"])
+    vc.add_argument("action", choices=["list", "show", "verify", "fetch", "update", "ask", "today", "note", "check", "setup", "repair"])
     vc.add_argument("target", nargs="?", default="", help="a question (ask), a figure id (show, fetch, note), or nothing")
     vc.add_argument("--figure", default=""); vc.add_argument("--stratum", default=""); vc.add_argument("--path", default=""); vc.add_argument("--n", type=int, default=3)
     vc.add_argument("--text", default=""); vc.add_argument("--source", default=""); vc.add_argument("--minutes", type=int, default=25); vc.add_argument("--force", action="store_true")
@@ -371,6 +371,8 @@ def main():
                 print(voices.today(a.stratum or "wisdom"))
             elif x == "setup":
                 print(voices.setup(t or a.figure, a.minutes, a.force, say=lambda m: print(m, flush=True)))
+            elif x == "repair":
+                print(voices.repair(t or a.figure, say=lambda m: print(m, flush=True)))
             elif x == "note":
                 print(voices.note(t or a.figure, a.text, a.source))
             else:

@@ -177,6 +177,19 @@ def figure_choices(with_any: bool = True) -> list[dict]:
     return out
 
 
+def failing_choices() -> list[dict]:
+    """Voices sources that are not verified, for "choices_from": "failing_sources": the fix-it button's list (plus 'Repair all of them')."""
+    out = [{"value": "any", "label": "Repair every failing source"}]
+    try:
+        sys.path.insert(0, str(ROOT))
+        from dse import voices
+        for x in voices.failing()[:80]:
+            out.append({"value": x["value"], "label": f"{x['label']}: {x['detail']}"[:140]})
+    except Exception:
+        pass
+    return out
+
+
 def resolve_fields(cat: dict) -> dict:
     """Fill dynamic choice lists (engines) into the catalog, for both the published forms and the value checks."""
     eng = None
@@ -197,6 +210,8 @@ def resolve_fields(cat: dict) -> dict:
                 f["choices"] = figure_choices(True)
             elif f.get("choices_from") == "figure_ids":
                 f["choices"] = figure_choices(False)
+            elif f.get("choices_from") == "failing_sources":
+                f["choices"] = failing_choices()
     return cat
 
 

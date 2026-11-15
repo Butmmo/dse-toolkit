@@ -184,6 +184,14 @@ def check_local(now: float) -> list[dict]:
         n = sum(1 for f in voices.roster() if voices.load_index(f["id"]))
         out.append(item(a, "The Voices library", "ok" if n else "fix", f"{n} figure(s) with real passages" if n else "The library is empty (Dashboard passages and DBI-AI mentors have nothing to show).",
                         "" if n else "HQ Tools > Voices: set up the library (or python dse.py voices setup)."))
+        bad = voices.failing(recorded_only=True)
+        if bad:
+            fresh = [x for x in bad if not x["tried"]]
+            names = "; ".join(f"{x['label']} ({x['detail'][:60]})" for x in (fresh or bad)[:4]) + (f" and {len(fresh or bad) - 4} more" if len(fresh or bad) > 4 else "")
+            if fresh:
+                out.append(item(a, "Voices sources that fail their check", "fix", f"{len(fresh)} source(s): {names}.", "HQ Tools > Voices: repair a failing source (leave it on 'Repair every failing source'), or: python dse.py voices repair"))
+            else:
+                out.append(item(a, "Voices sources that fail their check", "optional", f"{len(bad)} source(s) still fail after a repair attempt: {names}.", "Nothing breaks: the rest of the library works. Setup tries them again by itself."))
     except Exception:
         pass
     token = os.environ.get("HF_TOKEN", "")

@@ -6473,6 +6473,218 @@
       "timeout_min": 2,
       "outputs": []
     },
+    "dse.mypack": {
+      "label": "Make my own website check (for any business)",
+      "group": "Grow",
+      "help": "The built-in checks are written for one path each. Make your own for any business you sell to. Name it, say in one sentence what you offer, then write up to 4 checks, each as: words that count as the website having it, separated by commas, then =>, then what you would say if none of them appear (the gap you would open with). Example: online booking, book now, schedule => there is no way to book a session online. Your check then appears in the 'Your path or your own check' list of the lead and website tools. Nothing is sent.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "mypack"
+        },
+        {
+          "field": "name"
+        },
+        {
+          "opt": "--sells",
+          "field": "sells"
+        },
+        {
+          "opt": "--checks",
+          "field": "check1"
+        },
+        {
+          "opt": "--checks",
+          "field": "check2"
+        },
+        {
+          "opt": "--checks",
+          "field": "check3"
+        },
+        {
+          "opt": "--checks",
+          "field": "check4"
+        },
+        {
+          "opt": "--opener",
+          "field": "opener"
+        },
+        {
+          "opt": "--pages",
+          "field": "pages"
+        }
+      ],
+      "fields": [
+        {
+          "name": "name",
+          "label": "Name (the kind of business, like Wedding photographers)",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "[A-Za-z][A-Za-z0-9 &'/-]{2,59}"
+        },
+        {
+          "name": "sells",
+          "label": "What you offer, in one sentence",
+          "type": "text",
+          "required": true,
+          "max": 160,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=-]{7,159}"
+        },
+        {
+          "name": "check1",
+          "label": "Check 1: words that count as 'has it', then =>, then what you would say if missing",
+          "type": "text",
+          "required": true,
+          "max": 300,
+          "placeholder": "online booking, book now, schedule => there is no way to book online",
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
+        },
+        {
+          "name": "check2",
+          "label": "Check 2: words that count as 'has it', then =>, then what you would say if missing (optional)",
+          "type": "text",
+          "required": false,
+          "max": 300,
+          "placeholder": "online booking, book now, schedule => there is no way to book online",
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
+        },
+        {
+          "name": "check3",
+          "label": "Check 3: words that count as 'has it', then =>, then what you would say if missing (optional)",
+          "type": "text",
+          "required": false,
+          "max": 300,
+          "placeholder": "online booking, book now, schedule => there is no way to book online",
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
+        },
+        {
+          "name": "check4",
+          "label": "Check 4: words that count as 'has it', then =>, then what you would say if missing (optional)",
+          "type": "text",
+          "required": false,
+          "max": 300,
+          "placeholder": "online booking, book now, schedule => there is no way to book online",
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
+        },
+        {
+          "name": "opener",
+          "label": "Your opening message (optional): use {business}, {city} and {gap_line}",
+          "type": "text",
+          "required": false,
+          "max": 600,
+          "pattern": "[A-Za-z0-9{][A-Za-z0-9 ,.'&/()!:;?_#%+={}<>-]{29,599}"
+        },
+        {
+          "name": "pages",
+          "label": "Pages to look at besides the home page (optional: contact, pricing, booking)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,;-]{1,119}"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.categories": {
+      "label": "Business types: find the exact name for the lead finder",
+      "group": "Grow",
+      "help": "Search Foursquare's list of business categories (the data behind the lead finder) for the exact name of the business you sell to, like photographer or yoga studio. You can also just type your own business type in the lead tools: it is found and saved for you.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "categories"
+        },
+        {
+          "field": "search"
+        }
+      ],
+      "fields": [
+        {
+          "name": "search",
+          "label": "A word (like photo, yoga, bakery)",
+          "type": "text",
+          "required": true,
+          "max": 40,
+          "pattern": "[A-Za-z][A-Za-z ]{2,39}"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.crm": {
+      "label": "CRM sync: keep this engine's leads, replies and calls in my BPS CRM",
+      "group": "My engines",
+      "help": "Your engine already knows every lead, who replied (and what they said), who booked a call and who became a client. This puts them in your BPS CRM so you stop copying: one lead per business, the right stage, and a block in the notes that keeps itself up to date. It is OFF until you turn it on for an engine. Preview shows exactly what the CRM would get. A stage only moves forward, what you wrote in the CRM is never overwritten, and a lead you added yourself is matched by its website and adopted, not duplicated. Nothing is sent to anyone but your own account.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "crm"
+        },
+        {
+          "field": "action"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "action",
+          "label": "What to do",
+          "type": "choice",
+          "required": true,
+          "default": "preview",
+          "choices": [
+            {
+              "value": "preview",
+              "label": "Preview what the CRM would get"
+            },
+            {
+              "value": "on",
+              "label": "Turn on for this engine"
+            },
+            {
+              "value": "off",
+              "label": "Turn off for this engine"
+            },
+            {
+              "value": "sync",
+              "label": "Send now (it also runs by itself every 5 minutes when on)"
+            },
+            {
+              "value": "status",
+              "label": "Status of this engine"
+            }
+          ]
+        },
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.doctor": {
+      "label": "System check: what is on, what is missing, and the fix",
+      "group": "Setup",
+      "help": "Checks this PC and your Citadel database and tells you, in plain words, what is working, what needs a fix and exactly what to do: is the runner running and up to date, which database updates (SQL files) have not been run, which background helpers have stalled or failed, and whether the Voices library, the business-data token, Ollama and the Python packages are in place. It changes nothing and sends nothing.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "doctor"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 3,
+      "outputs": []
+    },
     "dse.voices_ask": {
       "label": "Voices: ask the library",
       "group": "Voices",
@@ -6978,217 +7190,39 @@
       ],
       "timeout_min": 30
     },
-    "dse.mypack": {
-      "label": "Make my own website check (for any business)",
-      "group": "Grow",
-      "help": "The built-in checks are written for one path each. Make your own for any business you sell to. Name it, say in one sentence what you offer, then write up to 4 checks, each as: words that count as the website having it, separated by commas, then =>, then what you would say if none of them appear (the gap you would open with). Example: online booking, book now, schedule => there is no way to book a session online. Your check then appears in the 'Your path or your own check' list of the lead and website tools. Nothing is sent.",
+    "dse.voices_repair": {
+      "label": "Voices: repair a failing source",
+      "group": "Voices",
+      "help": "The fix-it button. Pick a source that is failing (or repair them all): it tries what a person would try, a different Project Gutenberg book by the same author, the right Wikiquote page, another feed address on the site, titles Open Library can confirm. It checks the result, downloads what became possible, and says plainly what it fixed and what it could not. Repairs are kept apart from the roster, so nothing you edited is overwritten. Only lawful public sources are used; no social network is read.",
       "script": "dse.py",
       "args": [
         {
-          "lit": "mypack"
+          "lit": "voices"
         },
         {
-          "field": "name"
+          "lit": "repair"
         },
         {
-          "opt": "--sells",
-          "field": "sells"
-        },
-        {
-          "opt": "--checks",
-          "field": "check1"
-        },
-        {
-          "opt": "--checks",
-          "field": "check2"
-        },
-        {
-          "opt": "--checks",
-          "field": "check3"
-        },
-        {
-          "opt": "--checks",
-          "field": "check4"
-        },
-        {
-          "opt": "--opener",
-          "field": "opener"
-        },
-        {
-          "opt": "--pages",
-          "field": "pages"
+          "field": "target"
         }
       ],
       "fields": [
         {
-          "name": "name",
-          "label": "Name (the kind of business, like Wedding photographers)",
-          "type": "text",
-          "required": true,
-          "max": 60,
-          "pattern": "[A-Za-z][A-Za-z0-9 &'/-]{2,59}"
-        },
-        {
-          "name": "sells",
-          "label": "What you offer, in one sentence",
-          "type": "text",
-          "required": true,
-          "max": 160,
-          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=-]{7,159}"
-        },
-        {
-          "name": "check1",
-          "label": "Check 1: words that count as 'has it', then =>, then what you would say if missing",
-          "type": "text",
-          "required": true,
-          "max": 300,
-          "placeholder": "online booking, book now, schedule => there is no way to book online",
-          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
-        },
-        {
-          "name": "check2",
-          "label": "Check 2: words that count as 'has it', then =>, then what you would say if missing (optional)",
-          "type": "text",
-          "required": false,
-          "max": 300,
-          "placeholder": "online booking, book now, schedule => there is no way to book online",
-          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
-        },
-        {
-          "name": "check3",
-          "label": "Check 3: words that count as 'has it', then =>, then what you would say if missing (optional)",
-          "type": "text",
-          "required": false,
-          "max": 300,
-          "placeholder": "online booking, book now, schedule => there is no way to book online",
-          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
-        },
-        {
-          "name": "check4",
-          "label": "Check 4: words that count as 'has it', then =>, then what you would say if missing (optional)",
-          "type": "text",
-          "required": false,
-          "max": 300,
-          "placeholder": "online booking, book now, schedule => there is no way to book online",
-          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'&/()!:;?_#%+=<>-]{9,299}"
-        },
-        {
-          "name": "opener",
-          "label": "Your opening message (optional): use {business}, {city} and {gap_line}",
-          "type": "text",
-          "required": false,
-          "max": 600,
-          "pattern": "[A-Za-z0-9{][A-Za-z0-9 ,.'&/()!:;?_#%+={}<>-]{29,599}"
-        },
-        {
-          "name": "pages",
-          "label": "Pages to look at besides the home page (optional: contact, pricing, booking)",
-          "type": "text",
-          "required": false,
-          "max": 120,
-          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,;-]{1,119}"
-        }
-      ],
-      "timeout_min": 1,
-      "outputs": []
-    },
-    "dse.categories": {
-      "label": "Business types: find the exact name for the lead finder",
-      "group": "Grow",
-      "help": "Search Foursquare's list of business categories (the data behind the lead finder) for the exact name of the business you sell to, like photographer or yoga studio. You can also just type your own business type in the lead tools: it is found and saved for you.",
-      "script": "dse.py",
-      "args": [
-        {
-          "lit": "categories"
-        },
-        {
-          "field": "search"
-        }
-      ],
-      "fields": [
-        {
-          "name": "search",
-          "label": "A word (like photo, yoga, bakery)",
-          "type": "text",
-          "required": true,
-          "max": 40,
-          "pattern": "[A-Za-z][A-Za-z ]{2,39}"
-        }
-      ],
-      "timeout_min": 3,
-      "outputs": []
-    },
-    "dse.crm": {
-      "label": "CRM sync: keep this engine's leads, replies and calls in my BPS CRM",
-      "group": "My engines",
-      "help": "Your engine already knows every lead, who replied (and what they said), who booked a call and who became a client. This puts them in your BPS CRM so you stop copying: one lead per business, the right stage, and a block in the notes that keeps itself up to date. It is OFF until you turn it on for an engine. Preview shows exactly what the CRM would get. A stage only moves forward, what you wrote in the CRM is never overwritten, and a lead you added yourself is matched by its website and adopted, not duplicated. Nothing is sent to anyone but your own account.",
-      "script": "dse.py",
-      "args": [
-        {
-          "lit": "crm"
-        },
-        {
-          "field": "action"
-        },
-        {
-          "field": "engine"
-        }
-      ],
-      "fields": [
-        {
-          "name": "action",
-          "label": "What to do",
+          "name": "target",
+          "label": "Which source",
           "type": "choice",
           "required": true,
-          "default": "preview",
+          "default": "any",
+          "choices_from": "failing_sources",
           "choices": [
             {
-              "value": "preview",
-              "label": "Preview what the CRM would get"
-            },
-            {
-              "value": "on",
-              "label": "Turn on for this engine"
-            },
-            {
-              "value": "off",
-              "label": "Turn off for this engine"
-            },
-            {
-              "value": "sync",
-              "label": "Send now (it also runs by itself every 5 minutes when on)"
-            },
-            {
-              "value": "status",
-              "label": "Status of this engine"
+              "value": "any",
+              "label": "Repair every failing source"
             }
           ]
-        },
-        {
-          "name": "engine",
-          "label": "Engine",
-          "type": "choice",
-          "required": true,
-          "choices_from": "engines",
-          "choices": []
         }
       ],
-      "timeout_min": 3,
-      "outputs": []
-    },
-    "dse.doctor": {
-      "label": "System check: what is on, what is missing, and the fix",
-      "group": "Setup",
-      "help": "Checks this PC and your Citadel database and tells you, in plain words, what is working, what needs a fix and exactly what to do: is the runner running and up to date, which database updates (SQL files) have not been run, which background helpers have stalled or failed, and whether the Voices library, the business-data token, Ollama and the Python packages are in place. It changes nothing and sends nothing.",
-      "script": "dse.py",
-      "args": [
-        {
-          "lit": "doctor"
-        }
-      ],
-      "fields": [],
-      "timeout_min": 3,
-      "outputs": []
+      "timeout_min": 15
     }
   },
   "periodic": [
