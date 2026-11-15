@@ -125,7 +125,44 @@
           "type": "choice",
           "required": true,
           "choices_from": "packs",
-          "choices": []
+          "choices": [
+            {
+              "value": "ascent",
+              "label": "The Ascent (high-ticket closer)"
+            },
+            {
+              "value": "authority",
+              "label": "Authority Engine (LinkedIn ghostwriting)"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "carebridge",
+              "label": "CareBridge"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "ministry",
+              "label": "Digital Ministry Systems"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery Engine"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimization"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist"
+            }
+          ]
         },
         {
           "name": "kind",
@@ -418,7 +455,44 @@
           "type": "choice",
           "required": true,
           "choices_from": "packs",
-          "choices": []
+          "choices": [
+            {
+              "value": "ascent",
+              "label": "The Ascent (high-ticket closer)"
+            },
+            {
+              "value": "authority",
+              "label": "Authority Engine (LinkedIn ghostwriting)"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "carebridge",
+              "label": "CareBridge"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "ministry",
+              "label": "Digital Ministry Systems"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery Engine"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimization"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist"
+            }
+          ]
         },
         {
           "name": "csv",
@@ -465,7 +539,44 @@
           "type": "choice",
           "required": true,
           "choices_from": "packs",
-          "choices": []
+          "choices": [
+            {
+              "value": "ascent",
+              "label": "The Ascent (high-ticket closer)"
+            },
+            {
+              "value": "authority",
+              "label": "Authority Engine (LinkedIn ghostwriting)"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "carebridge",
+              "label": "CareBridge"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "ministry",
+              "label": "Digital Ministry Systems"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery Engine"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimization"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist"
+            }
+          ]
         },
         {
           "name": "url",
@@ -7150,6 +7261,34 @@
       ],
       "timeout_min": 3,
       "outputs": []
+    },
+    "dse.brief": {
+      "label": "Daily Brief: what to do first today",
+      "group": "My engines",
+      "help": "The few things to do first today across all your engines, in the Weekly Review's fixed order (closest to money first), each with the tool that does it. Your PC builds this by itself in the background and shows it on your Dashboard; run it here to refresh it now. Nothing is sent or changed.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "brief"
+        },
+        {
+          "opt": "--top",
+          "field": "top"
+        }
+      ],
+      "fields": [
+        {
+          "name": "top",
+          "label": "How many things",
+          "type": "int",
+          "required": false,
+          "min": 1,
+          "max": 8,
+          "default": 3
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
     }
   },
   "periodic": [
@@ -7172,6 +7311,11 @@
       "script": "bridge/dfy_sync.py",
       "every_s": 600,
       "what": "DFY: students' filed months from Citadel into the Cut Desk (only when you turned it on)"
+    },
+    {
+      "script": "bridge/brief_sync.py",
+      "every_s": 900,
+      "what": "Daily Brief: what to do first today, sent to your Dashboard (nothing is sent to anyone else)"
     }
   ]
 }

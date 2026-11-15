@@ -30,8 +30,10 @@ for t, n in (("dse.proposal", "currency"), ("dse.books", "base"), ("dse.cut_add"
 
 for t in ("dse.list", "dse.check", "dse.check_one"):
     f = field(t, "pack")
-    f.pop("choices", None)
-    f.update(choices_from="packs", choices=[], label="Your path or your own check")
+    # The list is filled on the PC (built-in packs plus the ones you made). A static copy of the built-in ones stays here as a fallback,
+    # so an older runner that has not been restarted still shows the paths instead of an empty list.
+    builtin = [{"value": q.stem, "label": json.loads(q.read_text(encoding="utf-8")).get("label", q.stem)} for q in sorted((p.parent.parent / "packs").glob("*.json"))]
+    f.update(choices_from="packs", choices=builtin, label="Your path or your own check")
 
 WORDS = {"name": "words", "label": "Words the business's website must use (optional, your own; separate with commas)", "type": "text", "required": False, "max": 120, "pattern": r"[A-Za-z0-9][A-Za-z0-9 ,'&/-]{1,119}"}
 SKIP = {"name": "skip", "label": "Leave out businesses whose name has these words (optional, your own)", "type": "text", "required": False, "max": 120, "pattern": r"[A-Za-z0-9][A-Za-z0-9 ,'&/-]{1,119}"}

@@ -62,6 +62,12 @@ The built-in lists and checks are written for one path each. Every one of them n
 - **Your own words:** `--words "wedding, bride"` (the business's website must use one of them; replaces the built-in words) and `--skip "studio"` (leave out businesses whose name has them) on `find` and `list`.
 - **Other values:** a currency of your own (any 3-letter code such as NGN or CAD) in proposals, Books, Cut Desk and exchange rates; a podcast genre of your own. In HQ Tools and in the app every such field shows "Other: type my own".
 
+## Daily Brief: what to do first today
+
+`python dse.py brief [--top 3]` (HQ Tools, "Daily Brief") reads what the Weekly Review reads, for ALL your engines, keeps the first few things by the review's fixed rule (closest to money first) and attaches to each the tool that does it with the values it already knows: the engine, the booked call's list and row, the list file to check before sending. Each line says where its number came from; a move with no tool points to the Send Desk. Nothing is guessed, sent or changed. It is saved as `data/brief.md` and `data/brief.json`.
+
+The runner builds it by itself every 15 minutes (`bridge/brief_sync.py`, a background helper) and sends it to your own Citadel account, where the Dashboard shows "Your brief for today" with a button for each thing that opens the right tool, already filled in. It needs the one-time database update `20261119090000_hq_brief.sql` and a restart of the runner.
+
 ## Voices: the people worth learning from, with their real words and sources
 
 One library, not a tool per person: `voices/roster.json` holds **10 figures for each of five areas** (wisdom and philosophy, human empowerment and psychology, structure and systems, sales and persuasion, financial development) and **7 for each of the 9 paths**. The roster is my proposal and a plain file you can edit (swap a name, fix a source); `python dse.py voices check` confirms the counts still hold. Entries marked `check` are ones I was not sure of: confirm them before relying on them.
