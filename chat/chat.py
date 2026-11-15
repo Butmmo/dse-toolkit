@@ -175,6 +175,10 @@ Rules you never break:
 - Never use the long dash character. Use a colon or a hyphen."""
 
 
+HISTORY = ""            # the earlier messages of this chat (the "context range" Citadel sends: the newest few, about 2,400 characters at most)
+HISTORY_MAX = 2400
+
+
 def build_user_message(q, limit=7000):
     ctx = engine_context(ENGINE)
     mat = material(q, limit)
@@ -185,6 +189,8 @@ def build_user_message(q, limit=7000):
         parts.append("THE STUDENT'S ENGINE:" + NL + ctx)
     if asks_about_status(q) and progress():
         parts.append("THE STUDENT'S HQ PROGRESS SUMMARY:" + NL + progress()[:5000])
+    if HISTORY.strip():
+        parts.append("EARLIER IN THIS CHAT (newest last; context only, so you can follow what the student means by 'it' or 'that'. Do not answer these again):" + NL + HISTORY.strip()[-HISTORY_MAX:])
     parts.append("QUESTION:" + NL + q)
     return (NL * 2).join(parts)
 
@@ -427,6 +433,8 @@ if __name__ == "__main__":
     img = None
     mode = "auto"
     mentors = "auto"
+    if "--history" in args:
+        i = args.index("--history"); HISTORY = args[i + 1][:HISTORY_MAX]; del args[i:i + 2]
     if "--mentors" in args:
         i = args.index("--mentors"); mentors = args[i + 1]; del args[i:i + 2]
     if "--model" in args:

@@ -750,6 +750,10 @@
         {
           "opt": "--mentors",
           "field": "mentors"
+        },
+        {
+          "opt": "--history",
+          "field": "history"
         }
       ],
       "fields": [
@@ -814,6 +818,14 @@
               "label": "Off"
             }
           ]
+        },
+        {
+          "name": "history",
+          "label": "Earlier messages of this chat (internal: the memory range, the newest few, up to 2400 characters)",
+          "type": "text",
+          "required": false,
+          "max": 2400,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:;\\\"%+=#@_*$|-]{0,2399}$"
         }
       ],
       "timeout_min": 10,
