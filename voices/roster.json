@@ -1,0 +1,1957 @@
+{
+ "note": "The Voices roster. Edit it freely: 10 figures for each stratum and 7 for each path (python dse.py voices list shows the counts). A source is only used after `voices verify` confirms it. 'check' marks entries to confirm before relying on them. No source type fetches a social network.",
+ "figures": [
+  {
+   "id": "aristotle",
+   "name": "Aristotle",
+   "era": "384-322 BC",
+   "known_for": "Greek philosopher; the Nicomachean Ethics asks what a good life is and how habit builds virtue",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "nicomachean ethics aristotle",
+     "title": "Nicomachean Ethics"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Aristotle"
+    }
+   ]
+  },
+  {
+   "id": "plato",
+   "name": "Plato",
+   "era": "c. 428-348 BC",
+   "known_for": "Greek philosopher; the Republic asks what justice is and how a person and a city should be ordered",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "republic plato",
+     "title": "The Republic"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Plato"
+    }
+   ]
+  },
+  {
+   "id": "marcus-aurelius",
+   "name": "Marcus Aurelius",
+   "era": "121-180",
+   "known_for": "Roman emperor and Stoic; his private notebook, the Meditations, is about steadiness, duty and acceptance",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "meditations marcus aurelius",
+     "title": "Meditations"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Marcus Aurelius"
+    }
+   ]
+  },
+  {
+   "id": "epictetus",
+   "name": "Epictetus",
+   "era": "c. 50-135",
+   "known_for": "Stoic teacher, once a slave; the Enchiridion teaches what is and is not in our control",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "enchiridion epictetus",
+     "title": "Enchiridion"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Epictetus"
+    }
+   ]
+  },
+  {
+   "id": "seneca",
+   "name": "Seneca",
+   "era": "c. 4 BC-65 AD",
+   "known_for": "Roman Stoic statesman; his letters and essays are about time, anger and how to live well",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "seneca letters",
+     "title": "Letters"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Seneca the Younger"
+    }
+   ]
+  },
+  {
+   "id": "thomas-aquinas",
+   "name": "St. Thomas Aquinas",
+   "era": "1225-1274",
+   "known_for": "Dominican friar and theologian; joined faith and Aristotle's reasoning in the Summa Theologiae",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "summa theologica aquinas",
+     "title": "Summa Theologica"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Thomas Aquinas"
+    }
+   ]
+  },
+  {
+   "id": "augustine",
+   "name": "St. Augustine of Hippo",
+   "era": "354-430",
+   "known_for": "Bishop and theologian; the Confessions is an honest account of restlessness and change",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "confessions augustine",
+     "title": "Confessions"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Augustine of Hippo"
+    }
+   ]
+  },
+  {
+   "id": "confucius",
+   "name": "Confucius",
+   "era": "551-479 BC",
+   "known_for": "Chinese teacher; the Analects are short sayings on character, duty and learning",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "analects confucius",
+     "title": "The Analects"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Confucius"
+    }
+   ]
+  },
+  {
+   "id": "cicero",
+   "name": "Cicero",
+   "era": "106-43 BC",
+   "known_for": "Roman statesman and orator; On Duties asks how to act rightly in public and private life",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "on duties cicero",
+     "title": "On Duties"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Cicero"
+    }
+   ]
+  },
+  {
+   "id": "sun-tzu",
+   "name": "Sun Tzu",
+   "era": "c. 5th century BC",
+   "known_for": "Chinese military strategist; The Art of War is about winning by preparation and avoiding needless fights",
+   "strata": [
+    "wisdom"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "art of war sun tzu",
+     "title": "The Art of War"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Sun Tzu"
+    }
+   ]
+  },
+  {
+   "id": "william-james",
+   "name": "William James",
+   "era": "1842-1910",
+   "known_for": "American psychologist and philosopher; wrote on habit, attention and the will",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "principles of psychology william james",
+     "title": "The Principles of Psychology"
+    },
+    {
+     "type": "wikiquote",
+     "page": "William James"
+    }
+   ]
+  },
+  {
+   "id": "ralph-waldo-emerson",
+   "name": "Ralph Waldo Emerson",
+   "era": "1803-1882",
+   "known_for": "American essayist; Self-Reliance argues for trusting your own mind",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "essays emerson",
+     "title": "Essays"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Ralph Waldo Emerson"
+    }
+   ]
+  },
+  {
+   "id": "frederick-douglass",
+   "name": "Frederick Douglass",
+   "era": "1818-1895",
+   "known_for": "Escaped slavery and became a writer and orator; his narrative is about literacy and dignity",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "narrative of the life of frederick douglass",
+     "title": "Narrative of the Life of Frederick Douglass"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Frederick Douglass"
+    }
+   ]
+  },
+  {
+   "id": "booker-t-washington",
+   "name": "Booker T. Washington",
+   "era": "1856-1915",
+   "known_for": "Educator and author; Up From Slavery tells how he built an education and a school from very little",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "up from slavery washington",
+     "title": "Up From Slavery"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Booker T. Washington"
+    }
+   ]
+  },
+  {
+   "id": "viktor-frankl",
+   "name": "Viktor Frankl",
+   "era": "1905-1997",
+   "known_for": "Psychiatrist and Holocaust survivor; Man's Search for Meaning argues that meaning keeps people going",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Man's Search for Meaning",
+       "year": 1946
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Viktor Frankl"
+    }
+   ]
+  },
+  {
+   "id": "carol-dweck",
+   "name": "Carol Dweck",
+   "era": "living",
+   "known_for": "Psychologist known for research on the growth mindset",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Mindset: The New Psychology of Success",
+       "year": 2006
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "james-clear",
+   "name": "James Clear",
+   "era": "living",
+   "known_for": "Author of Atomic Habits, on small habits that compound",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Atomic Habits",
+       "year": 2018
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://jamesclear.com"
+    }
+   ]
+  },
+  {
+   "id": "jim-rohn",
+   "name": "Jim Rohn",
+   "era": "1930-2009",
+   "known_for": "Business philosopher and speaker on personal development",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Seasons of Life"
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Jim Rohn"
+    }
+   ]
+  },
+  {
+   "id": "brene-brown",
+   "name": "Brene Brown",
+   "era": "living",
+   "known_for": "Research professor known for work on courage, vulnerability and shame",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Daring Greatly",
+       "year": 2012
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://brenebrown.com"
+    }
+   ]
+  },
+  {
+   "id": "stephen-covey",
+   "name": "Stephen Covey",
+   "era": "1932-2012",
+   "known_for": "Author of The 7 Habits of Highly Effective People",
+   "strata": [
+    "empowerment"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The 7 Habits of Highly Effective People",
+       "year": 1989
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Stephen Covey"
+    }
+   ]
+  },
+  {
+   "id": "peter-drucker",
+   "name": "Peter Drucker",
+   "era": "1909-2005",
+   "known_for": "Management writer who coined 'knowledge worker' and wrote on effectiveness and results",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Effective Executive",
+       "year": 1967
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Peter Drucker"
+    }
+   ]
+  },
+  {
+   "id": "w-edwards-deming",
+   "name": "W. Edwards Deming",
+   "era": "1900-1993",
+   "known_for": "Statistician and quality pioneer; taught that most problems are in the system, not the worker",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Out of the Crisis",
+       "year": 1982
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "W. Edwards Deming"
+    }
+   ]
+  },
+  {
+   "id": "eliyahu-goldratt",
+   "name": "Eliyahu Goldratt",
+   "era": "1947-2011",
+   "known_for": "Creator of the Theory of Constraints; wrote The Goal as a business novel",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Goal",
+       "year": 1984
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "donella-meadows",
+   "name": "Donella Meadows",
+   "era": "1941-2001",
+   "known_for": "Systems thinker who wrote about leverage points in complex systems",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Thinking in Systems",
+       "year": 2008
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "andy-grove",
+   "name": "Andy Grove",
+   "era": "1936-2016",
+   "known_for": "Long-time Intel chief; wrote High Output Management and popularised OKRs",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "High Output Management",
+       "year": 1983
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ray-dalio",
+   "name": "Ray Dalio",
+   "era": "living",
+   "known_for": "Founder of Bridgewater; wrote Principles on decision-making and radical transparency",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Principles",
+       "year": 2017
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://www.principles.com"
+    }
+   ]
+  },
+  {
+   "id": "naval-ravikant",
+   "name": "Naval Ravikant",
+   "era": "living",
+   "known_for": "Entrepreneur and investor known for essays and talks on wealth and judgment",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://nav.al"
+    }
+   ]
+  },
+  {
+   "id": "paul-graham",
+   "name": "Paul Graham",
+   "era": "living",
+   "known_for": "Programmer and Y Combinator co-founder; writes essays on startups and on thinking",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "feed",
+     "url": "http://www.paulgraham.com/rss.html"
+    }
+   ]
+  },
+  {
+   "id": "clayton-christensen",
+   "name": "Clayton Christensen",
+   "era": "1952-2020",
+   "known_for": "Harvard professor who wrote The Innovator's Dilemma",
+   "strata": [
+    "structure"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Innovator's Dilemma",
+       "year": 1997
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Clayton Christensen"
+    }
+   ]
+  },
+  {
+   "id": "charlie-munger",
+   "name": "Charlie Munger",
+   "era": "1924-2023",
+   "known_for": "Berkshire Hathaway vice chairman known for mental models and rational thinking",
+   "strata": [
+    "structure",
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Poor Charlie's Almanack",
+       "year": 2005
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Charlie Munger"
+    }
+   ]
+  },
+  {
+   "id": "brian-tracy",
+   "name": "Brian Tracy",
+   "era": "living",
+   "known_for": "Speaker and author on selling and personal effectiveness",
+   "strata": [
+    "sales"
+   ],
+   "paths": [
+    "ascent"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Eat That Frog!",
+       "year": 2001
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://www.briantracy.com"
+    }
+   ]
+  },
+  {
+   "id": "zig-ziglar",
+   "name": "Zig Ziglar",
+   "era": "1926-2012",
+   "known_for": "American salesman and motivational speaker",
+   "strata": [
+    "sales"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "See You at the Top",
+       "year": 1975
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Zig Ziglar"
+    }
+   ]
+  },
+  {
+   "id": "alex-hormozi",
+   "name": "Alex Hormozi",
+   "era": "living",
+   "known_for": "Founder of Acquisition.com; author on offers, leads and scaling a business",
+   "strata": [
+    "sales"
+   ],
+   "paths": [
+    "smb",
+    "ascent",
+    "revenue"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "$100M Offers",
+       "year": 2021
+      },
+      {
+       "title": "$100M Leads",
+       "year": 2023
+      }
+     ]
+    },
+    {
+     "type": "youtube",
+     "handle": "@AlexHormozi"
+    }
+   ]
+  },
+  {
+   "id": "leila-hormozi",
+   "name": "Leila Hormozi",
+   "era": "living",
+   "known_for": "Entrepreneur and creator who teaches scaling teams and operations",
+   "strata": [
+    "sales"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "youtube",
+     "handle": "@LeilaHormozi"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "sabri-suby",
+   "name": "Sabri Suby",
+   "era": "living",
+   "known_for": "Australian marketer and author of Sell Like Crazy",
+   "strata": [
+    "sales"
+   ],
+   "paths": [
+    "smb"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Sell Like Crazy",
+       "year": 2019
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://sabrisuby.com"
+    }
+   ]
+  },
+  {
+   "id": "chris-voss",
+   "name": "Chris Voss",
+   "era": "living",
+   "known_for": "Former FBI hostage negotiator; wrote Never Split the Difference",
+   "strata": [
+    "sales"
+   ],
+   "paths": [
+    "ascent"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Never Split the Difference",
+       "year": 2016
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://www.blackswanltd.com"
+    }
+   ]
+  },
+  {
+   "id": "neil-rackham",
+   "name": "Neil Rackham",
+   "era": "living",
+   "known_for": "Researcher behind SPIN Selling",
+   "strata": [
+    "sales"
+   ],
+   "paths": [
+    "ascent"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "SPIN Selling",
+       "year": 1988
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "jeb-blount",
+   "name": "Jeb Blount",
+   "era": "living",
+   "known_for": "Sales author known for Fanatical Prospecting",
+   "strata": [
+    "sales"
+   ],
+   "paths": [
+    "gtm"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Fanatical Prospecting",
+       "year": 2015
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://salesgravy.com"
+    }
+   ]
+  },
+  {
+   "id": "grant-cardone",
+   "name": "Grant Cardone",
+   "era": "living",
+   "known_for": "Sales trainer and real-estate investor; wrote The 10X Rule",
+   "strata": [
+    "sales"
+   ],
+   "paths": [
+    "ascent"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The 10X Rule",
+       "year": 2011
+      }
+     ]
+    },
+    {
+     "type": "youtube",
+     "handle": "@GrantCardone"
+    }
+   ]
+  },
+  {
+   "id": "dale-carnegie",
+   "name": "Dale Carnegie",
+   "era": "1888-1955",
+   "known_for": "Author of How to Win Friends and Influence People",
+   "strata": [
+    "sales"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "How to Win Friends and Influence People",
+       "year": 1936
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Dale Carnegie"
+    }
+   ]
+  },
+  {
+   "id": "benjamin-franklin",
+   "name": "Benjamin Franklin",
+   "era": "1706-1790",
+   "known_for": "Printer, writer and statesman; wrote The Way to Wealth and a famous autobiography",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "autobiography benjamin franklin",
+     "title": "The Autobiography of Benjamin Franklin"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Benjamin Franklin"
+    }
+   ]
+  },
+  {
+   "id": "george-clason",
+   "name": "George S. Clason",
+   "era": "1874-1957",
+   "known_for": "Author of The Richest Man in Babylon, parables about saving and investing",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "richest man in babylon clason",
+     "title": "The Richest Man in Babylon"
+    }
+   ]
+  },
+  {
+   "id": "warren-buffett",
+   "name": "Warren Buffett",
+   "era": "living",
+   "known_for": "Investor whose annual letters to Berkshire Hathaway shareholders are public",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "links",
+     "urls": {
+      "home": "https://www.berkshirehathaway.com/letters/letters.html"
+     }
+    },
+    {
+     "type": "wikiquote",
+     "page": "Warren Buffett"
+    }
+   ]
+  },
+  {
+   "id": "benjamin-graham",
+   "name": "Benjamin Graham",
+   "era": "1894-1976",
+   "known_for": "Investor and teacher who wrote The Intelligent Investor",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Intelligent Investor",
+       "year": 1949
+      }
+     ]
+    },
+    {
+     "type": "wikiquote",
+     "page": "Benjamin Graham"
+    }
+   ]
+  },
+  {
+   "id": "morgan-housel",
+   "name": "Morgan Housel",
+   "era": "living",
+   "known_for": "Writer on money and behaviour; author of The Psychology of Money",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Psychology of Money",
+       "year": 2020
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://www.morganhousel.com"
+    }
+   ]
+  },
+  {
+   "id": "ramit-sethi",
+   "name": "Ramit Sethi",
+   "era": "living",
+   "known_for": "Author of I Will Teach You to Be Rich",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "I Will Teach You to Be Rich",
+       "year": 2009
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://www.iwillteachyoutoberich.com"
+    },
+    {
+     "type": "youtube",
+     "handle": "@ramitsethi"
+    }
+   ]
+  },
+  {
+   "id": "nick-maggiulli",
+   "name": "Nick Maggiulli",
+   "era": "living",
+   "known_for": "Writer behind Of Dollars and Data; author of Just Keep Buying",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Just Keep Buying",
+       "year": 2022
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "url": "https://ofdollarsanddata.com/feed/"
+    }
+   ]
+  },
+  {
+   "id": "peter-lynch",
+   "name": "Peter Lynch",
+   "era": "living",
+   "known_for": "Fund manager who ran Fidelity's Magellan Fund; wrote One Up on Wall Street",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "One Up on Wall Street",
+       "year": 1989
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "dave-ramsey",
+   "name": "Dave Ramsey",
+   "era": "living",
+   "known_for": "Personal-finance broadcaster known for debt-free teaching; author of The Total Money Makeover",
+   "strata": [
+    "finance"
+   ],
+   "paths": [],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Total Money Makeover",
+       "year": 2003
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://www.ramseysolutions.com"
+    }
+   ]
+  },
+  {
+   "id": "dan-kennedy",
+   "name": "Dan Kennedy",
+   "era": "1954-2022",
+   "known_for": "Direct-response copywriter and marketing consultant",
+   "strata": [],
+   "paths": [
+    "smb",
+    "revenue"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://dankennedy.com"
+    }
+   ]
+  },
+  {
+   "id": "seth-godin",
+   "name": "Seth Godin",
+   "era": "living",
+   "known_for": "Author and marketer who writes a daily blog",
+   "strata": [],
+   "paths": [
+    "smb",
+    "authority"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "url": "https://seths.blog/feed/"
+    }
+   ]
+  },
+  {
+   "id": "joy-hawkins",
+   "name": "Joy Hawkins",
+   "era": "living",
+   "known_for": "Local-search specialist; founder of Sterling Sky",
+   "strata": [],
+   "paths": [
+    "smb"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://sterlingsky.ca"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "darren-shaw",
+   "name": "Darren Shaw",
+   "era": "living",
+   "known_for": "Local-search specialist; founder of Whitespark",
+   "strata": [],
+   "paths": [
+    "smb"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://whitespark.ca"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "neil-patel",
+   "name": "Neil Patel",
+   "era": "living",
+   "known_for": "Marketer and co-founder of NP Digital who writes widely on SEO",
+   "strata": [],
+   "paths": [
+    "smb"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://neilpatel.com"
+    }
+   ]
+  },
+  {
+   "id": "david-sandler",
+   "name": "David Sandler",
+   "era": "1923-1995",
+   "known_for": "Founder of Sandler Training, whose method uses the up-front contract",
+   "strata": [],
+   "paths": [
+    "ascent"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "You Can't Teach a Kid to Ride a Bike at a Seminar"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "jeremy-miner",
+   "name": "Jeremy Miner",
+   "era": "living",
+   "known_for": "Sales trainer known for NEPQ questioning",
+   "strata": [],
+   "paths": [
+    "ascent"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://7thlevel.com"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "jay-abraham",
+   "name": "Jay Abraham",
+   "era": "living",
+   "known_for": "Marketing strategist known for the 'strategy of preeminence'",
+   "strata": [],
+   "paths": [
+    "revenue"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://abraham.com"
+    }
+   ]
+  },
+  {
+   "id": "ryan-deiss",
+   "name": "Ryan Deiss",
+   "era": "living",
+   "known_for": "Co-founder of DigitalMarketer",
+   "strata": [],
+   "paths": [
+    "revenue"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.digitalmarketer.com"
+    }
+   ]
+  },
+  {
+   "id": "nick-mehta",
+   "name": "Nick Mehta",
+   "era": "living",
+   "known_for": "CEO of Gainsight who writes about customer success",
+   "strata": [],
+   "paths": [
+    "revenue"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.gainsight.com"
+    }
+   ]
+  },
+  {
+   "id": "lincoln-murphy",
+   "name": "Lincoln Murphy",
+   "era": "living",
+   "known_for": "Customer-success practitioner and consultant",
+   "strata": [],
+   "paths": [
+    "revenue"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://lincolnmurphy.com"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "patrick-campbell",
+   "name": "Patrick Campbell",
+   "era": "living",
+   "known_for": "Founder of ProfitWell who writes on pricing and retention",
+   "strata": [],
+   "paths": [
+    "revenue"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "john-lee-dumas",
+   "name": "John Lee Dumas",
+   "era": "living",
+   "known_for": "Host of the daily podcast Entrepreneurs on Fire",
+   "strata": [],
+   "paths": [
+    "broadcast"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.eofire.com"
+    }
+   ]
+  },
+  {
+   "id": "pat-flynn",
+   "name": "Pat Flynn",
+   "era": "living",
+   "known_for": "Podcaster and author of Will It Fly?",
+   "strata": [],
+   "paths": [
+    "broadcast"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.patflynn.com"
+    },
+    {
+     "type": "youtube",
+     "handle": "@PatFlynn"
+    }
+   ]
+  },
+  {
+   "id": "ryan-holiday",
+   "name": "Ryan Holiday",
+   "era": "living",
+   "known_for": "Author on Stoicism and media strategy; wrote The Obstacle Is the Way",
+   "strata": [],
+   "paths": [
+    "broadcast",
+    "authority"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Obstacle Is the Way",
+       "year": 2014
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://ryanholiday.net"
+    }
+   ]
+  },
+  {
+   "id": "tim-ferriss",
+   "name": "Tim Ferriss",
+   "era": "living",
+   "known_for": "Author of The 4-Hour Workweek and host of a long-running interview podcast",
+   "strata": [],
+   "paths": [
+    "broadcast"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The 4-Hour Workweek",
+       "year": 2007
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "url": "https://tim.blog/feed/"
+    }
+   ]
+  },
+  {
+   "id": "dorie-clark",
+   "name": "Dorie Clark",
+   "era": "living",
+   "known_for": "Author on reinventing a career and building a personal brand",
+   "strata": [],
+   "paths": [
+    "broadcast",
+    "authority"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Reinventing You",
+       "year": 2013
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://dorieclark.com"
+    }
+   ]
+  },
+  {
+   "id": "joe-pulizzi",
+   "name": "Joe Pulizzi",
+   "era": "living",
+   "known_for": "Content-marketing author who wrote Epic Content Marketing",
+   "strata": [],
+   "paths": [
+    "broadcast"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Epic Content Marketing",
+       "year": 2013
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "jay-acunzo",
+   "name": "Jay Acunzo",
+   "era": "living",
+   "known_for": "Podcast and storytelling creator who wrote Break the Wheel",
+   "strata": [],
+   "paths": [
+    "broadcast"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "justin-welsh",
+   "name": "Justin Welsh",
+   "era": "living",
+   "known_for": "Solo founder and LinkedIn writer who teaches building a one-person business",
+   "strata": [],
+   "paths": [
+    "authority"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.justinwelsh.me"
+    }
+   ]
+  },
+  {
+   "id": "lara-acosta",
+   "name": "Lara Acosta",
+   "era": "living",
+   "known_for": "LinkedIn content coach and ghostwriting trainer",
+   "strata": [],
+   "paths": [
+    "authority"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "ann-handley",
+   "name": "Ann Handley",
+   "era": "living",
+   "known_for": "Content-marketing author who wrote Everybody Writes",
+   "strata": [],
+   "paths": [
+    "authority"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Everybody Writes",
+       "year": 2014
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://annhandley.com"
+    }
+   ]
+  },
+  {
+   "id": "gary-vaynerchuk",
+   "name": "Gary Vaynerchuk",
+   "era": "living",
+   "known_for": "Entrepreneur and media creator known for content at scale",
+   "strata": [],
+   "paths": [
+    "authority"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Jab, Jab, Jab, Right Hook",
+       "year": 2013
+      }
+     ]
+    },
+    {
+     "type": "youtube",
+     "handle": "@garyvee"
+    }
+   ]
+  },
+  {
+   "id": "aaron-ross",
+   "name": "Aaron Ross",
+   "era": "living",
+   "known_for": "Author of Predictable Revenue on outbound sales systems",
+   "strata": [],
+   "paths": [
+    "gtm"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Predictable Revenue",
+       "year": 2011
+      }
+     ]
+    },
+    {
+     "type": "feed",
+     "home": "https://predictablerevenue.com"
+    }
+   ]
+  },
+  {
+   "id": "mark-roberge",
+   "name": "Mark Roberge",
+   "era": "living",
+   "known_for": "Former HubSpot sales leader who wrote The Sales Acceleration Formula",
+   "strata": [],
+   "paths": [
+    "gtm"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "The Sales Acceleration Formula",
+       "year": 2015
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "jacco-van-der-kooij",
+   "name": "Jacco van der Kooij",
+   "era": "living",
+   "known_for": "Founder of Winning by Design, on sales systems",
+   "strata": [],
+   "paths": [
+    "gtm"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.winningbydesign.com"
+    }
+   ]
+  },
+  {
+   "id": "eric-nowoslawski",
+   "name": "Eric Nowoslawski",
+   "era": "living",
+   "known_for": "Cold-email and outbound practitioner",
+   "strata": [],
+   "paths": [
+    "gtm"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "jordan-crawford",
+   "name": "Jordan Crawford",
+   "era": "living",
+   "known_for": "Outbound and go-to-market practitioner",
+   "strata": [],
+   "paths": [
+    "gtm"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "morgan-j-ingram",
+   "name": "Morgan J Ingram",
+   "era": "living",
+   "known_for": "Sales content creator and trainer",
+   "strata": [],
+   "paths": [
+    "gtm"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "liam-ottley",
+   "name": "Liam Ottley",
+   "era": "living",
+   "known_for": "AI-agency educator and YouTuber",
+   "strata": [],
+   "paths": [
+    "voiceai",
+    "automation"
+   ],
+   "sources": [
+    {
+     "type": "youtube",
+     "handle": "@LiamOttley"
+    }
+   ]
+  },
+  {
+   "id": "nate-herk",
+   "name": "Nate Herk",
+   "era": "living",
+   "known_for": "AI-automation educator and YouTuber",
+   "strata": [],
+   "paths": [
+    "voiceai",
+    "automation"
+   ],
+   "sources": [
+    {
+     "type": "youtube",
+     "handle": "@nateherk"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "cathy-pearl",
+   "name": "Cathy Pearl",
+   "era": "living",
+   "known_for": "Voice-interface designer who wrote Designing Voice User Interfaces",
+   "strata": [],
+   "paths": [
+    "voiceai"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Designing Voice User Interfaces",
+       "year": 2016
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "erika-hall",
+   "name": "Erika Hall",
+   "era": "living",
+   "known_for": "Design author who wrote Conversational Design",
+   "strata": [],
+   "paths": [
+    "voiceai"
+   ],
+   "sources": [
+    {
+     "type": "books",
+     "list": [
+      {
+       "title": "Conversational Design",
+       "year": 2018
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "brian-roemmele",
+   "name": "Brian Roemmele",
+   "era": "living",
+   "known_for": "Writer and technologist on voice-first computing",
+   "strata": [],
+   "paths": [
+    "voiceai"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "jordan-dearsley",
+   "name": "Jordan Dearsley",
+   "era": "living",
+   "known_for": "Co-founder of Vapi, a voice-AI platform",
+   "strata": [],
+   "paths": [
+    "voiceai"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "matt-wolfe",
+   "name": "Matt Wolfe",
+   "era": "living",
+   "known_for": "AI news and tools YouTuber",
+   "strata": [],
+   "paths": [
+    "voiceai"
+   ],
+   "sources": [
+    {
+     "type": "youtube",
+     "handle": "@mreflow"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "simon-willison",
+   "name": "Simon Willison",
+   "era": "living",
+   "known_for": "Programmer and writer on AI tools; creator of Datasette",
+   "strata": [],
+   "paths": [
+    "automation"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "url": "https://simonwillison.net/atom/everything/"
+    }
+   ]
+  },
+  {
+   "id": "andrej-karpathy",
+   "name": "Andrej Karpathy",
+   "era": "living",
+   "known_for": "AI researcher and educator, formerly at OpenAI and Tesla",
+   "strata": [],
+   "paths": [
+    "automation"
+   ],
+   "sources": [
+    {
+     "type": "youtube",
+     "handle": "@AndrejKarpathy"
+    }
+   ]
+  },
+  {
+   "id": "andrew-ng",
+   "name": "Andrew Ng",
+   "era": "living",
+   "known_for": "AI educator and co-founder of Coursera and DeepLearning.AI",
+   "strata": [],
+   "paths": [
+    "automation"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.andrewng.org"
+    }
+   ]
+  },
+  {
+   "id": "nick-saraev",
+   "name": "Nick Saraev",
+   "era": "living",
+   "known_for": "Automation-agency educator and YouTuber",
+   "strata": [],
+   "paths": [
+    "automation"
+   ],
+   "sources": [
+    {
+     "type": "youtube",
+     "handle": "@nicksaraev"
+    }
+   ],
+   "check": true
+  },
+  {
+   "id": "jan-oberhauser",
+   "name": "Jan Oberhauser",
+   "era": "living",
+   "known_for": "Founder of n8n, the workflow-automation tool",
+   "strata": [],
+   "paths": [
+    "automation"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "robert-barron",
+   "name": "Bishop Robert Barron",
+   "era": "living",
+   "known_for": "Catholic bishop and founder of Word on Fire, a media ministry",
+   "strata": [],
+   "paths": [
+    "ministry"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.wordonfire.org"
+    }
+   ]
+  },
+  {
+   "id": "carey-nieuwhof",
+   "name": "Carey Nieuwhof",
+   "era": "living",
+   "known_for": "Church-leadership writer and podcaster",
+   "strata": [],
+   "paths": [
+    "ministry"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://careynieuwhof.com"
+    }
+   ]
+  },
+  {
+   "id": "tony-morgan",
+   "name": "Tony Morgan",
+   "era": "living",
+   "known_for": "Church-strategy consultant and founder of The Unstuck Group",
+   "strata": [],
+   "paths": [
+    "ministry"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "phil-cooke",
+   "name": "Phil Cooke",
+   "era": "living",
+   "known_for": "Media consultant and author who works with churches and nonprofits",
+   "strata": [],
+   "paths": [
+    "ministry"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://philcooke.com"
+    }
+   ]
+  },
+  {
+   "id": "craig-groeschel",
+   "name": "Craig Groeschel",
+   "era": "living",
+   "known_for": "Pastor of Life.Church and leadership author",
+   "strata": [],
+   "paths": [
+    "ministry"
+   ],
+   "sources": [
+    {
+     "type": "feed",
+     "home": "https://www.craiggroeschel.com"
+    }
+   ]
+  },
+  {
+   "id": "mike-schmitz",
+   "name": "Fr. Mike Schmitz",
+   "era": "living",
+   "known_for": "Catholic priest known for the Bible in a Year podcast",
+   "strata": [],
+   "paths": [
+    "ministry"
+   ],
+   "sources": [],
+   "check": true
+  },
+  {
+   "id": "francis-de-sales",
+   "name": "St. Francis de Sales",
+   "era": "1567-1622",
+   "known_for": "Bishop and doctor of the Church; wrote Introduction to the Devout Life; patron of writers",
+   "strata": [],
+   "paths": [
+    "ministry"
+   ],
+   "sources": [
+    {
+     "type": "gutenberg",
+     "search": "introduction to the devout life francis de sales",
+     "title": "Introduction to the Devout Life"
+    },
+    {
+     "type": "wikiquote",
+     "page": "Francis de Sales"
+    }
+   ]
+  }
+ ]
+}

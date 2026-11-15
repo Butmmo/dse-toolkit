@@ -44,7 +44,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -152,7 +152,12 @@ def main():
     gl.add_argument("--apply", action="store_true", help="save the suggestion as that month's goal"); gl.add_argument("--set", type=float, default=0, dest="set_to")
     rv = sub.add_parser("review"); rv.add_argument("engine", help="an engine, or all"); rv.add_argument("--top", type=int, default=5)
     ch = sub.add_parser("calls"); ch.add_argument("engine")
-    lg = sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
+    vc = sub.add_parser("voices", help="the Voices library: figures worth learning from, real passages with sources")
+    vc.add_argument("action", choices=["list", "show", "verify", "fetch", "update", "ask", "today", "note", "check"])
+    vc.add_argument("target", nargs="?", default="", help="a question (ask), a figure id (show, fetch, note), or nothing")
+    vc.add_argument("--figure", default=""); vc.add_argument("--stratum", default=""); vc.add_argument("--path", default=""); vc.add_argument("--n", type=int, default=3)
+    vc.add_argument("--text", default=""); vc.add_argument("--source", default="")
+    lg =sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
     lg.add_argument("row", help="the row number on that list"); lg.add_argument("status", choices=list(desklog.STATUSES))
     lg.add_argument("--reply", default=""); lg.add_argument("--value", default="")
     a = ap.parse_args()
@@ -316,6 +321,31 @@ def main():
     elif a.cmd == "call":
         try:
             print(calls.prep(a.engine, a.source, a.row) if a.action == "prep" else calls.after(a.engine, a.source, a.row, a.outcome, a.problem, a.cost_month, a.price, a.agreed, a.stop, name=a.name))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "voices":
+        try:
+            x, t = a.action, ("" if a.target == "any" else a.target)
+            a.figure, a.stratum, a.path = ("" if v == "any" else v for v in (a.figure, a.stratum, a.path))
+            if x == "list":
+                print(voices.list_figures(a.stratum, a.path))
+            elif x == "show":
+                print(voices.show(t or a.figure))
+            elif x == "verify":
+                print(voices.verify(t or a.figure))
+            elif x == "fetch":
+                print(voices.fetch(t or a.figure))
+            elif x == "update":
+                print(voices.update(t or a.figure))
+            elif x == "ask":
+                print(voices.ask(t, a.figure, a.stratum, a.path, a.n))
+            elif x == "today":
+                print(voices.today(a.stratum or "wisdom"))
+            elif x == "note":
+                print(voices.note(t or a.figure, a.text, a.source))
+            else:
+                p = voices.roster_problems()
+                print("Roster rules: OK" if not p else "Roster problems:\n- " + "\n- ".join(p))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "cashlog":

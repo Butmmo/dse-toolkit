@@ -129,6 +129,18 @@ def provider_choices() -> list[dict]:
     return out
 
 
+def figure_choices(with_any: bool = True) -> list[dict]:
+    """The Voices roster (voices/roster.json), for "choices_from": "figures" (with an Everyone entry) and "figure_ids" (a real figure only)."""
+    out = [{"value": "any", "label": "Everyone in the library"}] if with_any else []
+    try:
+        fs = json.loads((ROOT / "voices" / "roster.json").read_text(encoding="utf-8"))["figures"]
+    except (OSError, ValueError, KeyError):
+        return out
+    for f in sorted(fs, key=lambda x: x["name"].lower()):
+        out.append({"value": f["id"], "label": f"{f['name']} ({f.get('era', '')})"})
+    return out
+
+
 def resolve_fields(cat: dict) -> dict:
     """Fill dynamic choice lists (engines) into the catalog, for both the published forms and the value checks."""
     eng = None
@@ -143,6 +155,10 @@ def resolve_fields(cat: dict) -> dict:
                 f["choices"] = workspace_choices()
             elif f.get("choices_from") == "providers":
                 f["choices"] = provider_choices()
+            elif f.get("choices_from") == "figures":
+                f["choices"] = figure_choices(True)
+            elif f.get("choices_from") == "figure_ids":
+                f["choices"] = figure_choices(False)
     return cat
 
 

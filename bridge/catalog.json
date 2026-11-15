@@ -6563,6 +6563,469 @@
       "outputs": [
         "engines/*/calls/*/after.md"
       ]
+    },
+    "dse.voices_ask": {
+      "label": "Voices: ask the library",
+      "group": "Voices",
+      "help": "Type a question or a topic and get the passages that answer it best, each with who said it and where (the book and section, or the Wikiquote source). Choose one figure, or an area, or a path, or everyone. Real words with real sources found by matching your own: no AI model writes or changes them, and nothing is made up. If a figure has not been fetched yet it says so. Nothing is sent.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "ask"
+        },
+        {
+          "field": "question"
+        },
+        {
+          "opt": "--figure",
+          "field": "figure"
+        },
+        {
+          "opt": "--stratum",
+          "field": "stratum"
+        },
+        {
+          "opt": "--path",
+          "field": "path"
+        },
+        {
+          "opt": "--n",
+          "field": "n"
+        }
+      ],
+      "fields": [
+        {
+          "name": "question",
+          "label": "Your question or topic",
+          "type": "text",
+          "required": true,
+          "max": 200
+        },
+        {
+          "name": "figure",
+          "label": "Whose words",
+          "type": "choice",
+          "required": true,
+          "default": "any",
+          "choices_from": "figures",
+          "choices": []
+        },
+        {
+          "name": "stratum",
+          "label": "Area",
+          "type": "choice",
+          "required": true,
+          "default": "any",
+          "choices": [
+            {
+              "value": "any",
+              "label": "All"
+            },
+            {
+              "value": "wisdom",
+              "label": "Wisdom and philosophy"
+            },
+            {
+              "value": "empowerment",
+              "label": "Human empowerment and psychology"
+            },
+            {
+              "value": "structure",
+              "label": "Structure, systems and thinking"
+            },
+            {
+              "value": "sales",
+              "label": "Sales and persuasion"
+            },
+            {
+              "value": "finance",
+              "label": "Financial development"
+            }
+          ]
+        },
+        {
+          "name": "path",
+          "label": "Path",
+          "type": "choice",
+          "required": true,
+          "default": "any",
+          "choices": [
+            {
+              "value": "any",
+              "label": "All"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Marketing and Optimization"
+            },
+            {
+              "value": "ascent",
+              "label": "High-ticket sales (The Ascent)"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue and customer growth"
+            },
+            {
+              "value": "broadcast",
+              "label": "Broadcast"
+            },
+            {
+              "value": "authority",
+              "label": "Authority and personal brand"
+            },
+            {
+              "value": "gtm",
+              "label": "GTM engineering"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI voice receptionist"
+            },
+            {
+              "value": "automation",
+              "label": "AI automation"
+            },
+            {
+              "value": "ministry",
+              "label": "Ministry"
+            }
+          ]
+        },
+        {
+          "name": "n",
+          "label": "How many passages",
+          "type": "int",
+          "required": false,
+          "min": 1,
+          "max": 8,
+          "default": 3
+        }
+      ],
+      "timeout_min": 1
+    },
+    "dse.voices_today": {
+      "label": "Voices: a passage for today",
+      "group": "Voices",
+      "help": "One passage for today from the library, chosen by the date and the area you pick, with its source. The same passage all day, a different one tomorrow. No AI model.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "today"
+        },
+        {
+          "opt": "--stratum",
+          "field": "stratum"
+        }
+      ],
+      "fields": [
+        {
+          "name": "stratum",
+          "label": "Area",
+          "type": "choice",
+          "required": true,
+          "default": "wisdom",
+          "choices": [
+            {
+              "value": "wisdom",
+              "label": "Wisdom and philosophy"
+            },
+            {
+              "value": "empowerment",
+              "label": "Human empowerment and psychology"
+            },
+            {
+              "value": "structure",
+              "label": "Structure, systems and thinking"
+            },
+            {
+              "value": "sales",
+              "label": "Sales and persuasion"
+            },
+            {
+              "value": "finance",
+              "label": "Financial development"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 1
+    },
+    "dse.voices_list": {
+      "label": "Voices: the roster",
+      "group": "Voices",
+      "help": "The figures in the library: 10 for each area (wisdom, empowerment, structure, sales, financial) and 7 for each path, with what each is known for and how many of their sources are checked and fetched. Filter by area or path.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "list"
+        },
+        {
+          "opt": "--stratum",
+          "field": "stratum"
+        },
+        {
+          "opt": "--path",
+          "field": "path"
+        }
+      ],
+      "fields": [
+        {
+          "name": "stratum",
+          "label": "Area",
+          "type": "choice",
+          "required": true,
+          "default": "any",
+          "choices": [
+            {
+              "value": "any",
+              "label": "All"
+            },
+            {
+              "value": "wisdom",
+              "label": "Wisdom and philosophy"
+            },
+            {
+              "value": "empowerment",
+              "label": "Human empowerment and psychology"
+            },
+            {
+              "value": "structure",
+              "label": "Structure, systems and thinking"
+            },
+            {
+              "value": "sales",
+              "label": "Sales and persuasion"
+            },
+            {
+              "value": "finance",
+              "label": "Financial development"
+            }
+          ]
+        },
+        {
+          "name": "path",
+          "label": "Path",
+          "type": "choice",
+          "required": true,
+          "default": "any",
+          "choices": [
+            {
+              "value": "any",
+              "label": "All"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Marketing and Optimization"
+            },
+            {
+              "value": "ascent",
+              "label": "High-ticket sales (The Ascent)"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue and customer growth"
+            },
+            {
+              "value": "broadcast",
+              "label": "Broadcast"
+            },
+            {
+              "value": "authority",
+              "label": "Authority and personal brand"
+            },
+            {
+              "value": "gtm",
+              "label": "GTM engineering"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI voice receptionist"
+            },
+            {
+              "value": "automation",
+              "label": "AI automation"
+            },
+            {
+              "value": "ministry",
+              "label": "Ministry"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 1
+    },
+    "dse.voices_show": {
+      "label": "Voices: one figure",
+      "group": "Voices",
+      "help": "Who they are, what they are known for, each source and whether it has been checked, how much of their library is fetched, your own notes, and the latest from their own feeds. Social profiles are shown as links only.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "show"
+        },
+        {
+          "field": "figure"
+        }
+      ],
+      "fields": [
+        {
+          "name": "figure",
+          "label": "Figure",
+          "type": "choice",
+          "required": true,
+          "choices_from": "figure_ids",
+          "choices": []
+        }
+      ],
+      "timeout_min": 1
+    },
+    "dse.voices_verify": {
+      "label": "Voices: check a figure's sources",
+      "group": "Voices",
+      "help": "Checks each source for a figure live (the book is on Project Gutenberg, the Wikiquote page exists, the feed answers, the books are real) and records the result. Nothing is fetched or used until its source is checked here. A failed source can be fixed in the roster and checked again.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "verify"
+        },
+        {
+          "field": "figure"
+        }
+      ],
+      "fields": [
+        {
+          "name": "figure",
+          "label": "Figure",
+          "type": "choice",
+          "required": true,
+          "choices_from": "figure_ids",
+          "choices": []
+        }
+      ],
+      "timeout_min": 3
+    },
+    "dse.voices_fetch": {
+      "label": "Voices: fetch a figure's library",
+      "group": "Voices",
+      "help": "Downloads and indexes the figure's checked public-domain books (Project Gutenberg) and sourced quotations (Wikiquote, CC BY-SA), so Ask can find them. Books still in copyright are not copied: only their titles are listed. Run Check sources first.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "fetch"
+        },
+        {
+          "field": "figure"
+        }
+      ],
+      "fields": [
+        {
+          "name": "figure",
+          "label": "Figure",
+          "type": "choice",
+          "required": true,
+          "choices_from": "figure_ids",
+          "choices": []
+        }
+      ],
+      "timeout_min": 5
+    },
+    "dse.voices_update": {
+      "label": "Voices: what is new from the living",
+      "group": "Voices",
+      "help": "For living figures with a checked feed (their blog or newsletter, their official YouTube channel, their podcast): lists what they have published since the last time, with the date, the link and a short description. You follow the link to read or watch it. Leave the figure on Everyone to check them all. Social networks are never fetched.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "update"
+        },
+        {
+          "field": "figure"
+        }
+      ],
+      "fields": [
+        {
+          "name": "figure",
+          "label": "Whose words",
+          "type": "choice",
+          "required": true,
+          "default": "any",
+          "choices_from": "figures",
+          "choices": []
+        }
+      ],
+      "timeout_min": 5
+    },
+    "dse.voices_note": {
+      "label": "Voices: add your own note",
+      "group": "Voices",
+      "help": "Add a line you read or heard (from a book in copyright, a talk, a video) to a figure's library, with where it comes from. It is marked as your note wherever it appears, never as their words, and a note without a source is not kept.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "voices"
+        },
+        {
+          "lit": "note"
+        },
+        {
+          "field": "figure"
+        },
+        {
+          "opt": "--text",
+          "field": "text"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        }
+      ],
+      "fields": [
+        {
+          "name": "figure",
+          "label": "Figure",
+          "type": "choice",
+          "required": true,
+          "choices_from": "figure_ids",
+          "choices": []
+        },
+        {
+          "name": "text",
+          "label": "The line or idea (8 to 1,200 characters)",
+          "type": "text",
+          "required": true,
+          "max": 1200
+        },
+        {
+          "name": "source",
+          "label": "Where from (book and page, video and time, talk and date)",
+          "type": "text",
+          "required": true,
+          "max": 160
+        }
+      ],
+      "timeout_min": 1
     }
   },
   "periodic": [
