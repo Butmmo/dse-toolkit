@@ -11,8 +11,9 @@ T["dse.brief"] = {
     "script": "dse.py", "args": [{"lit": "brief"}, {"opt": "--top", "field": "top"}],
     "fields": [{"name": "top", "label": "How many things", "type": "int", "required": False, "min": 1, "max": 8, "default": 3}],
     "timeout_min": 2, "outputs": []}
-per = [x for x in c.get("periodic", []) if x.get("script") != "bridge/brief_sync.py"]
+per = [x for x in c.get("periodic", []) if x.get("script") not in ("bridge/brief_sync.py", "bridge/voices_sync.py")]
 per.append({"script": "bridge/brief_sync.py", "every_s": 900, "what": "Daily Brief: what to do first today, sent to your Dashboard (nothing is sent to anyone else)"})
+per.append({"script": "bridge/voices_sync.py", "every_s": 21600, "what": "Voices: keeps the thinkers library filled and current (public sources only, no social network)"})
 c["periodic"] = per
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len(T), "tools,", len(per), "background helpers")

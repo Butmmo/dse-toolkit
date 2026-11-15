@@ -45,5 +45,8 @@ T["dse.voices_note"] = tool("Voices: add your own note", "Add a line you read or
                             [{"lit": "note"}, {"field": "figure"}, {"opt": "--text", "field": "text"}, {"opt": "--source", "field": "source"}],
                             [FIG, {"name": "text", "label": "The line or idea (8 to 1,200 characters)", "type": "text", "required": True, "max": 1200},
                              {"name": "source", "label": "Where from (book and page, video and time, talk and date)", "type": "text", "required": True, "max": 160}])
+T["dse.voices_setup"] = tool("Voices: set up the library", "Makes the library work with one click. For every figure it checks each source, repairs what can be repaired (another feed address, the right Project Gutenberg book, a simpler book title), downloads the public-domain texts and sourced quotations, and reads what the living have published. It can be run again and again: it skips what is up to date and carries on where it stopped. It tells you plainly what it could not fix and what to do. Only lawful public sources are used; no social network is read.",
+                            [{"lit": "setup"}, {"field": "figure"}, {"opt": "--minutes", "field": "minutes"}],
+                            [{**FIG_ANY}, {"name": "minutes", "label": "Stop after (minutes)", "type": "int", "required": False, "min": 1, "max": 28, "default": 25}], minutes=30)
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len(T), "tools in all")

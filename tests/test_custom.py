@@ -76,8 +76,17 @@ check("what is saved says what you typed and which category it became", saved["d
 check("the website words come from your own words", "dog" in saved["dog-trainers"]["words"] and "trainer" in saved["dog-trainers"]["words"], saved["dog-trainers"]["words"])
 check("a saved type is reused without looking anything up", (setattr(P, "categories", lambda: (_ for _ in ()).throw(RuntimeError("no lookup"))) or True) and P.resolve_kind("dog-trainers") == "dog-trainers")
 P.categories = lambda: CATS
-m = raises(P.resolve_kind, "photography")
-check("a word that fits several categories lists them and asks you to type the exact one, never guessing", m and "Wedding Photographer" in m and "Photography Lab" in m and "exact name" in m, str(m))
+k = P.resolve_kind("photography")
+check("a word that fits several categories uses all of them, so you are never asked to choose", sorted(P.kind_info(k)[1]) == ["Photographer", "Photography Lab", "Wedding Photographer"], str(P.kind_info(k)))
+CATS_BROAD = [(str(i), f"Service Number {i}") for i in range(12)]
+P.categories = lambda: CATS_BROAD
+m = raises(P.resolve_kind, "service")
+check("a word that fits too many categories asks for one more word", m and "too broad" in m and "wedding photographers" in m, str(m))
+P.categories = lambda: CATS
+check("a built-in type is found from what you would naturally type", P.builtin_match("Interior Designers") == "interior-design" and P.builtin_match("dentists") == "dentist" and P.builtin_match("Hair Salons") == "hair-salon" and P.builtin_match("law offices") == "law-office" and P.builtin_match("real estate") == "real-estate")
+check("a word that is not a built-in is not matched to one", P.builtin_match("wedding photographers") is None and P.builtin_match("") is None)
+check("a built-in typed in words needs no lookup at all", (setattr(P, "categories", lambda: (_ for _ in ()).throw(RuntimeError("no lookup"))) or True) and P.resolve_kind("Interior Designers") == "interior-design")
+P.categories = lambda: CATS
 check("the exact name settles it", P.resolve_kind("Wedding Photographer") == "wedding-photographer" and P.kind_info("wedding-photographer")[0] == "Wedding Photographer")
 check("a plural fits the singular category", P.resolve_kind("yoga studios") == "yoga-studios" and P.kind_info("yoga-studios")[1] == ["Yoga Studio"])
 check("nothing like it says so and how to browse", "categories" in (raises(P.resolve_kind, "space tourism") or ""))

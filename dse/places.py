@@ -108,6 +108,18 @@ CUSTOM_KINDS = DATA / "custom-kinds.json"
 CATEGORY_CACHE = DATA / "fsq-categories.csv"
 
 
+def hf_token() -> str:
+    t = os.environ.get("HF_TOKEN", "")
+    if not t and os.name == "nt":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+                t = str(winreg.QueryValueEx(k, "HF_TOKEN")[0])
+        except OSError:
+            t = ""
+    return t
+
+
 def custom_kinds() -> dict:
     try:
         return json.loads(CUSTOM_KINDS.read_text(encoding="utf-8"))
@@ -134,7 +146,7 @@ def _stem(w: str) -> str:
 def categories() -> list[tuple[str, str]]:
     """Foursquare's category list (id, name), cached on this PC. Needs the free HF_TOKEN once (README, One-time: business data)."""
     if not CATEGORY_CACHE.exists():
-        token = os.environ.get("HF_TOKEN")
+        token = hf_token()
         if not token:
             sys.exit("To look up a business type of your own, set HF_TOKEN once (README, 'One-time: business data': a free Hugging Face read token).")
         r = requests.get("https://huggingface.co/api/datasets/foursquare/fsq-os-places/tree/main/release", headers={"Authorization": f"Bearer {token}"}, timeout=30)
@@ -152,6 +164,31 @@ def categories() -> list[tuple[str, str]]:
         return [(r["id"], r["name"]) for r in csv.DictReader(f)]
 
 
+def _same(a: str, b: str) -> bool:           # photography, photographer and photographers are one word here
+    a, b = _stem(a), _stem(b)
+    return a == b or a.startswith(b) or b.startswith(a) or len(os.path.commonprefix([a, b])) >= 7
+
+
+def builtin_match(term: str) -> str | None:
+    """The built-in or saved business type a typed word means (dentists, Interior Designers, 'hair salon'), or None. Matches the id, the name, or every word of what you typed."""
+    t = re.sub(r"\s+", " ", (term or "").lower()).strip()
+    slug_t = re.sub(r"[^a-z0-9]+", "-", t).strip("-")
+    allk = {k: v["label"] for k, v in custom_kinds().items()}
+    allk.update({k: v[0] for k, v in KINDS.items()})
+    if slug_t in allk:
+        return slug_t
+    want = re.findall(r"[a-z]{3,}", t)
+    if not want:
+        return None
+    hits = []
+    for k, label in allk.items():
+        have = re.findall(r"[a-z]{3,}", (label + " " + k.replace("-", " ")).lower())
+        if all(any(_same(w, h) for h in have) for w in want):
+            hits.append((len(have), k))
+    hits.sort()
+    return hits[0][1] if len(hits) == 1 else None            # a word that fits several types (like "service") is not guessed
+
+
 def match_categories(term: str, cats: list[tuple[str, str]]) -> list[str]:
     """Category names that fit what you typed: an exact name, else every word you typed appears in the name."""
     t = re.sub(r"\s+", " ", term.lower()).strip()
@@ -160,10 +197,7 @@ def match_categories(term: str, cats: list[tuple[str, str]]) -> list[str]:
     if exact:
         return exact[:1]
     want = [_stem(w) for w in re.findall(r"[a-z]{3,}", t)]
-    def same(a: str, b: str) -> bool:           # photography, photographer and photographers are one word here
-        a, b = _stem(a), _stem(b)
-        return a == b or a.startswith(b) or b.startswith(a) or len(os.path.commonprefix([a, b])) >= 7
-    return [n for n in names if want and all(any(same(w, x) for x in re.findall(r"[a-z]{3,}", n.lower())) for w in want)]
+    return [n for n in names if want and all(any(_same(w, x) for x in re.findall(r"[a-z]{3,}", n.lower())) for w in want)]
 
 
 def resolve_kind(term: str, words: str = "") -> str:
@@ -171,21 +205,21 @@ def resolve_kind(term: str, words: str = "") -> str:
     term = re.sub(r"\s+", " ", (term or "").strip())
     if not term or term.startswith("-") or len(term) > 60:
         sys.exit("Give a business type: pick one from the list or type your own (like 'wedding photographers').")
+    known = builtin_match(term)
+    if known:
+        return known
     s = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", term.lower())).strip("-")
-    if kind_info(s) or kind_info(term):
-        return s if kind_info(s) else term
     found = match_categories(term, categories())
     if not found:
         sys.exit(f"Foursquare has no business category like '{term}'. Try a simpler word (for example 'photographer'), or browse: python dse.py categories photo")
-    if len(found) > 1:
-        sys.exit(f"'{term}' fits {len(found)} Foursquare categories. Type the exact name of the one you mean:\n  - " + "\n  - ".join(found[:15]) + ("\n  ..." if len(found) > 15 else ""))
-    name = found[0]
-    site_words = "|".join(sorted({re.escape(_stem(w)) for w in re.findall(r"[a-z]{3,}", (term + " " + name).lower())}))
+    if len(found) > 8:
+        sys.exit(f"'{term}' is too broad: it fits {len(found)} Foursquare categories (like {', '.join(found[:4])}). Add a word to say which kind, for example 'wedding photographers' instead of 'photography'.")
+    site_words = "|".join(sorted({re.escape(_stem(w)) for w in re.findall(r"[a-z]{3,}", (term + " " + " ".join(found)).lower())}))
     data = custom_kinds()
-    data[s] = {"label": name, "names": [name], "words": site_words, "typed": term}
+    data[s] = {"label": term[:1].upper() + term[1:], "names": found, "words": site_words, "typed": term}
     DATA.mkdir(exist_ok=True)
     CUSTOM_KINDS.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    log(f"Saved your business type '{term}' as the Foursquare category '{name}'.")
+    log(f"Your business type '{term}' is saved. It covers {len(found)} Foursquare categor{'y' if len(found) == 1 else 'ies'}: {', '.join(found)}.")
     return s
 
 
@@ -201,7 +235,7 @@ def extract_path(kind: str):
 
 
 def build(kinds: list[str]):
-    token = os.environ.get("HF_TOKEN")
+    token = hf_token()
     if not token:
         sys.exit("Set HF_TOKEN first (README, 'One-time: business data'). It's a free Hugging Face read token.")
     bad = [k for k in kinds if not kind_info(k)]

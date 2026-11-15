@@ -52,7 +52,11 @@ check("duplicates, counts, a social source and long text are all reported", any(
 V.ROSTER = real_roster
 
 # ---------------------------------------------------------------- parsing
-PG = """Some header
+PG = """The Project Gutenberg eBook of Meditations
+
+Title: Meditations
+Author: Marcus Aurelius
+Language: English
 
 *** START OF THE PROJECT GUTENBERG EBOOK MEDITATIONS ***
 
@@ -107,7 +111,7 @@ SOCIAL = ("//x.com", "//twitter.com", "linkedin.com", "facebook.com", "reddit.co
 FAKE = {}
 
 
-def fake_get(url, timeout=20):
+def fake_get(url, timeout=20, browser=False):
     calls_made.append(url)
     for k, v in FAKE.items():
         if k in url:
@@ -118,14 +122,15 @@ def fake_get(url, timeout=20):
 V.http_get = fake_get
 UC = "UC" + "a" * 22
 FAKE.update({
-    "gutendex.com": (200, json.dumps({"results": [{"id": 2680, "title": "Meditations", "authors": [{"name": "Marcus Aurelius, Emperor of Rome"}], "formats": {"text/plain; charset=us-ascii": "https://gutenberg.org/files/2680/2680.txt"}}]})),
-    "gutenberg.org/files/2680": (200, PG + ("filler words here " * 200)),
+    "gutenberg.org/ebooks/search": (200, '<ul><li class="booklink"><a class="link" href="/ebooks/2680"><span class="title">Meditations</span></a></li>'
+                                     '<li class="booklink"><a class="link" href="/ebooks/9"><span class="title">Meditations Index</span></a></li></ul>'),
+    "gutenberg.org/cache/epub/2680/pg2680.txt": (200, PG + ("filler words here " * 200)),
     "en.wikiquote.org": (200, json.dumps({"parse": {"wikitext": {"*": WQ.replace("== Misattributed ==", "\n".join(f"* Extra sourced line number {i} that is long enough to be kept as a quotation here.\n** Book {i}" for i in range(6)) + "\n== Misattributed ==")}}})),
     "ex.com/home": (200, '<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head></html>'),
     "ex.com/feed.xml": (200, RSS),
     "youtube.com/@somebody": (200, f'..."channelId":"{UC}"...'),
     "youtube.com/feeds/videos.xml": (200, ATOM_YT),
-    "openlibrary.org": (200, json.dumps({"numFound": 1})),
+    "openlibrary.org": (200, json.dumps({"numFound": 1, "docs": [{"author_name": ["Some Blogger"]}]})),
 })
 
 check("a feed is discovered from a homepage's own advertisement", V.discover_feed("https://ex.com/home") == "https://ex.com/feed.xml")
@@ -147,7 +152,7 @@ V.ROSTER = mini
 # ---------------------------------------------------------------- nothing is fetched before it is verified
 calls_made.clear()
 out = V.fetch("marcus-aurelius")
-check("fetch refuses unverified sources and says how to verify", "not verified yet" in out and "voices verify" in out and not any("gutenberg.org/files" in c for c in calls_made), out)
+check("fetch refuses unverified sources and says how to verify", "not verified yet" in out and "voices verify" in out and not any("/cache/epub/2680/pg2680.txt" in c for c in calls_made), out)
 
 vr = V.verify("marcus-aurelius")
 check("verify checks each source live and reports", "OK   Marcus Aurelius: gutenberg" in vr and "Wikiquote" in vr, vr)
@@ -182,7 +187,7 @@ d1 = dt.date(2026, 11, 15)
 check("today is the same passage all day", V.today("wisdom", d1) == V.today("wisdom", d1))
 seen = {V.today("wisdom", d1 + dt.timedelta(days=i)) for i in range(12)}
 check("today changes across days", len(seen) > 1)
-check("today with nothing fetched says what to run", "Nothing fetched yet" in V.today("finance", d1))
+check("today with nothing fetched in an area says so and offers another area", "Nothing is fetched yet for Financial development" in V.today("finance", d1), V.today("finance", d1))
 check("today refuses an unknown stratum", raises(V.today, "nope") is not None)
 
 # ---------------------------------------------------------------- notes (yours, marked, need a source)
@@ -207,6 +212,56 @@ check("show lists sources with their state and the links-only note", "verified" 
 lst = V.list_figures("", "smb")
 check("list filters by path and shows fetch state", "Some Blogger" in lst and "Marcus" not in lst)
 check("no network call was ever made to a social network", not any(h in c for c in calls_made for h in SOCIAL))
+
+
+# ---------------------------------------------------------------- repairs: the right book, never just any book by the author
+FAKE["gutenberg.org/ebooks/search"] = (200, '<ul><li class="booklink"><a href="/ebooks/9"><span class="title">Meditations Index</span></a></li>'
+                                          '<li class="booklink"><a href="/ebooks/77"><span class="title">Meditations in French</span></a></li>'
+                                          '<li class="booklink"><a href="/ebooks/78"><span class="title">Meditations</span></a></li></ul>')
+FAKE["cache/epub/77/pg77.txt"] = (200, "Title: Meditations in French\nAuthor: Marcus Aurelius\nLanguage: French\n")
+FAKE["cache/epub/78/pg78.txt"] = (200, "Title: Meditations\nAuthor: Somebody Else\nLanguage: English\n")
+mf = V.figure("marcus-aurelius")
+check("an index, a foreign-language edition and another author's book are all rejected", V.gutenberg_resolve(mf, mf["sources"][0]) is None)
+FAKE["cache/epub/78/pg78.txt"] = (200, "Title: Meditations\nAuthor: Marcus Aurelius\nLanguage: English\n")
+r = V.gutenberg_resolve(mf, mf["sources"][0])
+check("the English edition whose header names the author is chosen", r and r["id"] == 78, str(r))
+mf2 = dict(mf, sources=[{"type": "gutenberg", "search": "x", "title": "Meditations", "id": 78}])
+check("an id in the roster is tried first", V.gutenberg_resolve(mf, mf2["sources"][0])["id"] == 78)
+FAKE["gutenberg.org/ebooks/search"] = (200, '<ul><li class="booklink"><a href="/ebooks/2680"><span class="title">Meditations</span></a></li></ul>')
+
+# ---------------------------------------------------------------- feeds: more places to look
+FAKE["ex2.com/blog/feed"] = (200, RSS)
+FAKE["ex2.com"] = (200, "<html><head></head><body>no advertised feed</body></html>")
+check("a feed is found at the usual places when the homepage does not advertise one", V.discover_feed("https://ex2.com").endswith("/blog/feed"), V.discover_feed("https://ex2.com"))
+FAKE.pop("ex2.com/blog/feed"); FAKE.pop("ex2.com")
+
+# ---------------------------------------------------------------- setup: everything in one step, resumable, honest
+V.STORE = TMP / "voices2"
+steps = []
+rep_ = V.setup("marcus-aurelius", 5, say=steps.append)
+check("setup verifies, downloads and reports a ready figure", "1 figure(s) fully ready" in rep_ and len(V.load_index("marcus-aurelius")) > 0 and steps and "passages" in steps[0], rep_)
+n_calls = len(calls_made)
+rep2 = V.setup("marcus-aurelius", 5)
+check("run again, it skips what was checked recently and does not download again", len(calls_made) == n_calls, f"{len(calls_made) - n_calls} extra calls")
+rep3 = V.setup("gone", 5)
+check("a figure it cannot repair is listed with a plain reason and what to do", "Still failing" in rep3 and "gone" not in rep3.lower().split("ready")[0] or "No Sources" in rep3, rep3)
+st = V.load_state()
+for k in list(st["verified"]):
+    if k.startswith("gone/"):
+        st["verified"][k]["checked"] = "2020-01-01"
+V.save_state(st)
+n_calls = len(calls_made)
+V.setup("gone", 5)
+check("a failed source is tried again after a few days", len(calls_made) > n_calls)
+rep4 = V.setup("", 0)
+check("when the time is up it stops cleanly and says to run it again", "Time ran out" in rep4 or "fully ready" in rep4, rep4[:200])
+
+# an area with nothing fetched falls back to another area, and says so; a library with nothing says how to set it up
+V.STORE = TMP / "voices3"
+check("an empty library says how to set it up", "Set it up once" in V.today("wisdom", d1) and "set up the library" in V.today("wisdom", d1))
+V.STORE = TMP / "voices2"
+t_ = V.today("finance", d1)
+check("an area with nothing fetched offers a passage from another area and says so", "Nothing is fetched yet for Financial development" in t_ and "Marcus Aurelius" in t_, t_)
 
 # ---------------------------------------------------------------- the module itself
 src = (ROOT / "dse" / "voices.py").read_text(encoding="utf-8")

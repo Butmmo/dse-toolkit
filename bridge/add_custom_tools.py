@@ -1,6 +1,6 @@
 """One-off generator: "make it yours" in the catalog. Safe to re-run.
 
-  * choice fields that can honour a value of your own get "allow_custom" (the form shows "Other: type my own")
+  * fields that can honour a value of your own become a box you type in, with the usual answers offered as suggestions
   * the website-check pack list includes the packs you made (choices_from: packs)
   * the lead tools get your own words (site must use / skip names with)
   * two new tools: make your own website check, browse business categories
@@ -17,16 +17,28 @@ def field(tool, name):
     return next(f for f in T[tool]["fields"] if f["name"] == name)
 
 
+def suggest(f, pattern, label=None, hint=None, use_labels=True):
+    """A box you can type anything in, with the usual answers offered as you type (one step, no 'Other' to choose first).
+    It is a plain text field, so even a runner that has not been restarted accepts it. Safe to re-run."""
+    if f.get("choices"):
+        f["suggestions"] = [(c["label"] if use_labels else c["value"]) for c in f["choices"]]
+    f.pop("choices", None)
+    f.pop("allow_custom", None); f.pop("custom_label", None); f.pop("custom_help", None); f.pop("custom_pattern", None)
+    f.update(type="text", pattern=pattern, max=60)
+    if label:
+        f["label"] = label
+    if hint:
+        f["hint"] = hint
+
+
 KIND_PAT = r"[A-Za-z][A-Za-z0-9 &'/-]{2,59}"
 CUR_PAT = r"[A-Za-z]{3}"
 for t in ("dse.list", "dse.find"):
-    f = field(t, "kind")
-    f.update(allow_custom=True, custom_pattern=KIND_PAT, custom_label="Other: type my own business type", custom_help="Any business you sell to, like wedding photographers or dog trainers. It is found among Foursquare's business categories and saved for next time; if several fit you are shown them and asked to type the exact one. The first time it builds the data (a few minutes).")
-    f["label"] = "Business type (pick one, or type your own)"
-f = field("dse.podcasts", "genre")
-f.update(allow_custom=True, custom_pattern=r"[A-Za-z][A-Za-z &'/-]{1,39}", custom_label="Other: type my own genre", custom_help="Any topic. Your topics above then search Apple Podcasts without a genre filter.")
+    suggest(field(t, "kind"), KIND_PAT, "Business type (type any business, or pick from the list)",
+            "Any business you sell to: dentists, wedding photographers, dog trainers. Types we already know are used as they are; a new one is matched to Foursquare's business categories and remembered. The first time for a new type it builds its data (a few minutes).")
+suggest(field("dse.podcasts", "genre"), r"[A-Za-z][A-Za-z &'/-]{1,39}", hint="Pick one or type any topic. A genre of your own searches Apple Podcasts by your topics above.")
 for t, n in (("dse.proposal", "currency"), ("dse.books", "base"), ("dse.cut_add", "currency"), ("dse.fx_add", "from_cur"), ("dse.fx_add", "to_cur")):
-    field(t, n).update(allow_custom=True, custom_pattern=CUR_PAT, custom_label="Other: type a 3-letter code", custom_help="Any currency code, like NGN, CAD, AUD, ZAR, GHS or INR.")
+    suggest(field(t, n), CUR_PAT, hint="A 3-letter currency code: USD, GBP, EUR, NGN, CAD, AUD, ZAR, GHS, INR...", use_labels=False)
 
 for t in ("dse.list", "dse.check", "dse.check_one"):
     f = field(t, "pack")

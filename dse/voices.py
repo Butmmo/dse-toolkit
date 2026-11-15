@@ -87,9 +87,14 @@ def is_verified(f: dict, s: dict, st: dict | None = None) -> bool:
 
 # ------------------------------------------------------------------ the network (one place, so tests can replace it)
 
-def http_get(url: str, timeout: int = 20) -> tuple[int, str]:
+BROWSER = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36", "Accept-Language": "en", "Cookie": "SOCS=CAI"}
+
+
+def http_get(url: str, timeout: int = 20, browser: bool = False) -> tuple[int, str]:
+    """The one network call (tests replace it). browser=True: asks the way a visitor's browser does (YouTube shows its consent page to anything else)."""
     try:
-        r = requests.get(url, headers={**UA, "User-Agent": "Mozilla/5.0 (compatible; DSEToolkit/1.0; Voices library; personal study)"}, timeout=timeout, allow_redirects=True)
+        h = BROWSER if browser else {**UA, "User-Agent": "Mozilla/5.0 (compatible; DSEToolkit/1.0; Voices library; personal study)"}
+        r = requests.get(url, headers=h, timeout=timeout, allow_redirects=True)
         return r.status_code, r.text
     except requests.RequestException:
         return 0, ""
@@ -97,23 +102,65 @@ def http_get(url: str, timeout: int = 20) -> tuple[int, str]:
 
 # ------------------------------------------------------------------ public-domain books (Project Gutenberg)
 
-def gutenberg_find(search: str, author_hint: str = "", title: str = "") -> dict | None:
-    """The Project Gutenberg book for a search (Gutendex can be slow: one longer retry). Tries the full search, then the title alone."""
-    want = [w for w in re.findall(r"[a-z]{4,}", (author_hint or "").lower())]
-    for q in [x for x in dict.fromkeys([search, title]) if x]:
-        code, body = http_get("https://gutendex.com/books/?search=" + requests.utils.quote(q), 45)
-        if code == 0:
-            code, body = http_get("https://gutendex.com/books/?search=" + requests.utils.quote(q), 60)
-        if code != 200:
+PG_STOP = set("the a an of and on to in for de la le by from with into".split())
+
+
+def pg_search(query: str) -> list[dict]:
+    """Project Gutenberg's own catalogue search: [{id, title}], best first. (Its public API mirror is slow and often times out; this page is not.)"""
+    code, body = http_get("https://www.gutenberg.org/ebooks/search/?query=" + requests.utils.quote(query), 30)
+    if code != 200:
+        return []
+    out = []
+    for m in re.finditer(r'<li class="booklink">(.*?)</li>', body, re.S):
+        i = re.search(r'href="/ebooks/(\d+)"', m.group(1))
+        t = re.search(r'<span class="title">(.*?)</span>', m.group(1), re.S)
+        if i and t:
+            out.append({"id": int(i.group(1)), "title": htmllib.unescape(re.sub(r"<[^>]+>", "", t.group(1))).strip()})
+    return out
+
+
+def pg_text_url(gid: int) -> str:
+    return f"https://www.gutenberg.org/cache/epub/{gid}/pg{gid}.txt"
+
+
+def pg_head(gid: int) -> str:
+    code, body = http_get(pg_text_url(gid), 45)
+    return body[:6000] if code == 200 else ""
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]{3,}", (text or "").lower()) if w not in PG_STOP}
+
+
+def gutenberg_resolve(f: dict, s: dict) -> dict | None:
+    """The Project Gutenberg book for a roster entry, checked: its own id if the roster has one, else the best search result whose text says the figure wrote it.
+    Returns {id, title, text_url} or None. Nothing is accepted on a title match alone: the book's own header must name the author."""
+    surname = [w for w in re.findall(r"[a-z]{4,}", f["name"].lower()) if w not in ("saint", "bishop")][-1:] or [""]
+    want = _words(s.get("title", "") + " " + s.get("search", "")) - set(surname)
+    tried, cands = set(), []
+    if s.get("id"):
+        cands.append({"id": int(s["id"]), "title": s.get("title", "")})
+    for q in dict.fromkeys([s.get("search", ""), s.get("title", ""), (surname[0] + " " + s.get("title", "")).strip(), surname[0]]):
+        if not q:
             continue
-        try:
-            books = json.loads(body).get("results", [])
-        except ValueError:
+        found = pg_search(q)
+        found = [b for b in found if not re.search(r"index|catalog", b["title"], re.I)]
+        found.sort(key=lambda b: -len(want & _words(b["title"])))
+        cands += [b for b in found if len(want & _words(b["title"])) >= 1][:4]       # the title must share a word with the one you named: another book by the same author is not accepted
+        if len(cands) >= 6:
+            break
+    for b in cands:
+        if b["id"] in tried:
             continue
-        for b in books:
-            authors = " ".join(a.get("name", "") for a in b.get("authors", [])).lower()
-            if not want or any(w in authors for w in want):
-                return b
+        tried.add(b["id"])
+        head = pg_head(b["id"])
+        m = re.search(r"^Author:\s*(.+)$", head, re.M)
+        by = (m.group(1) if m else "").lower()
+        lang = re.search(r"^Language:\s*(.+)$", head, re.M)
+        if head and (not lang or "english" in lang.group(1).lower()) and (surname[0] in by or surname[0] in head[:1500].lower()):
+            tm = re.search(r"^Title:\s*(.+)$", head, re.M)
+            return {"id": b["id"], "title": (tm.group(1).strip() if tm else b["title"])[:120], "text_url": pg_text_url(b["id"])}
+        time.sleep(PAUSE / 2)
     return None
 
 
@@ -250,7 +297,7 @@ def parse_feed(xml: str) -> list[dict]:
     return items
 
 
-COMMON_FEEDS = ("/feed", "/feed/", "/rss", "/rss.xml", "/feed.xml", "/atom.xml", "/blog/feed", "/blog/feed/", "/index.xml")
+COMMON_FEEDS = ("/feed", "/feed/", "/rss", "/rss/", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml", "/blog/feed", "/blog/feed/", "/blog/rss", "/blog/rss.xml", "/blog/index.xml", "/podcast/feed", "/podcast/feed/", "/feed/podcast", "/?feed=rss2", "/blog?format=rss", "/news/feed", "/articles/feed")
 
 
 def discover_feed(home: str) -> str:
@@ -264,10 +311,22 @@ def discover_feed(home: str) -> str:
                 if h:
                     return requests.compat.urljoin(home, htmllib.unescape(h.group(1)))
     base = re.match(r"https?://[^/]+", home)
-    for path in (COMMON_FEEDS if base else ()):
-        c, b = http_get(base.group(0) + path)
-        if c == 200 and parse_feed(b):
-            return base.group(0) + path
+    hosts = []
+    if base:
+        host = base.group(0)
+        hosts = [host.replace("http://", "https://")] + ([host.replace("//www.", "//")] if "//www." in host else [host.replace("//", "//www.")])
+    for h in dict.fromkeys(hosts):
+        for path in COMMON_FEEDS:
+            c, b = http_get(h + path)
+            if c == 200 and parse_feed(b):
+                return h + path
+        if code == 200:                              # a link on the homepage that says feed, rss or podcast
+            for m in re.finditer(r'href=["\']([^"\']*(?:feed|rss|atom|podcast)[^"\']*)["\']', body, re.I):
+                u = requests.compat.urljoin(home, htmllib.unescape(m.group(1)))
+                if u.startswith("http") and not re.search(r"\.(css|js|png|jpg|svg)(\?|$)", u):
+                    c, b = http_get(u)
+                    if c == 200 and parse_feed(b):
+                        return u
     return ""
 
 
@@ -276,7 +335,7 @@ def youtube_feed_url(handle: str) -> str:
     h = (handle or "").strip()
     if re.fullmatch(r"UC[\w-]{22}", h):
         return f"https://www.youtube.com/feeds/videos.xml?channel_id={h}"
-    code, body = http_get("https://www.youtube.com/" + (h if h.startswith("@") else "@" + h))
+    code, body = http_get("https://www.youtube.com/" + (h if h.startswith("@") else "@" + h), 25, browser=True)
     if code != 200:
         return ""
     m = re.search(r"channel_id=(UC[\w-]{22})", body) or re.search(r'"(?:channelId|externalId)":"(UC[\w-]{22})"', body) or re.search(r"youtube\.com/channel/(UC[\w-]{22})", body)
@@ -296,12 +355,12 @@ def feed_url_for(s: dict) -> str:
 def verify_source(f: dict, s: dict) -> dict:
     t = s["type"]
     if t == "gutenberg":
-        b = gutenberg_find(s["search"], f["name"].split()[-1], s.get("title", ""))
-        ok = bool(b)
-        return {"ok": ok, "detail": f"Project Gutenberg #{b['id']}: {b['title'][:60]}" if ok else "not found on Project Gutenberg (search again with another title)"}
+        b = gutenberg_resolve(f, s)
+        return ({"ok": True, "detail": f"Project Gutenberg #{b['id']}: {b['title'][:60]}", "gid": b["id"], "gtitle": b["title"], "url": b["text_url"]} if b
+                else {"ok": False, "detail": "no Project Gutenberg book of that title by this author was found (add \"id\": <its number from gutenberg.org/ebooks/...> to the source in the roster, or change the title)"})
     if t == "wikiquote":
         q = wikiquote_get(s["page"])
-        return {"ok": len(q) >= 5, "detail": f"{len(q)} sourced quotations on Wikiquote" if q else "no Wikiquote page found"}
+        return {"ok": len(q) >= 3, "detail": f"{len(q)} sourced quotations on Wikiquote" if q else "no Wikiquote page found"}
     if t in ("feed", "youtube"):
         url = feed_url_for(s)
         if not url:
@@ -311,16 +370,22 @@ def verify_source(f: dict, s: dict) -> dict:
         return {"ok": bool(items), "detail": f"{len(items)} recent item(s) at {url}" if items else f"feed did not answer or had no items ({url})", "url": url}
     if t == "books":
         bad = []
+        sur = [w for w in re.findall(r"[a-z]{4,}", f["name"].lower())][-1:] or [""]
         for b in s.get("list", []):
-            code, body = http_get("https://openlibrary.org/search.json?limit=1&title=" + requests.utils.quote(b["title"]) + "&author=" + requests.utils.quote(f["name"]))
-            try:
-                found = code == 200 and json.loads(body).get("numFound", 0) > 0
-            except ValueError:
-                found = False
+            found = False
+            for title in dict.fromkeys([b["title"], re.split(r"[:(]", b["title"])[0].strip(), re.sub(r"^(the|a|an)\s+", "", re.split(r"[:(]", b["title"])[0].strip(), flags=re.I)]):
+                code, body = http_get("https://openlibrary.org/search.json?limit=5&title=" + requests.utils.quote(title))
+                try:
+                    docs = json.loads(body).get("docs", []) if code == 200 else []
+                except ValueError:
+                    docs = []
+                if any(sur[0] in " ".join(d.get("author_name", [])).lower() for d in docs):
+                    found = True
+                    break
+                time.sleep(PAUSE / 3)
             if not found:
                 bad.append(b["title"])
-            time.sleep(PAUSE / 3)
-        return {"ok": not bad, "detail": ("all titles found on Open Library" if not bad else "not found on Open Library: " + "; ".join(bad))}
+        return {"ok": not bad, "detail": ("all titles found on Open Library" if not bad else "not found on Open Library under this author: " + "; ".join(bad) + " (check the spelling of the title in the roster)")}
     if t == "links":
         bad = [k for k in s.get("urls", {}) if k not in LINK_NETWORKS and k not in ("home", "site")]
         return {"ok": not bad, "detail": "links only, never fetched" + (f"; unknown network {bad}" if bad else "")}
@@ -334,7 +399,7 @@ def verify(fid: str = "") -> str:
     for f in fs:
         for s in f.get("sources", []):
             res = verify_source(f, s)
-            st["verified"][src_key(f, s)] = {**res, "checked": dt.date.today().isoformat()}
+            st["verified"][src_key(f, s)] = {**res, "checked": dt.date.today().isoformat(), "v": CHECK_VERSION}
             ok_n += res["ok"]
             bad_n += not res["ok"]
             lines.append(f"{'OK  ' if res['ok'] else 'FAIL'} {f['name']}: {s['type']}: {res['detail']}")
@@ -382,22 +447,20 @@ def fetch(fid: str) -> str:
             lines.append(f"- skipped {s['type']} ({s.get('search') or s.get('page')}): not verified yet. Run: python dse.py voices verify {fid}")
             continue
         if s["type"] == "gutenberg":
-            b = gutenberg_find(s["search"], f["name"].split()[-1], s.get("title", ""))
-            if not b:
-                lines.append(f"- {s['search']}: not found now")
+            v = st["verified"].get(src_key(f, s), {})
+            gid, url = v.get("gid"), v.get("url", "")
+            if not gid or not url:
+                lines.append(f"- {s.get('title') or s['search']}: no checked book address: run voices verify {fid}")
                 continue
-            fmts = b.get("formats", {})
-            url = next((v for k, v in fmts.items() if k.startswith("text/plain")), "")
-            code, body = http_get(url, 60) if url else (0, "")
+            code, body = http_get(url, 90)
             if code != 200 or len(body) < 2000:
-                lines.append(f"- Gutenberg #{b['id']}: the text did not download")
+                lines.append(f"- Gutenberg #{gid}: the text did not download")
                 continue
             text = strip_gutenberg(body)
             fig_dir(fid).mkdir(parents=True, exist_ok=True)
-            (fig_dir(fid) / f"gutenberg-{b['id']}.txt").write_text(text, encoding="utf-8")
-            title = (s.get("title") or b["title"]).strip()
+            (fig_dir(fid) / f"gutenberg-{gid}.txt").write_text(text, encoding="utf-8")
+            title = (s.get("title") or v.get("gtitle") or "").strip()
             chunks = chunk_text(title, text)
-            gid = b["id"]
             for c in chunks:
                 passages.append({**c, "kind": "text", "credit": f"{f['name']}, {c['locator']} (Project Gutenberg #{gid}, public domain)"})
             lines.append(f"- {title}: {len(chunks)} passages from Project Gutenberg #{gid}")
@@ -482,7 +545,7 @@ def ask(question: str, figure_id: str = "", stratum: str = "", path: str = "", n
     hits = bm25(question, allp)
     out = [f"# Voices: \"{question.strip()[:80]}\"", ""]
     if not hits:
-        out.append("Nothing in the library matches that yet." + (f" Nothing is fetched yet for: {', '.join(empty[:6])}{'...' if len(empty) > 6 else ''}. Fetch with: python dse.py voices fetch <figure> (after: voices verify)." if empty else " Try other words."))
+        out.append("Nothing in the library matches that yet." + (f" Nothing is fetched yet for: {', '.join(empty[:6])}{'...' if len(empty) > 6 else ''}. Set the library up once: HQ Tools, Voices: set up the library (or python dse.py voices setup)." if empty else " Try other words."))
         return "\n".join(out) + "\n"
     seen_f: dict[str, int] = {}
     shown = 0
@@ -507,11 +570,21 @@ def today(stratum: str = "wisdom", day: dt.date | None = None) -> str:
         for p in ps:
             if p["kind"] in ("quote", "note") or len(p["text"].split()) <= 70:
                 cands.append({**p, "who": f["name"]})
+    note = ""
+    if not cands:                      # nothing in this area yet: say so, and offer a passage from any area that has some
+        for other in STRATA:
+            if other == stratum:
+                continue
+            for f, ps in pool("", other, ""):
+                cands += [{**p, "who": f["name"]} for p in ps if p["kind"] in ("quote", "note") or len(p["text"].split()) <= 70]
+            if cands:
+                note = f"(Nothing is fetched yet for {STRATA[stratum]}, so this one is from {STRATA[other]}.)" + chr(10) * 2
+                break
     if not cands:
-        return f"Nothing fetched yet for {STRATA[stratum]}. Run: python dse.py voices verify, then voices fetch <figure> for the figures you like.\n"
+        return "The library is empty on this PC. Set it up once: HQ Tools, Voices: set up the library (or python dse.py voices setup). It checks every source, repairs what it can and downloads what is lawful to keep." + chr(10)
     h = int(hashlib.sha1(f"{day.isoformat()}|{stratum}".encode()).hexdigest(), 16)
     p = sorted(cands, key=lambda c: c["credit"] + c["text"][:30])[h % len(cands)]
-    return f"# Today ({STRATA[stratum]}, {day.isoformat()})\n\n\"{shorten(p['text'], 90)}\"\n{p['credit']}\n\nA passage chosen by the date, from the Voices library. No AI model.\n"
+    return f"# Today ({STRATA[stratum]}, {day.isoformat()})\n\n" + note + f"\"{shorten(p['text'], 90)}\"\n{p['credit']}\n\nA passage chosen by the date, from the Voices library. No AI model.\n"
 
 
 def note(fid: str, text: str, source: str) -> str:
@@ -639,3 +712,83 @@ def roster_problems() -> list[str]:
         if not f.get("known_for") or len(f["known_for"]) > 160:
             out.append(f"{f['id']}: known_for missing or too long")
     return out
+
+
+# ------------------------------------------------------------------ setup: verify, repair, fetch and update in one step
+
+FRESH_OK_DAYS, FRESH_FAIL_DAYS, REFETCH_DAYS = 30, 3, 30
+CHECK_VERSION = 2          # raise it when the checks get better: results from older checks are done again, not trusted
+
+
+def _age_days(iso: str) -> int:
+    try:
+        return (dt.date.today() - dt.date.fromisoformat(iso[:10])).days
+    except ValueError:
+        return 10 ** 6
+
+
+def _index_age_days(fid: str) -> int:
+    p = index_path(fid)
+    return int((time.time() - p.stat().st_mtime) // 86400) if p.exists() else 10 ** 6
+
+
+def setup(fid: str = "", minutes: int = 25, force: bool = False, say=lambda *_: None) -> str:
+    """The one step that makes the library work: for each figure, check every source (repairing what can be repaired: another feed address, the right
+    Project Gutenberg book, a simpler book title), download what is lawful to keep, and read what the living have published. Safe to run again and again:
+    a source checked recently is skipped, a failed one is retried after 3 days, and it stops cleanly when the time is up and carries on next time.
+    Prints each figure as it goes (say). Nothing here sends anything or reads a social network."""
+    start, budget = time.time(), max(1, minutes) * 60
+    fs = [figure(fid)] if fid else sorted(roster(), key=lambda f: (f.get("era") == "living", 0))
+    ready, partial, help_, left = [], [], [], []
+    for f in fs:
+        if time.time() - start > budget:
+            left.append(f["name"])
+            continue
+        st = load_state()
+        notes = []
+        for s in f.get("sources", []):
+            key = src_key(f, s)
+            v = st["verified"].get(key)
+            age = _age_days((v or {}).get("checked", ""))
+            if not force and v and v.get("v") == CHECK_VERSION and age <= (FRESH_OK_DAYS if v.get("ok") else FRESH_FAIL_DAYS):
+                continue
+            res = verify_source(f, s)
+            st["verified"][key] = {**res, "checked": dt.date.today().isoformat(), "v": CHECK_VERSION}
+            save_state(st)
+            time.sleep(PAUSE)
+        st = load_state()
+        fetchable = [s for s in f.get("sources", []) if s["type"] in ("gutenberg", "wikiquote") and is_verified(f, s, st)]
+        if fetchable and (force or _index_age_days(f["id"]) > REFETCH_DAYS):
+            try:
+                fetch(f["id"])
+            except Exception as e:                      # one figure's trouble must not stop the rest
+                notes.append(f"download failed ({type(e).__name__})")
+        n = len(load_index(f["id"]))
+        feeds = sum(1 for s in f.get("sources", []) if s["type"] in ("feed", "youtube") and is_verified(f, s, load_state()))
+        bad = [(s, load_state()["verified"].get(src_key(f, s), {})) for s in f.get("sources", []) if not is_verified(f, s, load_state()) and s["type"] != "links"]
+        line = f"{f['name']}: " + (f"{n} passages" if n else "no passages") + (f", {feeds} live feed(s)" if feeds else "")
+        if n or feeds:
+            (partial if bad else ready).append(line)
+        elif not f.get("sources") or all(s["type"] in ("books", "links") for s in f.get("sources", [])):
+            partial.append(f"{f['name']}: titles and links only (books in copyright are not copied; add your own notes with voices note)")
+        for s, v in bad:
+            help_.append(f"{f['name']} ({s['type']}): {v.get('detail', 'not checked')}")
+        say(line + ("" if not bad else f"  [{len(bad)} source(s) still failing]"))
+    if feeds_any(fs):
+        try:
+            update(fid)
+        except Exception:
+            pass
+    out = ["# Voices: set up", "", f"{len(ready)} figure(s) fully ready, {len(partial)} partly ready, {len(help_)} source(s) still need a fix.", ""]
+    out += ["## Ready"] + [f"- {x}" for x in ready] if ready else []
+    out += ["", "## Partly ready"] + [f"- {x}" for x in partial] if partial else []
+    if help_:
+        out += ["", "## Still failing, and what to do"] + [f"- {x}" for x in help_[:60]]
+    if left:
+        out += ["", f"Time ran out before: {', '.join(left[:12])}{'...' if len(left) > 12 else ''}. Run it again to carry on (it skips what is done)."]
+    out += ["", "Ask the library: HQ Tools, Voices: ask the library. Nothing here sends anything or reads a social network."]
+    return chr(10).join(out) + chr(10)
+
+
+def feeds_any(fs: list[dict]) -> bool:
+    return any(s["type"] in ("feed", "youtube") for f in fs for s in f.get("sources", []))

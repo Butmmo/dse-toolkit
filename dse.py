@@ -160,10 +160,10 @@ def main():
     ch = sub.add_parser("calls"); ch.add_argument("engine")
     bf = sub.add_parser("brief", help="what to do first today, across all your engines"); bf.add_argument("--top", type=int, default=3)
     vc = sub.add_parser("voices", help="the Voices library: figures worth learning from, real passages with sources")
-    vc.add_argument("action", choices=["list", "show", "verify", "fetch", "update", "ask", "today", "note", "check"])
+    vc.add_argument("action", choices=["list", "show", "verify", "fetch", "update", "ask", "today", "note", "check", "setup"])
     vc.add_argument("target", nargs="?", default="", help="a question (ask), a figure id (show, fetch, note), or nothing")
     vc.add_argument("--figure", default=""); vc.add_argument("--stratum", default=""); vc.add_argument("--path", default=""); vc.add_argument("--n", type=int, default=3)
-    vc.add_argument("--text", default=""); vc.add_argument("--source", default="")
+    vc.add_argument("--text", default=""); vc.add_argument("--source", default=""); vc.add_argument("--minutes", type=int, default=25); vc.add_argument("--force", action="store_true")
     lg =sub.add_parser("log"); lg.add_argument("engine"); lg.add_argument("source", help="the list name, e.g. 2026-11-16 or 2026-11-17-followups")
     lg.add_argument("row", help="the row number on that list"); lg.add_argument("status", choices=list(desklog.STATUSES))
     lg.add_argument("--reply", default=""); lg.add_argument("--value", default="")
@@ -350,6 +350,8 @@ def main():
                 print(voices.ask(t, a.figure, a.stratum, a.path, a.n))
             elif x == "today":
                 print(voices.today(a.stratum or "wisdom"))
+            elif x == "setup":
+                print(voices.setup(t or a.figure, a.minutes, a.force, say=lambda m: print(m, flush=True)))
             elif x == "note":
                 print(voices.note(t or a.figure, a.text, a.source))
             else:

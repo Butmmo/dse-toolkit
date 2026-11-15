@@ -97,8 +97,8 @@
    "sources": [
     {
      "type": "gutenberg",
-     "search": "seneca letters",
-     "title": "Letters"
+     "search": "seneca morals of a happy life",
+     "title": "Morals of a Happy Life"
     },
     {
      "type": "wikiquote",
@@ -181,8 +181,8 @@
    "sources": [
     {
      "type": "gutenberg",
-     "search": "on duties cicero",
-     "title": "On Duties"
+     "search": "cicero tusculan disputations",
+     "title": "Tusculan Disputations"
     },
     {
      "type": "wikiquote",
@@ -949,13 +949,7 @@
     "finance"
    ],
    "paths": [],
-   "sources": [
-    {
-     "type": "gutenberg",
-     "search": "richest man in babylon clason",
-     "title": "The Richest Man in Babylon"
-    }
-   ]
+   "sources": []
   },
   {
    "id": "warren-buffett",
@@ -1944,7 +1938,7 @@
    "sources": [
     {
      "type": "gutenberg",
-     "search": "introduction to the devout life francis de sales",
+     "search": "devout life",
      "title": "Introduction to the Devout Life"
     },
     {
