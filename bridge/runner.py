@@ -52,6 +52,16 @@ LOG_DIR = HERE / "logs"
 POLL_S = 15
 PROGRESS_S = 3
 MAX_UPLOAD = 5 * 1024 * 1024
+MIN_TOOL_MINUTES = 30            # no tool gets less than this to finish (founder, 16 Nov: many tools need up to 20 minutes)
+
+
+def tool_minutes(tool: dict) -> int:
+    """Minutes a tool may run: what its entry asks for, but never less than MIN_TOOL_MINUTES."""
+    try:
+        asked = int(tool.get("timeout_min") or 0)
+    except (TypeError, ValueError):
+        asked = 0
+    return max(asked, MIN_TOOL_MINUTES)
 MAX_UPLOADS_PER_JOB = 15
 FILES_PER_GLOB = 200
 MIME = {".csv": "text/csv", ".md": "text/markdown", ".json": "application/json", ".txt": "text/plain",
@@ -289,7 +299,7 @@ def public_catalog(cat: dict) -> dict:
     resolve_fields(cat)
     return {"version": cat.get("version", 1),
             "ollama": ollama_info(),
-            "tools": {k: {f: t[f] for f in keep if f in t} for k, t in cat["tools"].items()}}
+            "tools": {k: {**{f: t[f] for f in keep if f in t}, "timeout_min": tool_minutes(t)} for k, t in cat["tools"].items()}}
 
 
 # ----------------------------------------------------------------- Supabase calls
@@ -534,7 +544,7 @@ def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
     t.start()
 
     cancelled = timed_out = False
-    limit = tool.get("timeout_min", 30) * 60
+    limit = tool_minutes(tool) * 60
     sent, last_sent = None, 0.0
     while proc.poll() is None:
         time.sleep(PROGRESS_S)
@@ -553,7 +563,7 @@ def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
             break
         if time.time() - started > limit:
             timed_out = True
-            lines.append(f"-- Time limit of {tool.get('timeout_min', 30)} minutes reached: stopping --")
+            lines.append(f"-- Time limit of {tool_minutes(tool)} minutes reached: stopping --")
             kill_tree(proc)
             break
     proc.wait()
@@ -565,7 +575,7 @@ def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
     if cancelled:
         status, error = "cancelled", "Cancelled from Citadel."
     elif timed_out:
-        status, error = "failed", f"Stopped after the {tool.get('timeout_min', 30)}-minute time limit."
+        status, error = "failed", f"Stopped after the {tool_minutes(tool)}-minute time limit."
     elif code != 0:
         status, error = "failed", f"The tool stopped with exit code {code}. See the log."
     else:

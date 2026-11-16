@@ -122,6 +122,19 @@ try:
     (d / "engine.json").write_text(json.dumps({"name": "Pre test", "path": "smb", "sender_name": "Bolu", "postal_address": "1 Main St, Tampa FL", "archived": False}), encoding="utf-8")
     t2 = P.report(SLUG, today=dt.date(2026, 11, 14))
     check("a clean list reads READY", "READY: no blockers in 1 rows" in t2, t2[:200])
+    # volume across several mailboxes (founder, 16 Nov: 400 to 1,000 emails a day from many mailboxes)
+    big = [{"business": f"Biz {i}", "channel": "Email", "where": f"a{i}@biz{i}.example", "opener": GOOD, "website": f"biz{i}.example"} for i in range(100)]
+    write_list("2026-11-11", big)
+    def vol(boxes):
+        cfg = {"name": "Pre test", "path": "smb", "sender_name": "Bolu", "postal_address": "1 Main St, Tampa FL", "archived": False}
+        if boxes:
+            cfg["mailboxes"] = boxes
+        (d / "engine.json").write_text(json.dumps(cfg), encoding="utf-8")
+        return " | ".join(t for _l, t in P.check_list(SLUG, d / "send-lists" / "2026-11-11.csv")["list_notes"])
+    check("100 emails from one mailbox warns, and says how many mailboxes would suit", "100 emails in one day over 1 mailbox" in vol(0) and "About 3 warmed-up mailboxes" in vol(0), vol(0))
+    check("100 emails over 2 mailboxes still warns (over 40 each)", "over 2 mailbox" in vol(2))
+    check("100 emails over 3 mailboxes is within 40 each: no volume warning", "emails in one day" not in vol(3), vol(3))
+    check("no Email cap in the engine means no cap warning at that volume", "Email cap" not in vol(3))
 finally:
     shutil.rmtree(d, ignore_errors=True)
 

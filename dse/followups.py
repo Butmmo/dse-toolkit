@@ -142,7 +142,7 @@ def analyse(slug: str, planned_sources: set[str] | None = None) -> dict:
 
 def plan(slug: str, start: str | None = None, days: int = 1, write: bool = True, per_day: int | None = None) -> dict[str, list[dict]]:
     cfg = load(slug)
-    per_day = per_day or int(cfg.get("followups_per_day", 25))
+    per_day = per_day or int(cfg.get("followups_per_day") or max(25, int(cfg.get("per_day", 20))))
     first_day = dt.date.fromisoformat(start) if start else dt.date.today() + dt.timedelta(days=1)
     dates, d = [], first_day
     while len(dates) < days:

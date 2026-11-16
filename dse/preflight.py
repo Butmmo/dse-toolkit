@@ -153,8 +153,11 @@ def check_list(slug: str, path: Path) -> dict:
     cap = int((cfg.get("caps") or {}).get("Email", 999))
     if email_rows > cap:
         list_notes.append(("warn", f"{email_rows} Email rows is over your own Email cap of {cap} a day"))
-    if email_rows > RULES["mailbox_daily_warn"]:
-        list_notes.append(("warn", f"{email_rows} emails in one day. {RULES['mailbox_daily_note']}"))
+    boxes = max(1, min(100, int(cfg.get("mailboxes") or 1)))
+    per_box = RULES["mailbox_daily_warn"]
+    if email_rows > per_box * boxes:
+        need = -(-email_rows // per_box)
+        list_notes.append(("warn", f"{email_rows} emails in one day over {boxes} mailbox(es) is more than {per_box} a mailbox. About {need} warmed-up mailboxes would keep each at or under {per_box}; set 'Sending mailboxes' in your engine to the number you really send from. {RULES['mailbox_daily_note']}"))
     return {"slug": slug, "path": path, "rows": rows, "issues": issues, "list_notes": list_notes, "email_rows": email_rows}
 
 
