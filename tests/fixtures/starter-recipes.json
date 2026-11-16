@@ -287,9 +287,8 @@
   {
     "id": "carebridge-home-care",
     "name": "Home care agencies: slow-response gap, then contacts",
-    "for": "Home care and assisted living (SMB's home care niche, CareBridge)",
+    "for": "Home care and assisted living (an SMB side-quest)",
     "paths": [
-      "carebridge",
       "smb"
     ],
     "recipe": {
