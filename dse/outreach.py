@@ -23,7 +23,9 @@ This is deliverability and good-manners guidance, not legal advice.
 """
 from __future__ import annotations
 
+import csv
 import datetime as dt
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -84,6 +86,11 @@ def reach_for(row: dict) -> str:
     return (row.get("instagram") or row.get("facebook") or row.get("website") or "").strip()
 
 
+def touch_id(date: str, business: str, channel: str, day: int) -> str:
+    """A short id that stays the same when the pack is rebuilt, so a tap on the phone still finds its row."""
+    return hashlib.sha1(f"{date}|{business}|{channel}|{day}".encode("utf-8")).hexdigest()[:10]
+
+
 def build(target: str, door: str = "", start: str | None = None, sender: str = "", address: str = "", write: bool = True) -> dict:
     slug, path = pf.find_list(target)
     cfg = load(slug)
@@ -138,12 +145,12 @@ def build(target: str, door: str = "", start: str | None = None, sender: str = "
             if p["channel"] == "email" and not has_email:
                 continue
             n = p.get("email")
-            text = ""
-            if n:
-                text = merged.get(f"subject_{n}", "") + " :: see body_" + str(n) + " in the mail-merge file"
-            out["calendar"].append({"date": day_date(day0, p["day"]).isoformat(), "day": p["day"], "business": biz, "city": vals["city"],
-                                    "channel": p["channel"], "where": email if p["channel"] == "email" else reach_for(r), "action": p["action"],
-                                    "draft": text, "done": ""})
+            # an email touch carries the real email (subject and body) so it can be copied on the phone; the others carry the instruction
+            text = (f"Subject: {merged.get(f'subject_{n}', '')}\n\n{merged.get(f'body_{n}', '')}" if n else p["action"])
+            date = day_date(day0, p["day"]).isoformat()
+            out["calendar"].append({"date": date, "day": p["day"], "business": biz, "city": vals["city"], "channel": p["channel"],
+                                    "where": email if p["channel"] == "email" else reach_for(r), "action": p["action"], "draft": text, "done": "",
+                                    "door": door, "row_id": touch_id(date, biz, p["channel"], p["day"])})
     out["calendar"].sort(key=lambda c: (c["date"], c["business"]))
     if write:
         d = engine_dir(slug) / "outreach"
@@ -153,7 +160,7 @@ def build(target: str, door: str = "", start: str | None = None, sender: str = "
             write_csv(d / f"{stem}-mailmerge.csv", out["merge"], first=cols)
             out["files"].append(d / f"{stem}-mailmerge.csv")
         if out["calendar"]:
-            write_csv(d / f"{stem}-touch-calendar.csv", out["calendar"], first=["date", "day", "business", "city", "channel", "where", "action", "draft", "done"])
+            write_csv(d / f"{stem}-touch-calendar.csv", out["calendar"], first=["date", "day", "business", "city", "channel", "where", "action", "draft", "done", "door", "row_id"])
             out["files"].append(d / f"{stem}-touch-calendar.csv")
     return out
 
@@ -185,3 +192,47 @@ def report(target: str, door: str = "", start: str | None = None, sender: str = 
           "  3. Do the warm comments on the calendar the day before each first email.",
           "  4. YOU press start and YOU press every send. Nothing was sent by this tool."]
     return "\n".join(L)
+
+
+# ------------------------------------------------------------------ the Send Desk view of the touch calendar
+
+CALENDAR_SUFFIX = "-touch-calendar"
+CHANNEL_LABEL = {"email": "Email", "social": "Social touch", "call": "Call"}
+
+
+def desk_items(slug: str, cfg: dict, today: dt.date, back: int = 2, ahead: int = 14, hist: dict | None = None, limit: int = 1200) -> list[dict]:
+    """The touch-calendar rows around today, in the Send Desk's row shape, with the status the log says.
+    Taps on them come back through the same log as any list (source = the calendar file's name)."""
+    from . import desklog as dl
+    d = engine_dir(slug) / "outreach"
+    if not d.is_dir():
+        return []
+    hist = hist if hist is not None else dl.history(slug)
+    lo, hi = (today - dt.timedelta(days=back)).isoformat(), (today + dt.timedelta(days=ahead)).isoformat()
+    items: list[dict] = []
+    for p in sorted(d.glob(f"*{CALENDAR_SUFFIX}.csv")):
+        try:
+            with p.open(encoding="utf-8-sig", newline="") as fh:
+                rows = list(csv.DictReader(fh))
+        except OSError:
+            continue
+        for r in rows:
+            date = (r.get("date") or "").strip()
+            if not (lo <= date <= hi):
+                continue
+            rid = (r.get("row_id") or "").strip() or touch_id(date, r.get("business", ""), r.get("channel", ""), int(r.get("day") or 0))
+            ev = dl.latest(hist.get((p.stem, rid)))
+            ch = r.get("channel", "")
+            where = (r.get("where") or "").strip()
+            label = CHANNEL_LABEL.get(ch, ch.title())
+            if ch == "social" and "instagram" in where.lower():
+                label = "Social touch (Instagram)"
+            items.append({
+                "key": f"{slug}|{p.stem}|{rid}", "list_date": date, "engine": slug, "engine_label": cfg.get("name") or slug, "source": p.stem, "row_id": rid,
+                "name": r.get("business", ""), "person": "", "city": r.get("city", ""), "channel": label, "where": where, "website": "",
+                "message": r.get("draft", ""), "warmup": "", "gap": "", "audit": "",
+                "notes": f"Day {r.get('day', '')} of the 14-day touch plan ({r.get('door') or 'review'} door). {r.get('action', '')}".strip(),
+                "touch": None, "status": ev["status"] if ev else "to do", "category": (ev or {}).get("category", ""), "reply": (ev or {}).get("reply", ""),
+                "next_step": (ev or {}).get("next_step", ""), "value": (ev or {}).get("value", "")})
+    items.sort(key=lambda i: (i["list_date"], i["name"], i["row_id"]))
+    return items[:limit]

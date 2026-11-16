@@ -21,8 +21,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 from dse import desklog as dl  # noqa: E402
+from dse import outreach  # noqa: E402
 
 DAYS_BACK, DAYS_AHEAD = 2, 3
+CAL_AHEAD = 14          # the Outreach Pack's touch calendar runs 14 days, so it is pushed further ahead than the lists
 
 
 def _runner():
@@ -74,6 +76,7 @@ def build_items(today: dt.date) -> list[dict]:
                 "notes": r.get("notes", "") or r.get("gaps_found", ""), "audit": "", "touch": r["touch"],
                 "status": status, "category": (ev or {}).get("category", ""), "reply": (ev or {}).get("reply", ""),
                 "next_step": (ev or {}).get("next_step", ""), "value": (ev or {}).get("value", "")})
+        items += outreach.desk_items(slug, cfg, today, DAYS_BACK, CAL_AHEAD, hist)
     return items
 
 
@@ -113,7 +116,7 @@ def main():
         print(f"would push {len(items)} row(s) from {len(here)} engine(s)")
         return
     api.rpc("hq_member_desk_push", {"p_items": items, "p_from": (today - dt.timedelta(days=DAYS_BACK)).isoformat(),
-                                     "p_to": (today + dt.timedelta(days=DAYS_AHEAD)).isoformat()})
+                                     "p_to": (today + dt.timedelta(days=CAL_AHEAD)).isoformat()})
     if ack:
         print(f"{dt.datetime.now():%H:%M:%S} desk sync: {len(ack)} tap(s) from your phone logged")
 

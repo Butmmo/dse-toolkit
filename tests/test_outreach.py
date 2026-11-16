@@ -109,6 +109,25 @@ try:
     check("files are written under outreach/, not send-lists/", all(f.parent.name == "outreach" for f in res["files"]) and len(res["files"]) == 2 and not list((d / "send-lists").glob("*outreach*")))
     check("the mail-merge file has the sequence columns", "subject_4" in (res["files"][0].read_text(encoding="utf-8-sig").splitlines()[0]) and "send_on_1" in res["files"][0].read_text(encoding="utf-8-sig").splitlines()[0])
 
+    # ---- the Send Desk view of the touch calendar
+    cfg_now = json.loads((d / "engine.json").read_text(encoding="utf-8"))
+    items = O.desk_items(SLUG, cfg_now, dt.date(2026, 12, 7), 2, 14)
+    check("the calendar rows reach the Send Desk in its row shape", items and all(k in items[0] for k in ("key", "list_date", "engine", "source", "row_id", "name", "channel", "where", "message", "notes", "status", "touch")))
+    check("every desk row is from the calendar file and its key is unique", all(i["source"].endswith("-touch-calendar") for i in items) and len({i["key"] for i in items}) == len(items))
+    check("the whole calendar is in the 14-day window", len(items) == len(res["calendar"]) and min(i["list_date"] for i in items) == "2026-12-05")
+    em = [i for i in items if i["channel"] == "Email"]
+    so = [i for i in items if i["channel"].startswith("Social")]
+    check("an email touch carries the real email, subject and body", em and em[0]["message"].startswith("Subject: ") and "Bolu" in em[0]["message"] and "{" not in em[0]["message"])
+    check("a social touch carries the instruction", so and so[0]["message"].startswith("Follow them and leave one real comment"))
+    check("the notes say which day of the plan it is and the door", "Day -1 of the 14-day touch plan (review door)" in so[0]["notes"] or any("of the 14-day touch plan (review door)" in i["notes"] for i in items))
+    check("every row starts as to do", all(i["status"] == "to do" for i in items))
+    check("the window cuts the calendar", all(i["list_date"] == "2026-12-05" for i in O.desk_items(SLUG, cfg_now, dt.date(2026, 12, 5), 0, 0)) and len(O.desk_items(SLUG, cfg_now, dt.date(2026, 12, 5), 0, 0)) >= 1)
+    check("row ids stay the same when the pack is rebuilt", {i["row_id"] for i in items} == {c["row_id"] for c in O.build(SLUG, "review", "2026-12-07", write=False)["calendar"]})
+    first = items[0]
+    dl.append_events(SLUG, [{"logged_at": "2026-12-05T09:00:00", "source": first["source"], "row_id": first["row_id"], "status": "sent", "list_date": first["list_date"], "name": first["name"], "channel": first["channel"], "touch": ""}])
+    check("a tap logged against a calendar row comes back as its status", O.desk_items(SLUG, cfg_now, dt.date(2026, 12, 7), 2, 14)[0]["status"] == "sent")
+    check("no em dash on any desk row", all(DASH not in json.dumps(i, ensure_ascii=False) for i in items))
+
     # the inquiry door needs the member's own Reply Test result
     r2 = O.build(SLUG, "inquiry", "2026-12-07", write=False)
     m2 = {m["business"]: m for m in r2["merge"]}
