@@ -1,0 +1,42 @@
+{
+  "note": "Outreach Pack wording and plan. The plan is the same 14-day touch plan as the Warm Desk tab in Citadel (tests/fixtures/outreach-plan.json must match). Fields in {braces} are filled from your list; any that cannot be filled keep the braces and the row is marked not ready. Every email ends with your name, your postal address and an easy way to say no. Nothing here sends anything: you load the file into your own Gmail merge or sending tool and press start yourself.",
+  "plan": {
+    "review": [
+      {"day": -1, "channel": "social", "action": "Follow them and leave one real comment on a recent post: one real detail from the post, no pitch, no link."},
+      {"day": 0, "channel": "email", "action": "Send Email 1: The Gap.", "email": 1},
+      {"day": 1, "channel": "social", "action": "Like two other recent posts. Do not comment again yet."},
+      {"day": 3, "channel": "email", "action": "Send Email 2.", "email": 2},
+      {"day": 4, "channel": "social", "action": "Reply to one of their stories, or comment on a second post with a real detail."},
+      {"day": 7, "channel": "email", "action": "Send Email 3.", "email": 3},
+      {"day": 8, "channel": "social", "action": "If you are connected on LinkedIn, send a short note that adds something useful. No pitch."},
+      {"day": 10, "channel": "call", "action": "If they opened your emails three or more times and did not reply, call or send the video now: they are warm."},
+      {"day": 12, "channel": "email", "action": "Send the breakup email, and then stop.", "email": 4}
+    ],
+    "inquiry": [
+      {"day": -1, "channel": "social", "action": "Follow them and leave one real comment on a recent post: one real detail from the post, no pitch, no link."},
+      {"day": 0, "channel": "email", "action": "Send Inquiry Email 1: The Reply Test.", "email": 1},
+      {"day": 1, "channel": "social", "action": "Like two other recent posts. Do not comment again yet."},
+      {"day": 3, "channel": "email", "action": "Send Email 2.", "email": 2},
+      {"day": 4, "channel": "social", "action": "Reply to one of their stories, or comment on a second post with a real detail."},
+      {"day": 7, "channel": "call", "action": "If you have a phone number, call once and say the time you timed on their form. No voicemail script."},
+      {"day": 8, "channel": "social", "action": "If you are connected on LinkedIn, send a short note that adds something useful. No pitch."},
+      {"day": 10, "channel": "call", "action": "If they opened your emails three or more times and did not reply, call or send the video now: they are warm."},
+      {"day": 12, "channel": "email", "action": "Send the breakup email, and then stop.", "email": 3}
+    ]
+  },
+  "footer": "{sender}\n{postal}\nIf this is not relevant, just reply \"no\" and I will not write again.",
+  "emails": {
+    "review": [
+      {"variant": "pack-review-1-v1", "subject": "Noticed this on your Google page", "body": "{hi}\n\nI was looking at {business} on Google and noticed {gap_line}. There is a clear gap between you and {competitor}, and I found a simple way to close it. I recorded a quick 2-minute video walking through what I mean. Would it be okay if I sent it over?"},
+      {"variant": "pack-review-2-v1", "subject": "What that gap may be costing {business}", "body": "{hi}\n\nFollowing up on my note. When people search for {service} in {city}, they tend to choose from the businesses with the most recent reviews, so a gap like {gap_line} can send some of them to someone else. I can show you the numbers from your own page in two minutes. Shall I send the video?"},
+      {"variant": "pack-review-3-v1", "subject": "What it looks like once this is fixed", "body": "{hi}\n\nA short picture of the fix: after each finished job your customer gets a friendly message with a direct link to review you on Google, and you watch the number move. I have a demo of it (labelled DEMO, not a client) I can send. Would 15 minutes this week be worth it?"},
+      {"variant": "pack-review-4-v1", "subject": "Should I close your file?", "body": "{hi}\n\nI have written a couple of times about the reviews on {business}'s Google page. If the timing is wrong or it is not a priority, that is completely fine, and I will not write again. If it is worth 15 minutes, reply with \"yes\" and I will send two times that suit you."}
+    ],
+    "inquiry": [
+      {"variant": "pack-inquiry-1-v1", "subject": "I sent your website a question", "body": "{hi}\n\nOn {tested_on} I used the contact form on {business}'s website to ask a question about {service}, as myself, {sender}. {reply_note}\n\nI am not writing to complain. It is a very common gap, and it is fixable: every inquiry can get an answer in about a minute, and good-fit people can book a time straight onto your calendar. I recorded a 2-minute video showing what that would look like for {business}. Would it be okay if I sent it over?"},
+      {"variant": "pack-inquiry-2-v1", "subject": "What happens after someone fills in your form", "body": "{hi}\n\nFollowing up on my note about the form on {business}'s site. Here is the flow I would set up, shown in a demo (labelled DEMO, not a client): someone fills in the form, they get an answer within about a minute, a few questions find out if it is a good fit, good-fit people pick a time on your calendar, and everyone else gets a follow-up until they are ready. You get one short report a month. Would 15 minutes this week be worth it so I can show you on your own form?"},
+      {"variant": "pack-inquiry-3-v1", "subject": "Should I close your file?", "body": "{hi}\n\nI have written a couple of times about how quickly {business} answers website inquiries. If the timing is wrong or it is not a priority, that is completely fine, and I will not write again. If it is worth 15 minutes, reply with \"yes\" and I will send two times that suit you."}
+    ]
+  },
+  "defaults": {"competitor": "the top businesses near you", "service": "your services"}
+}
