@@ -32,7 +32,7 @@
         "(?P<q2>administrative assistant|admin assistant|office (?:manager|administrator|assistant)|receptionist|front desk (?:coordinator|assistant|associate|agent)|data entry|scheduler|dispatcher|customer service (?:rep|representative|agent)|billing (?:clerk|specialist)|intake coordinator)[^.]{0,60}\\b(?:apply|job description|full[- ]time|part[- ]time|position)"
       ],
       "weight": 4,
-      "gap_line": "you're hiring for desk work ({quote}), which is often the repeat tasks a workflow can take over",
+      "gap_line": "you're hiring for desk work ({quote}), which is often repeat tasks that can be done for you automatically",
       "scope": "text",
       "signal": true
     },
@@ -134,5 +134,5 @@
       "signal": true
     }
   ],
-  "opener": "Hi {business} team, I was looking at how businesses in {city} handle day-to-day admin and noticed {gap_line}. That's usually a few hours a week of copy-and-paste that a simple workflow can take over. I mapped how I'd set it up (one diagram, no cost to you); want me to send it?"
+  "opener": "Hi {business} team, I was looking at how businesses in {city} handle day-to-day admin and noticed {gap_line}. That's usually a few hours a week of copy-and-paste that can be done for you automatically. I mapped how I'd set it up (one diagram, no cost to you); want me to send it?"
 }
