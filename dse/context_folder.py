@@ -50,6 +50,9 @@ SECRET_NAME = re.compile(r"(^\.env|password|passwd|secret|credential|token|priva
 ENCRYPTED_EXT = {".enc", ".gpg", ".pgp", ".age", ".vault", ".aes", ".sealed", ".crypt"}
 ARCHIVE_EXT = {".zip", ".7z", ".rar", ".tar", ".gz", ".tgz", ".bz2", ".xz"}
 TEXT_EXT = {".md", ".markdown", ".txt", ".rst"}
+DOC_EXT = {".docx", ".pdf"}
+MAX_DOC_BYTES = 15_000_000       # a Word or PDF file larger than this is not opened
+MAX_XML_BYTES = 8_000_000        # most we unpack from inside a Word file (guards against a zip bomb)
 DATA_EXT = {".json", ".csv", ".tsv", ".yaml", ".yml", ".toml", ".xlsx"}
 
 LEAD_COLS = {"business", "company", "website", "url", "domain", "email", "phone", "city", "name", "instagram", "facebook", "linkedin", "owner", "contact"}
@@ -126,6 +129,8 @@ def classify(path: Path) -> tuple[str, str]:
         return "csv", ""
     if ext == ".xlsx":
         return "sheet", ""
+    if ext in DOC_EXT:
+        return "doc", ""
     if ext in (".yaml", ".yml", ".toml"):
         return "config", ""
     return "skip", "not a text or data file"
@@ -135,6 +140,68 @@ def _read(path: Path, limit: int = MAX_READ) -> str:
     with path.open("rb") as f:
         raw = f.read(limit)
     return raw.decode("utf-8", errors="ignore").lstrip("﻿")
+
+
+def _docx_text(path: Path) -> str:
+    """Plain text of a Word file, using only the standard library. Opens just word/document.xml, never runs anything."""
+    import zipfile, html
+    with zipfile.ZipFile(path) as z:
+        try:
+            info = z.getinfo("word/document.xml")
+        except KeyError:
+            return ""
+        if info.file_size > MAX_XML_BYTES:
+            return ""
+        with z.open(info) as f:
+            xml = f.read(MAX_XML_BYTES).decode("utf-8", errors="ignore")
+    xml = re.sub(r"</w:p>|<w:br\s*/>|<w:tab\s*/>", "\n", xml)
+    xml = re.sub(r"<[^>]+>", "", xml)
+    return html.unescape(xml)[:MAX_READ]
+
+
+def _pdf_text(path: Path) -> str:
+    """Text of a PDF: pypdf when installed, otherwise a plain best effort on the text streams. A scanned PDF gives nothing."""
+    try:
+        import pypdf  # type: ignore
+        out = []
+        for page in pypdf.PdfReader(str(path)).pages[:30]:
+            out.append(page.extract_text() or "")
+            if sum(len(x) for x in out) > MAX_READ:
+                break
+        return "\n".join(out)[:MAX_READ]
+    except ImportError:
+        pass
+    except Exception:
+        return ""
+    import zlib
+    raw = path.read_bytes()
+    out = []
+    for m in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
+        blob = m.group(1)
+        try:
+            blob = zlib.decompress(blob)
+        except Exception:
+            pass
+        if b"BT" not in blob:
+            continue
+        for t in re.finditer(rb"\(((?:\.|[^\()])*)\)\s*Tj|\[((?:\.|[^\]])*)\]\s*TJ", blob):
+            chunk = t.group(1) if t.group(1) is not None else b"".join(re.findall(rb"\(((?:\.|[^\()])*)\)", t.group(2)))
+            out.append(chunk.replace(rb"\(", b"(").replace(rb"\)", b")").replace(rb"\\", b"\\").decode("latin-1", errors="ignore"))
+        out.append("\n")
+        if sum(len(x) for x in out) > MAX_READ:
+            break
+    text = re.sub(r"[ \t]+", " ", " ".join(out))
+    return text[:MAX_READ] if len(re.findall(r"[A-Za-z]{3,}", text)) >= 8 else ""
+
+
+def read_doc(path: Path) -> str:
+    """Text of a .docx or .pdf, or '' when there is none to read (scanned, protected, damaged or too large)."""
+    try:
+        if path.stat().st_size > MAX_DOC_BYTES:
+            return ""
+        return _docx_text(path) if path.suffix.lower() == ".docx" else _pdf_text(path)
+    except Exception:
+        return ""
 
 
 def _para(text: str) -> str:
@@ -325,6 +392,13 @@ def scan_folder(root: Path) -> dict:
                     txt = _read(p)
                     rec.update(summarise_text(txt, p.name))
                     extract_signals(redact(txt), signals)
+                elif kind == "doc":
+                    txt = read_doc(p)
+                    if txt.strip():
+                        rec.update(summarise_text(txt, p.name))
+                        extract_signals(redact(txt), signals)
+                    else:
+                        rec.update({"title": p.name, "summary": "No readable text (it may be a scan, protected or damaged)."})
                 elif kind in ("json", "config"):
                     rec.update(summarise_json(_read(p), p.name) if kind == "json" else {"title": p.name, "summary": _para(redact(_read(p, 4000)))})
                 elif kind == "csv":
