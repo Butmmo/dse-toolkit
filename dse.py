@@ -10,6 +10,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py import acme-gtm                         check the CSV exports (Go-to-Market) or pasted profiles (Authority) before building a list
   python dse.py callscore the-ascent --outcome sold ... rate a sales call and see what to practise (The Ascent); python dse.py calls <engine>
   python dse.py cash <engine|all> [--month 2026-11] [--target 3000]  the Cash Desk: this month against your target; python dse.py cashin <engine> --amount 450 --kind commission logs money you received
+  python dse.py digest [--week YYYY-MM-DD]                   your week in numbers (sent, replies, calls, won, money) and what to do first; the runner sends it every Monday
   python dse.py claude setup|status|sdk|remove               connect your own Claude key for the strongest DBI-AI answers (the key stays on this PC)
   python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
   python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
@@ -65,6 +66,9 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "dev":      # the Dev workspace has its own commands: python dse.py dev --help
         from dev import cli
         sys.exit(cli.main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "digest":      # your week in numbers: python dse.py digest [--week YYYY-MM-DD]
+        from dse import digest
+        sys.exit(digest.run_cli(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "claude":      # connect your own Claude key (kept on this PC only): python dse.py claude --help
         from dse import claudekey
         sys.exit(claudekey.run_cli(sys.argv[2:]))

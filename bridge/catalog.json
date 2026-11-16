@@ -7661,6 +7661,20 @@
       ],
       "timeout_min": 2,
       "outputs": []
+    },
+    "dse.digest": {
+      "label": "Weekly digest: send it to me now",
+      "group": "My engines",
+      "script": "bridge/digest_sync.py",
+      "args": [
+        {
+          "lit": "--now"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 3,
+      "outputs": [],
+      "help": "Builds your digest for the last full week now (the taps, calls and payments you logged, and what to do first this week) and sends it to your Dashboard and phone. It also arrives by itself every Monday morning while the runner is on. It sends nothing to anyone but you."
     }
   },
   "periodic": [
@@ -7703,6 +7717,11 @@
       "script": "bridge/mytools_sync.py",
       "every_s": 60,
       "what": "My tools: the tools you made in Citadel, and the ones DBI shared, onto this PC"
+    },
+    {
+      "script": "bridge/digest_sync.py",
+      "every_s": 1800,
+      "what": "Weekly digest: your week in numbers, sent to your Dashboard and phone once a week"
     },
     {
       "script": "bridge/setup_sync.py",

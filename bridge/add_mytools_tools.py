@@ -9,7 +9,8 @@ for k in [k for k in T if k.startswith(("dse.mytool_", "dse.studio_"))]:
     T.pop(k)
 c["periodic"] = [x for x in c.get("periodic", []) if x.get("script") != "bridge/mytools_sync.py"]
 c["periodic"].append({"script": "bridge/mytools_sync.py", "every_s": 60, "what": "My tools: the tools you made in Citadel, and the ones DBI shared, onto this PC"})
-c["periodic"] = [x for x in c["periodic"] if x.get("script") not in ("bridge/schedule_sync.py", "bridge/setup_sync.py")]
+c["periodic"] = [x for x in c["periodic"] if x.get("script") not in ("bridge/schedule_sync.py", "bridge/setup_sync.py", "bridge/digest_sync.py")]
+c["periodic"].append({"script": "bridge/digest_sync.py", "every_s": 1800, "what": "Weekly digest: your week in numbers, sent to your Dashboard and phone once a week"})
 c["periodic"].append({"script": "bridge/setup_sync.py", "every_s": 300, "what": "Setup checklist: your System check, sent to your Dashboard so you can see what is left to set up"})
 c["periodic"].append({"script": "bridge/schedule_sync.py", "every_s": 60, "what": "Schedules: run your scheduled tools when they are due (an ordinary job in your Jobs list)"})
 
@@ -68,5 +69,8 @@ for f in chat["fields"]:
     if f["name"] == "model":
         f["pattern"] = "^(auto|library|claude|claude:(haiku|sonnet|opus)|ollama:[A-Za-z0-9][A-Za-z0-9._:/-]{0,59})$"
         f["label"] = "Model (optional: auto, library, claude, claude:haiku, claude:sonnet, claude:opus or ollama:NAME)"
+T.pop("dse.digest", None)
+T["dse.digest"] = {"label": "Weekly digest: send it to me now", "group": "My engines", "script": "bridge/digest_sync.py", "args": [{"lit": "--now"}], "fields": [], "timeout_min": 3, "outputs": [],
+                   "help": "Builds your digest for the last full week now (the taps, calls and payments you logged, and what to do first this week) and sends it to your Dashboard and phone. It also arrives by itself every Monday morning while the runner is on. It sends nothing to anyone but you."}
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len(T), "tools in all")

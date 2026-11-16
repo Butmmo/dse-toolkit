@@ -41,12 +41,13 @@ PROBES = [
     ("hq_dfy_pull", {}, "20261118140000_dfy_bridge_payout_accounts.sql", "the DFY bridge and payout accounts (only matters on the HQ admin PC)"),
     ("hq_tools_pull", {}, "20261120090000_my_tools.sql", "My tools (your own tools, and the ones DBI shares)"),
     ("hq_schedules_pull", {}, "20261121090000_schedules.sql", "Schedules (tools that run by themselves)"),
+    ("hq_digest_push", {"p_week": "2000-01-03", "p_digest": [], "p_title": "", "p_body": ""}, "20261123090000_weekly_digest.sql", "the weekly digest on your Dashboard"),
 ]
 
 AGAIN = {"20261119100000_crm_sync.sql"}            # files that grew after first use: an older run of them is not enough
 HELPER_NAMES = {"bridge/engines_sync.py": "your engines (Citadel to this PC)", "bridge/desk_sync.py": "the Send Desk (lists to your phone, taps back)", "bridge/goal_sync.py": "monthly goal suggestions",
                 "bridge/dfy_sync.py": "DFY months from Citadel", "bridge/brief_sync.py": "the Daily Brief and its notifications", "bridge/crm_sync.py": "CRM sync",
-                "bridge/voices_sync.py": "the Voices library", "bridge/mytools_sync.py": "My tools (made in Citadel, and shared by DBI)", "bridge/schedule_sync.py": "Schedules (your tools that run by themselves)", "bridge/setup_sync.py": "The Setup checklist on your Dashboard"}
+                "bridge/voices_sync.py": "the Voices library", "bridge/mytools_sync.py": "My tools (made in Citadel, and shared by DBI)", "bridge/schedule_sync.py": "Schedules (your tools that run by themselves)", "bridge/setup_sync.py": "The Setup checklist on your Dashboard", "bridge/digest_sync.py": "The weekly digest"}
 
 
 def item(area: str, name: str, state: str, detail: str = "", fix: str = "") -> dict:
