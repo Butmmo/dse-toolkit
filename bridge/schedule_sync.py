@@ -81,6 +81,7 @@ def main():
                     st["last_slot"] = d["queue"]
                     if jid:
                         st.update(last_job=jid, last_queued_at=now.strftime(schedules.FMT))
+                        schedules.remember_run(st, jid, d["queue"])
                         queued += 1
                 except RuntimeError as e:
                     st["note"] = f"Could not queue it yet ({str(e)[:120]}); trying again."

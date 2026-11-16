@@ -247,3 +247,16 @@ def settle(st: dict, key: str, delivered: bool) -> str:
         st["alerts_sent"] = ([*st.get("alerts_sent", []), key])[-SENT_KEEP:]
         return "sent" if delivered else "gave up"
     return "retry"
+
+
+# ------------------------------------------------------------------ which jobs a schedule started (so Citadel can tag them in Jobs)
+
+RUNS_KEEP = 30
+
+
+def remember_run(st: dict, job_id: str, slot: str) -> None:
+    """Add the job a schedule just queued to its status, newest last, keeping the last 30. Citadel reads this to tag those jobs "Scheduled" in the Jobs list.
+    (The database merges statuses by key, so the whole list is written each time.)"""
+    runs = [r for r in st.get("runs", []) if isinstance(r, dict) and r.get("job") and r.get("job") != job_id]
+    runs.append({"job": str(job_id), "slot": slot})
+    st["runs"] = runs[-RUNS_KEEP:]

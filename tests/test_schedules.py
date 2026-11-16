@@ -215,6 +215,21 @@ check("alerts go through the existing quiet push only, and the quiet hours are t
 import re  # noqa: E402
 check("a held-back or failed push never stops the schedules: the delivery is inside a try", bool(re.search(r"except RuntimeError:\s+delivered = False", sync_src)))
 
+# ---------------------------------------------------------------- remembering which jobs a schedule started
+st = {}
+S.remember_run(st, "job-1", "2026-11-17T07:00")
+S.remember_run(st, "job-2", "2026-11-18T07:00")
+check("each job a schedule queues is remembered with its moment, newest last", st["runs"] == [{"job": "job-1", "slot": "2026-11-17T07:00"}, {"job": "job-2", "slot": "2026-11-18T07:00"}])
+S.remember_run(st, "job-2", "2026-11-18T07:00")
+check("the same job is never listed twice", len(st["runs"]) == 2)
+for k in range(50):
+    S.remember_run(st, f"j{k}", "2026-11-19T07:00")
+check("only the last 30 are kept", len(st["runs"]) == S.RUNS_KEEP and st["runs"][-1]["job"] == "j49")
+junk = {"runs": ["x", None, {"nojob": 1}, {"job": "keep", "slot": "s"}]}
+S.remember_run(junk, "new", "t")
+check("odd entries already in the status do not break it", [r.get("job") for r in junk["runs"]][-2:] == ["keep", "new"] or "new" in [r.get("job") for r in junk["runs"]])
+check("the helper records the run only when a job was really queued", sync_src.index("schedules.remember_run(st, jid") > sync_src.index("if jid:"))
+
 # ---------------------------------------------------------------- the modules
 src = (ROOT / "dse" / "schedules.py").read_text(encoding="utf-8") + (ROOT / "bridge" / "schedule_sync.py").read_text(encoding="utf-8")
 check("no em dash", chr(0x2014) not in src)
