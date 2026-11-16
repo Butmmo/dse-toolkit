@@ -57,5 +57,16 @@ T["dse.claude_sdk"] = tool("Claude: install the package it needs", "Setup", "Ins
 T.pop("dse.setup_push", None)
 T["dse.setup_push"] = {"label": "Setup checklist: check now", "group": "Setup", "script": "bridge/setup_sync.py", "args": [], "fields": [], "timeout_min": 3, "outputs": [],
                        "help": "Runs the System check now and sends the result to the Setup checklist on your Dashboard (it also does this by itself every 5 minutes while the runner is on). It sends only the check's own lines: what works, what needs a fix and the fix. No files, data or keys."}
+for k in ("dse.claude_usage", "dse.claude_limit"):
+    T.pop(k, None)
+T["dse.claude_usage"] = tool("Claude: how many tokens did I use?", "Setup", "Shows the tokens your Claude answers used today and over the last days, by model. Tokens, not money: prices change, so see what you spent, and set a monthly limit, at console.anthropic.com.",
+                             [{"lit": "claude"}, {"lit": "usage"}, {"field": "days"}], [{"name": "days", "label": "How many days", "type": "int", "min": 1, "max": 60, "default": 7}], 2)
+T["dse.claude_limit"] = tool("Claude: set a daily limit", "Setup", "Sets a daily limit in tokens (0 means no limit). Once today's Claude answers reach it, Claude rests until tomorrow and your local model answers instead, so a small credit is not used up by accident.",
+                             [{"lit": "claude"}, {"lit": "limit"}, {"field": "tokens"}], [{"name": "tokens", "label": "Tokens per day (0 = no limit)", "type": "int", "required": True, "min": 0, "max": 100000000, "default": 200000}], 2)
+chat = T["chat.ask"]
+for f in chat["fields"]:
+    if f["name"] == "model":
+        f["pattern"] = "^(auto|library|claude|claude:(haiku|sonnet|opus)|ollama:[A-Za-z0-9][A-Za-z0-9._:/-]{0,59})$"
+        f["label"] = "Model (optional: auto, library, claude, claude:haiku, claude:sonnet, claude:opus or ollama:NAME)"
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len(T), "tools in all")

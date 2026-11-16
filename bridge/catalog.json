@@ -792,11 +792,11 @@
         },
         {
           "name": "model",
-          "label": "Model (optional: auto, library, claude or ollama:NAME)",
+          "label": "Model (optional: auto, library, claude, claude:haiku, claude:sonnet, claude:opus or ollama:NAME)",
           "type": "text",
           "required": false,
           "max": 70,
-          "pattern": "^(auto|library|claude|ollama:[A-Za-z0-9][A-Za-z0-9._:/-]{0,59})$"
+          "pattern": "^(auto|library|claude|claude:(haiku|sonnet|opus)|ollama:[A-Za-z0-9][A-Za-z0-9._:/-]{0,59})$"
         },
         {
           "name": "mentors",
@@ -7602,6 +7602,65 @@
       "timeout_min": 3,
       "outputs": [],
       "help": "Runs the System check now and sends the result to the Setup checklist on your Dashboard (it also does this by itself every 5 minutes while the runner is on). It sends only the check's own lines: what works, what needs a fix and the fix. No files, data or keys."
+    },
+    "dse.claude_usage": {
+      "label": "Claude: how many tokens did I use?",
+      "group": "Setup",
+      "help": "Shows the tokens your Claude answers used today and over the last days, by model. Tokens, not money: prices change, so see what you spent, and set a monthly limit, at console.anthropic.com.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "claude"
+        },
+        {
+          "lit": "usage"
+        },
+        {
+          "field": "days"
+        }
+      ],
+      "fields": [
+        {
+          "name": "days",
+          "label": "How many days",
+          "type": "int",
+          "min": 1,
+          "max": 60,
+          "default": 7
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.claude_limit": {
+      "label": "Claude: set a daily limit",
+      "group": "Setup",
+      "help": "Sets a daily limit in tokens (0 means no limit). Once today's Claude answers reach it, Claude rests until tomorrow and your local model answers instead, so a small credit is not used up by accident.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "claude"
+        },
+        {
+          "lit": "limit"
+        },
+        {
+          "field": "tokens"
+        }
+      ],
+      "fields": [
+        {
+          "name": "tokens",
+          "label": "Tokens per day (0 = no limit)",
+          "type": "int",
+          "required": true,
+          "min": 0,
+          "max": 100000000,
+          "default": 200000
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
     }
   },
   "periodic": [

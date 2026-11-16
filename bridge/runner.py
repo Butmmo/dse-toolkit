@@ -268,6 +268,14 @@ def ollama_info() -> dict:
         info["claude"] = bool(mod.claude_ready())
         info["claude_key"] = bool(mod.has_claude_key())              # the app shows "key missing" or "package missing": yes or no only, never the key
         info["claude_sdk"] = iu.find_spec("anthropic") is not None
+        info["claude_tiers"] = True                                   # this toolkit understands claude:haiku, claude:sonnet and claude:opus
+        try:                                                          # tokens only, never money, never the key
+            cs = iu.spec_from_file_location("hq_claude_cost", HERE.parent / "chat" / "claude_cost.py")
+            cm = iu.module_from_spec(cs)
+            cs.loader.exec_module(cm)
+            info["claude_today"], info["claude_limit"] = cm.used_today(), cm.limit()
+        except Exception:
+            pass
     except Exception:
         info.setdefault("models", [])
         info.setdefault("claude", False)

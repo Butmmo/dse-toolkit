@@ -28,7 +28,14 @@ def _pick_model():
 
 
 OLLAMA_MODEL, MODEL_WHY = _pick_model()
-CLAUDE_MODEL = os.environ.get("HQ_CHAT_CLAUDE_MODEL", "claude-opus-5-5")
+CLAUDE_MODEL = os.environ.get("HQ_CHAT_CLAUDE_MODEL", "")      # a tier name (haiku, sonnet, opus) or a model id; empty = the default tier (sonnet). See claude_cost.py
+
+
+def _cost():
+    spec = importlib.util.spec_from_file_location("hq_claude_cost", H / "claude_cost.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 ENGINE = ""   # set by --engine: an HQ engine folder or one of your own engines (HQ Tools > My engines)
 
 
@@ -197,8 +204,8 @@ def build_user_message(q, limit=7000):
 
 # ------------------------------------------------------------------ brains
 
-def claude(q):
-    """The strongest answer: Claude, only if the student set their own API key. Returns (text, note) or None."""
+def claude(q, mode="claude"):
+    """Claude, only if the student set their own API key. mode: claude (the PC's default tier, sonnet) or claude:haiku|sonnet|opus. Returns (text, note) or None."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         try:        # a key saved in Windows after this runner started: read it from there (no restart needed)
             spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
@@ -216,9 +223,22 @@ def claude(q):
     except ImportError:
         return ("", "To use Claude here, run: pip install anthropic  (then ask again). Answering with the local model for now.")
     try:
+        cost = _cost()
+        setting = CLAUDE_MODEL
+        if not setting:            # a default saved in Windows after this runner started
+            try:
+                spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
+                om = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(om)
+                setting = om.user_setting("HQ_CHAT_CLAUDE_MODEL")
+            except Exception:
+                setting = ""
+        tier, model = cost.resolve(mode, setting)
+        if cost.over_limit():
+            return ("", f"Today's Claude limit ({cost.limit():,} tokens, set by you) is used up, so the local model answers. Raise it with: python dse.py claude limit <tokens>   (0 removes the limit).")
         client = anthropic.Anthropic()
         resp = client.beta.messages.create(
-            model=CLAUDE_MODEL, max_tokens=4000,
+            model=model, max_tokens=2000,
             betas=["server-side-fallback-2026-07-01"], fallbacks="default",     # re-runs on a fallback model if a safety filter declines
             output_config={"effort": "high"},
             system=SYSTEM + NL + "You may use up to about 600 words when the question needs depth.",
@@ -226,7 +246,14 @@ def claude(q):
         if resp.stop_reason == "refusal":
             return None
         text = "".join(b.text for b in resp.content if b.type == "text").strip()
-        return (text, f"Answered with Claude ({resp.model}) using your own API key.") if text else None
+        used = ""
+        try:
+            tin, tout = int(resp.usage.input_tokens), int(resp.usage.output_tokens)
+            cost.record(resp.model, tin, tout)
+            used = f" {tin + tout:,} tokens (in {tin:,}, out {tout:,}); {cost.used_today():,} today" + (f" of your {cost.limit():,} limit" if cost.limit() else "") + "."
+        except Exception:
+            pass
+        return (text, f"Answered with Claude {resp.model}, using your own API key.{used}") if text else None
     except Exception as e:      # wrong key, no credit, offline: fall through to the local model
         return ("", f"Claude was not available ({type(e).__name__}); answering with the local model.")
 
@@ -315,7 +342,7 @@ def _guard(q):
         return None
 
 
-MODES = ("auto", "library", "claude")
+MODES = ("auto", "library", "claude")        # plus claude:haiku, claude:sonnet, claude:opus (see claude_cost.py)
 
 
 def installed_models():
@@ -354,24 +381,24 @@ def _answer(q, image=None, mode="auto"):
         if want not in have:
             return (f"The model '{want}' is not installed on this PC (installed: {', '.join(have) or 'none found: is Ollama running?'}). Pick another in the model menu, or run: ollama pull {want}")
         OLLAMA_MODEL, MODEL_WHY = want, "you chose it in DBI-AI"
-    elif mode not in MODES:
+    elif mode not in MODES and not _cost().valid_mode(mode):
         return f"I do not know the model choice '{mode}'. Use the model menu in DBI-AI."
     if mode == "library":
         if image:
             return "Pictures need a model that can read them. Choose a local model that can (marked 'reads pictures' in the menu) or Automatic."
         return library_reply(q, "Answered from the built-in library because you chose that: the guides and recipes with sources, no AI model.")
     if image:     # pictures need a vision model on this PC
-        if mode == "claude":
+        if mode.startswith("claude"):
             return "Pictures are read by a local model in this version. Choose Automatic or a local model that reads pictures."
         out = ollama(q, image)
         return (out + NL * 2 + local_footer(chosen)) if out else ("I could not read the picture" + (f" ({LAST['error']})" if LAST["error"] else "") + ". Your Ollama model must support images: install gemma3:4b "
                                                                       "(ollama pull gemma3:4b), choose it in the model menu and try again.")
     note = ""
-    if mode == "claude" or (mode == "auto" and not mode.startswith("ollama:")):
-        c = claude(q)
+    if mode.startswith("claude") or (mode == "auto" and not mode.startswith("ollama:")):
+        c = claude(q, mode if mode.startswith("claude") else "claude")
         if c and c[0]:
             return c[0] + NL * 2 + "(" + c[1] + ")"
-        if mode == "claude":
+        if mode.startswith("claude"):
             why = c[1] if c else "Claude did not answer (it needs ANTHROPIC_API_KEY on this PC and: pip install anthropic)."
             return library_reply(q, why + " Here is the built-in library answer instead.")
         if c:

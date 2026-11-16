@@ -4,12 +4,15 @@
     python dse.py claude status [--test]       is a key saved, is the package installed (and, with --test, does Anthropic accept the key)
     python dse.py claude sdk                   install the `anthropic` Python package (pip install anthropic)
     python dse.py claude remove                forget the key on this PC (revoke it at console.anthropic.com too if it leaked)
+    python dse.py claude usage [days]          tokens used by Claude answers (today and the last days), by model
+    python dse.py claude limit <tokens>        a daily token limit (0 = none): once reached, Claude rests for the day and your local model answers
 
 Where the key lives and who sees it:
   * Only on this PC, in your Windows user settings (ANTHROPIC_API_KEY), the same place DBI-AI already reads it from. A running HQ runner sees it without a restart.
   * It is NEVER typed into Citadel, NEVER sent to Citadel, never in a job, a log or a screen: the app only learns "a key is present" (yes or no).
   * The only place it is sent is Anthropic itself: once now, to check it (a free call that lists models), and later with each answer you ask Claude for.
   * It is shown back only as sk-ant-...abcd (the last four characters), on this PC.
+Cost control: DBI-AI answers with Claude Sonnet (balanced) by default; choose Haiku (cheapest) or Opus (strongest, costs the most) per question in DBI-AI.
 You pay Anthropic for what you use (add a small credit and a monthly limit at console.anthropic.com). Standard library only (tkinter for the window, if your Python has it).
 """
 from __future__ import annotations
@@ -117,6 +120,15 @@ def verify(key: str, http=_http) -> tuple[str, str]:
 
 # ------------------------------------------------------------------ the commands
 
+def _cost():
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("hq_claude_cost", Path(__file__).resolve().parents[1] / "chat" / "claude_cost.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def status(store=None, test: bool = False, http=_http) -> str:
     store = store or WindowsStore()
     key = current_key(store)
@@ -130,6 +142,12 @@ def status(store=None, test: bool = False, http=_http) -> str:
         if state != "ok":
             lines.append("")
     if key and sdk:
+        try:
+            c = _cost()
+            lim = c.limit()
+            lines += ["", f"Default model: {c.TIERS[c.DEFAULT_TIER][1]} ({c.TIERS[c.DEFAULT_TIER][2]}). Used today: {c.used_today():,} tokens" + (f" of your daily limit of {lim:,}." if lim else ". No daily limit set: python dse.py claude limit <tokens>")]
+        except Exception:
+            pass
         lines += ["", "Claude is ready for DBI-AI: pick Claude in the 'Answering with' menu. You pay Anthropic for each answer."]
     else:
         lines.append("")
@@ -213,6 +231,20 @@ def run_cli(args: list[str]) -> int:
         return 0 if ("Installed" in out or "already" in out) else 1
     if x == "remove":
         print(remove())
+        return 0
+    if x == "usage":
+        try:
+            print(_cost().report(int(args[1]) if len(args) > 1 else 7))
+            return 0
+        except ValueError:
+            print("Usage: python dse.py claude usage [days]")
+            return 2
+    if x == "limit":
+        if len(args) < 2 or not args[1].isdigit():
+            print("Usage: python dse.py claude limit <tokens per day>   (0 removes the limit)")
+            return 2
+        n = _cost().set_limit(int(args[1]))
+        print(f"Daily limit: {n:,} tokens. Once today's Claude answers reach it, Claude rests until tomorrow and your local model answers." if n else "No daily limit.")
         return 0
     print(__doc__)
     return 0 if x in ("", "-h", "--help") else 2
