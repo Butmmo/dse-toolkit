@@ -2,7 +2,8 @@
   {
     "id": "leads-and-contacts",
     "name": "Local leads, then owners and emails",
-    "for": "Any path that sells to local businesses",
+    "for": "Any path that sells to local businesses: you choose the problem check",
+    "paths": [],
     "recipe": {
       "name": "Local leads, then owners and emails",
       "help": "Builds a list of local businesses with a website problem check, then finds owners, emails and phones from each business's own website.",
@@ -62,6 +63,9 @@
     "id": "podcast-leads-and-contacts",
     "name": "Podcast leads, then contact details",
     "for": "Broadcast: podcasts that could use your service",
+    "paths": [
+      "broadcast"
+    ],
     "recipe": {
       "name": "Podcast leads, then contact details",
       "help": "Finds podcasts on a topic, then looks for the owner, email and phone on each podcast's own website.",
@@ -99,6 +103,7 @@
     "id": "one-website-deep-look",
     "name": "One website: problems, then contact details",
     "for": "Before you reach out to one business",
+    "paths": [],
     "recipe": {
       "name": "One website: problems, then contact details",
       "help": "Checks one business's website for the problems your path looks for, then reads the same site for owner names, emails and phones.",
@@ -147,6 +152,7 @@
     "id": "prepare-todays-sends",
     "name": "Prepare today's sends for an engine",
     "for": "Anyone with an engine: new send lists plus follow-ups",
+    "paths": [],
     "recipe": {
       "name": "Prepare today's sends for an engine",
       "help": "Builds the engine's next send list, then plans the follow-ups that are due, so the Send Desk has everything for today.",
@@ -184,6 +190,7 @@
     "id": "morning-routine",
     "name": "Morning routine: brief, then the week's priorities",
     "for": "Everyone. Schedule it for weekday mornings",
+    "paths": [],
     "recipe": {
       "name": "Morning routine: brief, then the week's priorities",
       "help": "Builds today's brief for all your engines, then the Weekly Review of what to do first this week. Asks for nothing, so it is ready to schedule.",
@@ -206,6 +213,7 @@
     "id": "monday-money-check",
     "name": "Monday check: money and priorities",
     "for": "Everyone. Schedule it for Monday mornings",
+    "paths": [],
     "recipe": {
       "name": "Monday check: money and priorities",
       "help": "Shows where all your engines stand against this month's money target, then the Weekly Review of what to do first. Asks for nothing, so it is ready to schedule.",
@@ -220,6 +228,378 @@
           "tool": "dse.review_all",
           "label": "Weekly Review of all engines",
           "values": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "smb-local-leads",
+    "name": "SMB: local businesses, review gap, then contacts",
+    "for": "SMB Marketing and Optimization",
+    "paths": [
+      "smb"
+    ],
+    "recipe": {
+      "name": "SMB: local businesses, review gap, then contacts",
+      "help": "Builds a list of local businesses with the SMB website check (Google reviews are the opening angle), then finds owners, emails and phones from each business's own website.",
+      "inputs": [
+        {
+          "name": "kind",
+          "label": "Business type (type any business)",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "kind"
+          }
+        },
+        {
+          "name": "cities",
+          "label": "Cities",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "cities"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.list",
+          "label": "Find the businesses and check their websites",
+          "values": {
+            "pack": "smb",
+            "kind": "{{kind}}",
+            "cities": "{{cities}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "carebridge-home-care",
+    "name": "Home care agencies: slow-response gap, then contacts",
+    "for": "Home care and assisted living (SMB's home care niche, CareBridge)",
+    "paths": [
+      "carebridge",
+      "smb"
+    ],
+    "recipe": {
+      "name": "Home care agencies: slow-response gap, then contacts",
+      "help": "Builds a list of home care agencies and assisted living with the CareBridge check (how fast they answer a family's enquiry is the angle), then finds owners, emails and phones.",
+      "inputs": [
+        {
+          "name": "kind",
+          "label": "Business type (type any business)",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "kind"
+          }
+        },
+        {
+          "name": "cities",
+          "label": "Cities",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "cities"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.list",
+          "label": "Find the businesses and check their websites",
+          "values": {
+            "pack": "carebridge",
+            "kind": "{{kind}}",
+            "cities": "{{cities}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "voiceai-phone-businesses",
+    "name": "Phone-driven businesses: missed-call gap, then contacts",
+    "for": "AI Voice Receptionist",
+    "paths": [
+      "voiceai"
+    ],
+    "recipe": {
+      "name": "Phone-driven businesses: missed-call gap, then contacts",
+      "help": "Builds a list of local service businesses that live on the phone, with the AI Voice check (missed and after-hours calls are the angle), then finds owners, emails and phones.",
+      "inputs": [
+        {
+          "name": "kind",
+          "label": "Business type (type any business)",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "kind"
+          }
+        },
+        {
+          "name": "cities",
+          "label": "Cities",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "cities"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.list",
+          "label": "Find the businesses and check their websites",
+          "values": {
+            "pack": "voiceai",
+            "kind": "{{kind}}",
+            "cities": "{{cities}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "automation-back-office",
+    "name": "Back-office work done by hand, then contacts",
+    "for": "AI Automation Engineering",
+    "paths": [
+      "automation"
+    ],
+    "recipe": {
+      "name": "Back-office work done by hand, then contacts",
+      "help": "Builds a list of local businesses and reads each website for repetitive back-office work still done by hand (paper intake, admin hiring, no online scheduling), then finds owners, emails and phones.",
+      "inputs": [
+        {
+          "name": "kind",
+          "label": "Business type (type any business)",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "kind"
+          }
+        },
+        {
+          "name": "cities",
+          "label": "Cities",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "cities"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.list",
+          "label": "Find the businesses and check their websites",
+          "values": {
+            "pack": "automation",
+            "kind": "{{kind}}",
+            "cities": "{{cities}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "revenue-shops",
+    "name": "Your list of shops: what is missing, then contacts",
+    "for": "Revenue Recovery Engine",
+    "paths": [
+      "revenue"
+    ],
+    "recipe": {
+      "name": "Your list of shops: what is missing, then contacts",
+      "help": "Takes a list of online shops you collected (for example from the Meta Ad Library), checks what each shop's own site is missing (email tool, sign-up offer, SMS sign-up, reviews), then finds owners, emails and phones.",
+      "inputs": [
+        {
+          "name": "shops",
+          "label": "Your list of shops (a CSV with a website column)",
+          "type": "file",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "csv"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.check",
+          "label": "Check each shop for what is missing",
+          "values": {
+            "pack": "revenue",
+            "csv": "{{shops}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "gtm-companies",
+    "name": "Your company list: problem check, then contacts",
+    "for": "Go-to-Market Engineering",
+    "paths": [
+      "gtm"
+    ],
+    "recipe": {
+      "name": "Your company list: problem check, then contacts",
+      "help": "Takes a company list exported from your own Clay, Apollo or HubSpot, reads each company's website for the Go-to-Market problems, then finds owners, emails and phones from each site.",
+      "inputs": [
+        {
+          "name": "companies",
+          "label": "Your company list (a CSV with a website or domain column)",
+          "type": "file",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "csv"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.check",
+          "label": "Check each company's website",
+          "values": {
+            "pack": "gtm",
+            "csv": "{{companies}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "list-file-to-todays-list",
+    "name": "Check my file, then build today's list",
+    "for": "Go-to-Market and Authority: lists built from a file you make",
+    "paths": [
+      "gtm",
+      "authority"
+    ],
+    "recipe": {
+      "name": "Check my file, then build today's list",
+      "help": "Checks the file you made (your Clay, Apollo or HubSpot export, or the experts you pasted by hand), showing which columns were understood and the best prospects, then builds the engine's next send list from it. Nothing is read from LinkedIn.",
+      "inputs": [
+        {
+          "name": "engine",
+          "label": "Which engine",
+          "type": "choice",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "engine"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.import_check",
+          "label": "Check my file",
+          "values": {
+            "engine": "{{engine}}"
+          }
+        },
+        {
+          "tool": "dse.daily",
+          "label": "Build the next send list",
+          "values": {
+            "engine": "{{engine}}"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "ascent-review",
+    "name": "Closer's review: my offers, then my calls",
+    "for": "The Ascent (high-ticket closer)",
+    "paths": [
+      "ascent"
+    ],
+    "recipe": {
+      "name": "Closer's review: my offers, then my calls",
+      "help": "Shows every offer you vetted, best verdict first with its status, price and commission, then your logged calls with how many sold, the cash and your average score. It asks for one thing and changes nothing.",
+      "inputs": [
+        {
+          "name": "engine",
+          "label": "Which engine",
+          "type": "choice",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "engine"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.offers",
+          "label": "My offers, best verdict first",
+          "values": {
+            "engine": "{{engine}}"
+          }
+        },
+        {
+          "tool": "dse.calls",
+          "label": "My calls and totals",
+          "values": {
+            "engine": "{{engine}}"
+          }
         }
       ]
     }

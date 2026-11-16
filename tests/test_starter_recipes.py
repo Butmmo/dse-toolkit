@@ -38,6 +38,12 @@ check("the engine starter offers the real engine choice list of the tool it copi
 check("the two ask-nothing starters have an empty form, ready to schedule", by["morning-routine"]["fields"] == [] and by["monday-money-check"]["fields"] == [])
 from dse import schedules as S  # noqa: E402
 check("and a recipe with an empty form can be scheduled as it is", S.validate({"frequency": "weekdays", "at_time": "07:00", "tool": "my.morning-routine", "params": {}}, {"my.morning-routine": by["morning-routine"]}) == [])
+ids = {x["id"] for x in starters}
+check("the per-path starters are all present", {"smb-local-leads", "carebridge-home-care", "voiceai-phone-businesses", "automation-back-office", "revenue-shops", "gtm-companies", "list-file-to-todays-list", "ascent-review"} <= ids)
+real_packs = {c["value"] for c in next(f for f in tools["dse.list"]["fields"] if f["name"] == "pack")["choices"]}
+fixed = [st["values"]["pack"] for x in starters for st in x["recipe"]["steps"] if st["tool"] in ("dse.list", "dse.check") and not str(st["values"]["pack"]).startswith("{{")]
+check("every website check the path starters fix is one this toolkit really has (a pack file in packs/)", len(fixed) >= 6 and all(p in real_packs for p in fixed), str(set(fixed) - real_packs))
+check("the file starters (shops, companies) ask for the member's own list through a file field of the real tool", all(by[i]["fields"][0]["type"] == "file" and by[i]["fields"][0]["glob"] == "my-lists/*.csv" for i in ("revenue-shops", "gtm-companies")), str([by[i]["fields"][0] for i in ("revenue-shops", "gtm-companies")]))
 print()
 print("ALL PASSED" if not fails else f"{len(fails)} FAILED: " + "; ".join(fails))
 sys.exit(1 if fails else 0)
