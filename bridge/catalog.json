@@ -7592,6 +7592,16 @@
       "fields": [],
       "timeout_min": 10,
       "outputs": []
+    },
+    "dse.setup_push": {
+      "label": "Setup checklist: check now",
+      "group": "Setup",
+      "script": "bridge/setup_sync.py",
+      "args": [],
+      "fields": [],
+      "timeout_min": 3,
+      "outputs": [],
+      "help": "Runs the System check now and sends the result to the Setup checklist on your Dashboard (it also does this by itself every 5 minutes while the runner is on). It sends only the check's own lines: what works, what needs a fix and the fix. No files, data or keys."
     }
   },
   "periodic": [
@@ -7634,6 +7644,11 @@
       "script": "bridge/mytools_sync.py",
       "every_s": 60,
       "what": "My tools: the tools you made in Citadel, and the ones DBI shared, onto this PC"
+    },
+    {
+      "script": "bridge/setup_sync.py",
+      "every_s": 300,
+      "what": "Setup checklist: your System check, sent to your Dashboard so you can see what is left to set up"
     },
     {
       "script": "bridge/schedule_sync.py",

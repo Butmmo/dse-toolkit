@@ -9,7 +9,8 @@ for k in [k for k in T if k.startswith(("dse.mytool_", "dse.studio_"))]:
     T.pop(k)
 c["periodic"] = [x for x in c.get("periodic", []) if x.get("script") != "bridge/mytools_sync.py"]
 c["periodic"].append({"script": "bridge/mytools_sync.py", "every_s": 60, "what": "My tools: the tools you made in Citadel, and the ones DBI shared, onto this PC"})
-c["periodic"] = [x for x in c["periodic"] if x.get("script") != "bridge/schedule_sync.py"]
+c["periodic"] = [x for x in c["periodic"] if x.get("script") not in ("bridge/schedule_sync.py", "bridge/setup_sync.py")]
+c["periodic"].append({"script": "bridge/setup_sync.py", "every_s": 300, "what": "Setup checklist: your System check, sent to your Dashboard so you can see what is left to set up"})
 c["periodic"].append({"script": "bridge/schedule_sync.py", "every_s": 60, "what": "Schedules: run your scheduled tools when they are due (an ordinary job in your Jobs list)"})
 
 SLUG = {"name": "slug", "label": "A short name (lowercase letters, digits and -)", "type": "text", "required": True, "max": 41, "pattern": "[a-z0-9][a-z0-9-]{1,40}", "placeholder": "my-tool"}
@@ -53,5 +54,8 @@ T["dse.claude_status"] = tool("Claude: is my key connected?", "Setup", "Says whe
                               [{"lit": "claude"}, {"lit": "status"}, {"flag": "--test", "field": "test"}], [{"name": "test", "label": "Ask Anthropic if the key works", "type": "bool", "default": True}], 2)
 T["dse.claude_sdk"] = tool("Claude: install the package it needs", "Setup", "Installs the official `anthropic` Python package on this PC (pip install anthropic), which DBI-AI needs to use your Claude key. Safe to run again.",
                            [{"lit": "claude"}, {"lit": "sdk"}], [], 10)
+T.pop("dse.setup_push", None)
+T["dse.setup_push"] = {"label": "Setup checklist: check now", "group": "Setup", "script": "bridge/setup_sync.py", "args": [], "fields": [], "timeout_min": 3, "outputs": [],
+                       "help": "Runs the System check now and sends the result to the Setup checklist on your Dashboard (it also does this by itself every 5 minutes while the runner is on). It sends only the check's own lines: what works, what needs a fix and the fix. No files, data or keys."}
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len(T), "tools in all")

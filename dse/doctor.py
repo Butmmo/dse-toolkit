@@ -46,7 +46,7 @@ PROBES = [
 AGAIN = {"20261119100000_crm_sync.sql"}            # files that grew after first use: an older run of them is not enough
 HELPER_NAMES = {"bridge/engines_sync.py": "your engines (Citadel to this PC)", "bridge/desk_sync.py": "the Send Desk (lists to your phone, taps back)", "bridge/goal_sync.py": "monthly goal suggestions",
                 "bridge/dfy_sync.py": "DFY months from Citadel", "bridge/brief_sync.py": "the Daily Brief and its notifications", "bridge/crm_sync.py": "CRM sync",
-                "bridge/voices_sync.py": "the Voices library", "bridge/mytools_sync.py": "My tools (made in Citadel, and shared by DBI)", "bridge/schedule_sync.py": "Schedules (your tools that run by themselves)"}
+                "bridge/voices_sync.py": "the Voices library", "bridge/mytools_sync.py": "My tools (made in Citadel, and shared by DBI)", "bridge/schedule_sync.py": "Schedules (your tools that run by themselves)", "bridge/setup_sync.py": "The Setup checklist on your Dashboard"}
 
 
 def item(area: str, name: str, state: str, detail: str = "", fix: str = "") -> dict:
