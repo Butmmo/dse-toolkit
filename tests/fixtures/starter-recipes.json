@@ -285,6 +285,58 @@
     }
   },
   {
+    "id": "search-local-visibility",
+    "name": "Local service businesses: visibility gap, then contacts",
+    "for": "Search and AI visibility (local service businesses)",
+    "paths": [
+      "search"
+    ],
+    "recipe": {
+      "name": "Local service businesses: visibility gap, then contacts",
+      "help": "Builds a list of local service businesses with the local website check (reviews, booking and chat gaps), then finds owners, emails and phones. Run the Near-Me Check and the AI Question Test by hand on the ones you shortlist.",
+      "inputs": [
+        {
+          "name": "kind",
+          "label": "Business type (type any business)",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "kind"
+          }
+        },
+        {
+          "name": "cities",
+          "label": "Cities",
+          "type": "text",
+          "required": true,
+          "from": {
+            "step": 1,
+            "field": "cities"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "tool": "dse.list",
+          "label": "Find the businesses and check their websites",
+          "values": {
+            "pack": "smb",
+            "kind": "{{kind}}",
+            "cities": "{{cities}}"
+          }
+        },
+        {
+          "tool": "dse.enrich",
+          "label": "Find owners, emails and phones",
+          "values": {
+            "csv": "{{prev.file}}"
+          }
+        }
+      ]
+    }
+  },
+  {
     "id": "carebridge-home-care",
     "name": "Home care agencies: slow-response gap, then contacts",
     "for": "Home care and assisted living (an SMB side-quest)",
