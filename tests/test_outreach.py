@@ -50,6 +50,28 @@ check("the footer carries the name, the address and an easy way to say no", all(
 check("no em dash in the wording", DASH not in json.dumps(TPL, ensure_ascii=False))
 check("the plan warms before the first email and ends on the breakup email", all(TPL["plan"][d][0]["day"] == -1 and TPL["plan"][d][0]["channel"] == "social" and TPL["plan"][d][-1]["day"] <= 14 and "breakup" in TPL["plan"][d][-1]["action"] for d in ("review", "inquiry")))
 
+# ---- plain words: an owner reads these emails, so no jargon (the list is written by Citadel's plain-words test)
+import re  # noqa: E402
+jf = ROOT / "tests" / "fixtures" / "plain-jargon.json"
+if jf.exists():
+    JARGON = json.loads(jf.read_text(encoding="utf-8"))
+
+    def jargon_in(text):
+        hits = []
+        for j in JARGON:
+            rx = r"(^|[^A-Za-z0-9])" + re.escape(j["term"]) + r"($|[^A-Za-z0-9])"
+            if re.search(rx, text, 0 if j["caps"] else re.I):
+                hits.append(j["term"])
+        return hits
+
+    for door in ("review", "inquiry"):
+        found = {e["variant"]: jargon_in(e["subject"] + " " + e["body"]) for e in TPL["emails"][door]}
+        check(f"the {door} emails use plain words", not any(found.values()), str(found))
+    check("the footer uses plain words", jargon_in(TPL["footer"]) == [])
+    check("the jargon checker works here", jargon_in("Our CRM workflow") == ["CRM", "workflow"] and jargon_in("a loft conversion") == [])
+else:
+    check("the Citadel jargon list exists", False, str(jf))
+
 # ---- dates (2026-12-07 is a Monday)
 mon = dt.date(2026, 12, 7)
 check("a Sunday start moves to Monday", O.first_day("2026-12-06") == mon)

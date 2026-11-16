@@ -1,0 +1,126 @@
+[
+  {
+    "term": "CRM",
+    "caps": true
+  },
+  {
+    "term": "workflow",
+    "caps": false
+  },
+  {
+    "term": "automation",
+    "caps": false
+  },
+  {
+    "term": "automate",
+    "caps": false
+  },
+  {
+    "term": "automated",
+    "caps": false
+  },
+  {
+    "term": "funnel",
+    "caps": false
+  },
+  {
+    "term": "pipeline",
+    "caps": false
+  },
+  {
+    "term": "lead routing",
+    "caps": false
+  },
+  {
+    "term": "integration",
+    "caps": false
+  },
+  {
+    "term": "API",
+    "caps": true
+  },
+  {
+    "term": "webhook",
+    "caps": false
+  },
+  {
+    "term": "GHL",
+    "caps": true
+  },
+  {
+    "term": "GoHighLevel",
+    "caps": false
+  },
+  {
+    "term": "RevOps",
+    "caps": false
+  },
+  {
+    "term": "revenue operations",
+    "caps": false
+  },
+  {
+    "term": "GTM",
+    "caps": true
+  },
+  {
+    "term": "go-to-market",
+    "caps": false
+  },
+  {
+    "term": "SaaS",
+    "caps": false
+  },
+  {
+    "term": "CTA",
+    "caps": true
+  },
+  {
+    "term": "UX",
+    "caps": true
+  },
+  {
+    "term": "UI",
+    "caps": true
+  },
+  {
+    "term": "landing page",
+    "caps": false
+  },
+  {
+    "term": "conversion rate",
+    "caps": false
+  },
+  {
+    "term": "nurture",
+    "caps": false
+  },
+  {
+    "term": "drip",
+    "caps": false
+  },
+  {
+    "term": "onboarding",
+    "caps": false
+  },
+  {
+    "term": "mobile-first",
+    "caps": false
+  },
+  {
+    "term": "self-booking",
+    "caps": false
+  },
+  {
+    "term": "qualifying",
+    "caps": false
+  },
+  {
+    "term": "tech stack",
+    "caps": false
+  },
+  {
+    "term": "sub-account",
+    "caps": false
+  }
+]
