@@ -147,6 +147,74 @@ check("a due schedule whose tool this PC lacks is not queued, and says why", res
 check("a forbidden tool is never queued", res["c"]["queue"] is None and "cannot be scheduled" in res["c"]["status"]["problem"])
 check("a broken schedule does not crash the helper", SYNC.plan([{"id": "z", "frequency": "monthly", "at_time": "07:00", "pc_status": {}}], TOOLS, at("2026-11-17 07:00"))[0]["queue"] is None)
 
+# ---------------------------------------------------------------- alerts: a quiet push when an unattended run goes wrong
+NOW = at("2026-11-17 08:00")
+
+
+def run_minutes(name, steps, d=None):
+    """Feed a sequence of (job_state, time) into decide + transitions the way the helper does each minute; returns the final status."""
+    d = d or sched()
+    st = {"last_slot": "2026-11-16T07:00", "fails": 0}
+    for n, (job, when, new_job) in enumerate(steps):
+        prev = dict(st)
+        if new_job:
+            st["last_job"] = new_job
+        st = S.decide(d, st, at(when), job)["status"]
+        S.transitions(name, prev, st, at(when))
+    return st
+
+
+st = run_minutes("Dentists", [("failed", "2026-11-16 08:00", "j1")])
+check("the first failed run earns one alert, in plain words", [a["key"] for a in st["alerts_pending"]] == ["fail:j1"] and "failed" in st["alerts_pending"][0]["title"].lower() and "Dentists" in st["alerts_pending"][0]["body"] and "Jobs" in st["alerts_pending"][0]["body"], str(st.get("alerts_pending")))
+st = run_minutes("Dentists", [("failed", "2026-11-16 08:00", "j1"), ("failed", "2026-11-16 08:01", None)])
+check("the same failure seen again the next minute does not alert twice", len(st["alerts_pending"]) == 1)
+st = run_minutes("Dentists", [("failed", "2026-11-16 08:00", "j1"), ("failed", "2026-11-17 08:00", "j2")])
+check("a second failure in a row does not buzz again", [a["key"] for a in st["alerts_pending"]] == ["fail:j1"] and st["fails"] == 2)
+st = run_minutes("Dentists", [("failed", "2026-11-16 08:00", "j1"), ("failed", "2026-11-17 08:00", "j2"), ("failed", "2026-11-18 08:00", "j3")])
+check("the third failure pauses the schedule and earns the pause alert, which says what to do", st["paused"] and [a["key"] for a in st["alerts_pending"]] == ["fail:j1", "pause:j3"] and "Resume" in st["alerts_pending"][1]["body"], str(st.get("alerts_pending")))
+st = run_minutes("Dentists", [("done", "2026-11-16 08:00", "j1")])
+check("a run that finished well earns no alert", not st.get("alerts_pending"))
+st = run_minutes("Dentists", [("cancelled", "2026-11-16 08:00", "j1")])
+check("a cancelled run earns no alert", not st.get("alerts_pending"))
+long_ago = {"last_slot": "2026-11-16T07:00", "fails": 1, "last_job": "old", "counted_job": "old", "last_state": "failed"}
+st2 = S.decide(sched(), long_ago, at("2026-11-16 09:00"), "failed")["status"]
+S.transitions("Old", long_ago, st2, at("2026-11-16 09:00"))
+check("an old failure already counted does not alert again after an update or a restart", not st2.get("alerts_pending"))
+
+# problems: a tool this PC lacks
+rows = [{"id": "p", "name": "Ghost", **sched(tool="t.gone", params={}), "pc_status": {"last_slot": "2026-11-16T07:00"}}]
+res = SYNC.plan(rows, TOOLS, at("2026-11-16 12:00"))[0]["status"]
+check("a schedule whose tool this PC lacks earns one alert naming the reason", [a["key"].split(":")[0] for a in res["alerts_pending"]] == ["problem"] and "does not offer" in res["alerts_pending"][0]["body"], str(res.get("alerts_pending")))
+rows2 = [{"id": "p", "name": "Ghost", **sched(tool="t.gone", params={}), "pc_status": res}]
+res2 = SYNC.plan(rows2, TOOLS, at("2026-11-16 12:01"))[0]["status"]
+check("the same problem next minute does not alert again", len(res2["alerts_pending"]) == 1)
+rows3 = [{"id": "p", "name": "Ghost", **sched(), "pc_status": res2}]
+res3 = SYNC.plan(rows3, TOOLS, at("2026-11-16 12:02"))[0]["status"]
+check("when the problem is fixed it is written as empty (the database merges, so removing the key would leave it showing)", res3["problem"] == "")
+res3["alerts_sent"] = ["problem:" + res["problem"][:80]]
+rows4 = [{"id": "p", "name": "Ghost", **sched(tool="t.gone", params={}), "pc_status": res3}]
+res4 = SYNC.plan(rows4, TOOLS, at("2026-11-16 12:03"))[0]["status"]
+check("a problem that comes back after being fixed is news again", any(a["key"].startswith("problem:") for a in res4["alerts_pending"]))
+
+# delivery: quiet hours, retries, giving up
+pend = {"alerts_pending": [{"key": "fail:j1", "title": "t", "body": "b", "at": "2026-11-16T08:00", "tries": 0}]}
+check("during quiet hours nothing is attempted, and the alert waits", S.due_alerts(dict(pend, alerts_pending=list(pend["alerts_pending"])), at("2026-11-16 22:00"), True) == [] and len(pend["alerts_pending"]) == 1)
+check("outside quiet hours it is attempted", len(S.due_alerts(pend, at("2026-11-16 08:01"), False)) == 1)
+check("an alert more than 24 hours old is dropped, not sent late", S.due_alerts(dict(alerts_pending=[{"key": "k", "title": "t", "body": "b", "at": "2026-11-14T08:00", "tries": 0}]), at("2026-11-16 08:01"), False) == [])
+check("a delivered alert is settled and remembered, never sent twice", S.settle(pend, "fail:j1", True) == "sent" and not pend["alerts_pending"] and pend["alerts_sent"] == ["fail:j1"] and not S.add_alert(pend, "fail:j1", "fail", "X", at("2026-11-16 08:05")))
+held = {"alerts_pending": [{"key": "k", "title": "t", "body": "b", "at": "2026-11-16T08:00", "tries": 0}]}
+check("a push that is held back is retried", S.settle(held, "k", False) == "retry" and held["alerts_pending"][0]["tries"] == 1)
+held["alerts_pending"][0]["tries"] = S.ALERT_TRIES - 1
+check("after about half an hour of tries it gives up quietly", S.settle(held, "k", False) == "gave up" and not held["alerts_pending"])
+big = {"alerts_sent": [f"k{i}" for i in range(40)], "alerts_pending": [{"key": "z", "title": "t", "body": "b", "at": "2026-11-16T08:00", "tries": 0}]}
+S.settle(big, "z", True)
+check("the list of sent alerts stays small", len(big["alerts_sent"]) <= S.SENT_KEEP)
+check("the alert texts have no em dash and name the schedule", all(chr(0x2014) not in t for t in S._alert("fail", "X") + S._alert("pause", "X") + S._alert("problem", "X", "why")))
+sync_src = (ROOT / "bridge" / "schedule_sync.py").read_text(encoding="utf-8")
+check("alerts go through the existing quiet push only, and the quiet hours are the brief's", sync_src.count('"hq_brief_notify"') == 1 and "briefnotify.is_quiet" in sync_src)
+import re  # noqa: E402
+check("a held-back or failed push never stops the schedules: the delivery is inside a try", bool(re.search(r"except RuntimeError:\s+delivered = False", sync_src)))
+
 # ---------------------------------------------------------------- the modules
 src = (ROOT / "dse" / "schedules.py").read_text(encoding="utf-8") + (ROOT / "bridge" / "schedule_sync.py").read_text(encoding="utf-8")
 check("no em dash", chr(0x2014) not in src)

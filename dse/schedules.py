@@ -11,6 +11,9 @@ The rules, all in code:
     never stacked up. If the previous run is still going, the new one is skipped.
   * A new schedule never runs for a moment that already passed.
   * After 3 failed runs in a row it pauses itself and tells you; pressing Resume in the app clears that.
+  * You are alerted on your phone (the same quiet push and the same profile switch as the Daily Brief) when a scheduled run FAILS for the first time in a row, when a schedule PAUSES
+    itself, and when a schedule CANNOT RUN on this PC (its tool is missing): once for each, never during quiet hours (it waits until they end), retried for up to 30 minutes
+    if the push is held back, and dropped after 24 hours. A second and third failure in a row do not buzz again: the pause does.
   * It never sends, posts or pays: no tool does.
 Standard library only.
 """
@@ -169,3 +172,78 @@ def decide(s: dict, st: dict, now: dt.datetime, job_state: str | None) -> dict:
             queue = slot.strftime(FMT)
             st["note"] = f"Queued the {slot:%a %H:%M} run" + (" (late: the PC was off at the moment)." if late > dt.timedelta(minutes=5) else ".")
     return {"queue": queue, "status": st}
+
+
+# ------------------------------------------------------------------ alerts: tell the member when an unattended run goes wrong
+
+ALERT_TRIES = 30            # one try a minute: about half an hour, then give up (a push held back for that long is no longer news)
+ALERT_MAX_AGE = dt.timedelta(hours=24)
+SENT_KEEP = 20
+
+
+def _alert(kind: str, name: str, extra: str = "") -> tuple[str, str]:
+    name = (name or "A schedule")[:60]
+    if kind == "fail":
+        return "A scheduled run failed", f'"{name}" failed. Open Jobs in HQ Tools to see why. It will try again at its next time.'
+    if kind == "pause":
+        return "A schedule paused itself", f'"{name}" failed {MAX_FAILS} times in a row and is paused. Fix the cause, then press Resume on the Schedules page.'
+    return "A schedule cannot run", f'"{name}" cannot run on your PC: {extra[:160]}.'
+
+
+def add_alert(st: dict, key: str, kind: str, name: str, now: dt.datetime, extra: str = "") -> bool:
+    """Queue one alert in the schedule's status unless this one was already queued or sent. Returns True if it was added."""
+    if key in st.get("alerts_sent", []) or any(a.get("key") == key for a in st.get("alerts_pending", [])):
+        return False
+    title, body = _alert(kind, name, extra)
+    st.setdefault("alerts_pending", []).append({"key": key, "title": title, "body": body, "at": now.strftime(FMT), "tries": 0})
+    return True
+
+
+def transitions(name: str, prev: dict, st: dict, now: dt.datetime) -> list[str]:
+    """Look at what changed since last minute and queue the alerts it earns. Returns the keys added (for tests)."""
+    prev = prev or {}
+    added = []
+    counted = st.get("counted_job")
+    if counted and counted != prev.get("counted_job") and st.get("last_state") == "failed" and st.get("fails") == 1:
+        k = f"fail:{counted}"
+        if add_alert(st, k, "fail", name, now):
+            added.append(k)
+    if st.get("paused") and not prev.get("paused"):
+        k = f"pause:{counted or st.get('reset_seen') or 'x'}"
+        if add_alert(st, k, "pause", name, now):
+            added.append(k)
+    if not st.get("problem") and prev.get("problem"):          # fixed: the same problem coming back later is news again
+        st["alerts_sent"] = [k for k in st.get("alerts_sent", []) if not k.startswith("problem:")]
+    if st.get("problem") and st["problem"] != prev.get("problem"):
+        k = f"problem:{st['problem'][:80]}"
+        if add_alert(st, k, "problem", name, now, st["problem"]):
+            added.append(k)
+    return added
+
+
+def due_alerts(st: dict, now: dt.datetime, quiet: bool) -> list[dict]:
+    """The alerts to try to deliver this minute: none during quiet hours (they wait), and none older than 24 hours (dropped here)."""
+    keep = []
+    for a in st.get("alerts_pending", []):
+        try:
+            age = now - dt.datetime.strptime(a["at"], FMT)
+        except (KeyError, ValueError):
+            continue
+        if age <= ALERT_MAX_AGE:
+            keep.append(a)
+    st["alerts_pending"] = keep
+    return [] if quiet else list(keep)
+
+
+def settle(st: dict, key: str, delivered: bool) -> str:
+    """Record the outcome of one delivery try. Returns 'sent', 'gave up' or 'retry'."""
+    pend = st.get("alerts_pending", [])
+    a = next((x for x in pend if x.get("key") == key), None)
+    if a is None:
+        return "sent"
+    a["tries"] = int(a.get("tries", 0)) + 1
+    if delivered or a["tries"] >= ALERT_TRIES:
+        st["alerts_pending"] = [x for x in pend if x is not a]
+        st["alerts_sent"] = ([*st.get("alerts_sent", []), key])[-SENT_KEEP:]
+        return "sent" if delivered else "gave up"
+    return "retry"

@@ -18,7 +18,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
-from dse import schedules  # noqa: E402
+from dse import briefnotify, schedules  # noqa: E402
 
 
 def _runner():
@@ -45,7 +45,8 @@ def plan(rows: list[dict], tools: dict, now: dt.datetime, checker=None) -> list[
             if queue:
                 st["last_slot"], st["note"], queue = queue, f"Skipped: {problems[0]}.", None
         else:
-            st.pop("problem", None)
+            st["problem"] = ""             # written as empty, not removed: the database merges statuses, so a removed key would keep showing the old problem
+        schedules.transitions(row.get("name", ""), row.get("pc_status") or {}, st, now)
         out.append({"id": row["id"], "status": st, "queue": queue, "problems": problems})
     return out
 
@@ -66,6 +67,7 @@ def main():
 
     rows = api.rpc("hq_schedules_pull", {}) or []
     now = dt.datetime.now().replace(second=0, microsecond=0)
+    quiet = briefnotify.is_quiet(now, briefnotify.settings())
     queued = 0
     statuses = {}
     for d in plan(rows, cat["tools"], now, checker):
@@ -82,6 +84,13 @@ def main():
                         queued += 1
                 except RuntimeError as e:
                     st["note"] = f"Could not queue it yet ({str(e)[:120]}); trying again."
+        if not a.dry:
+            for al in schedules.due_alerts(st, now, quiet):      # a quiet push for a run that failed, a schedule that paused, one that cannot run
+                try:
+                    delivered = bool(api.rpc("hq_brief_notify", {"p_title": al["title"], "p_body": al["body"]}, tries=1))
+                except RuntimeError:
+                    delivered = False
+                schedules.settle(st, al["key"], delivered)
         statuses[d["id"]] = st
     if a.dry:
         print(f"{len(rows)} schedule(s) in Citadel")
