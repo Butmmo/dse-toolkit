@@ -31,12 +31,53 @@ def _runner():
     return mod
 
 
-def engine_json(e: dict) -> dict:
+# Settings that live only on this PC (set by the engine context tools). A sync from Citadel must never drop them.
+LOCAL_KEYS = ("context_folders", "local_seed_urls")
+
+
+def engine_json(e: dict, old: dict | None = None) -> dict:
     cfg = dict(e.get("config") or {})
+    for k in LOCAL_KEYS:
+        if old and old.get(k):
+            cfg[k] = old[k]
     cfg.update({"name": e["name"], "path": e["path"], "archived": bool(e.get("archived")),
                 "citadel_updated_at": e.get("updated_at")})
     cfg.setdefault("pack", "smb" if e["path"] == "custom" else e["path"])
     return cfg
+
+
+FROM_CITADEL = "From Citadel"
+
+
+def apply_context(slug: str, cfg: dict) -> str | None:
+    """The 'earlier work' folder set in Citadel's engine form: attach it here (safe by the context rules) and read it once. Returns a message, or None when there is nothing to say."""
+    want = (cfg.get("context_folder") or "").strip()
+    sys.path.insert(0, str(ROOT))
+    try:
+        from dse import context_folder as cf
+        mine = [x for x in cf.attached(slug) if x.get("label") == FROM_CITADEL]
+        if not want:
+            return None
+        try:
+            folder = cf.resolve_folder(want)
+        except ValueError as e:
+            return f"engine '{slug}': the earlier-work folder was not found on this PC ({e})"
+        if mine and mine[0].get("path") == str(folder) and (ENGINES / slug / "context" / "digest.json").is_file():
+            return None
+        for x in mine:                                   # the folder was changed in Citadel: the old one is detached (never touched)
+            if x.get("path") != str(folder):
+                cf.detach(slug, x["path"])
+        try:
+            cf.attach(slug, str(folder), FROM_CITADEL)
+        except ValueError as e:
+            return f"engine '{slug}': the earlier-work folder was not attached ({e})"
+        digests = cf.scan(slug)
+        return f"engine '{slug}': read the earlier-work folder ({sum(d['file_count'] for d in digests)} readable files)"
+    except Exception as e:                               # never let a problem here stop the sync
+        return f"engine '{slug}': the earlier-work folder could not be read ({e})"
+    finally:
+        if str(ROOT) in sys.path:
+            sys.path.remove(str(ROOT))
 
 
 def status_of(slug: str) -> dict:
@@ -53,6 +94,13 @@ def status_of(slug: str) -> dict:
     dates = [p.stem[:10] for p in lists if re.match(r"\d{4}-\d{2}-\d{2}", p.stem)]
     st = {"lists": len(lists), "drafts": len(drafts), "rows": rows, "last_list": max(dates) if dates else None,
           "checked_at": dt.datetime.now().isoformat(timespec="seconds")}
+    try:                                   # how much earlier work was read (the summary itself stays on this PC)
+        dj = ENGINES / slug / "context" / "digest.json"
+        if dj.is_file():
+            data = json.loads(dj.read_text(encoding="utf-8"))
+            st["context"] = {"folders": len(data.get("folders", [])), "files": sum(d.get("file_count", 0) for d in data.get("folders", [])), "read_on": data.get("read_on")}
+    except Exception:
+        pass
     try:                                   # results and follow-ups due: never let a problem here stop the sync
         sys.path.insert(0, str(ROOT))
         from dse import followups, outcomes
@@ -76,9 +124,9 @@ def main():
         if not SLUG.match(slug):
             continue
         d = ENGINES / slug
-        new = engine_json(e)
         p = d / "engine.json"
         old = json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+        new = engine_json(e, old)
         if old == new:
             continue
         changed += 1
@@ -88,6 +136,12 @@ def main():
         for sub in ("send-lists/drafts", "content", "data"):
             (d / sub).mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(new, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    for e in engines:
+        slug = e.get("slug", "")
+        if SLUG.match(slug) and (ENGINES / slug / "engine.json").is_file() and not a.dry:
+            msg = apply_context(slug, json.loads((ENGINES / slug / "engine.json").read_text(encoding="utf-8")))
+            if msg:
+                print(f"{dt.datetime.now():%H:%M:%S} engines sync: {msg}")
     # An engine deleted in Citadel stays on this PC (its lists are never deleted) but is archived and marked, so the tools stop offering it.
     live = {e.get("slug") for e in engines}
     gone = []

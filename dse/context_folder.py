@@ -218,8 +218,63 @@ def summarise_sheet(path: Path) -> dict:
     return {"title": path.name, "columns": head, "rows": n, "lead_list": lead, "summary": f"{len(names)} sheet(s): {', '.join(names[:6])}; first sheet {n} rows; columns: {', '.join(head[:12])}"}
 
 
-PRICE_RX = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:/|per)\s?(?:mo|month|year|hour|yr))?", re.I)
+PRICE_RX = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:/|per|a)\s?(?:mo|month|year|hour|yr)\b)?(?:\s(?:setup|set-up|one-time|upfront)\b)?", re.I)
 LINE_KEYS = {"niche": re.compile(r"\bniche\b", re.I), "offer": re.compile(r"\boffer(s|ing)?\b", re.I), "goal": re.compile(r"\bgoal(s)?\b", re.I)}
+LABELLED = {k: re.compile(r"^(?:%s)[a-z ]{0,24}:\s*(.+)$" % w, re.I) for k, w in (("niche", "niche|market|audience|buyer"), ("offer", "offer|price|pricing|package"), ("goal", "goal|target|aim|next step"))}
+
+
+def tidy(line: str) -> str:
+    """One line of markdown as plain words: no bold marks, links, code ticks, headings, bullets or numbering."""
+    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+    t = re.sub(r"[*_`]+", "", t)
+    t = re.sub(r"^\s*(?:[-*+>#]+|\d{1,2}[.)])\s*", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def sentence(text: str, limit: int = 140) -> str:
+    """The text cut at the end of a sentence (or a word) inside the limit."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    m = list(re.finditer(r"[.!?;](\s|$)", cut))
+    if m and m[-1].start() > 40:
+        return cut[: m[-1].start() + 1]
+    return cut.rsplit(" ", 1)[0].rstrip(",;:") + "..."
+
+
+def extract_signals(red: str, signals: dict) -> None:
+    """Prices with their words, and the niche, offer and goal lines, tidy and short. Labelled lines ('Goal: ...') come first, then plain sentences."""
+    for m in PRICE_RX.findall(red)[:10]:
+        m = re.sub(r"\s+", " ", m.strip())
+        if m and m not in signals["prices"] and len(signals["prices"]) < 10:
+            signals["prices"].append(m)
+    fence = False
+    labelled: dict[str, list[str]] = {k: [] for k in LINE_KEYS}
+    plain: dict[str, list[str]] = {k: [] for k in LINE_KEYS}
+    for raw in red.splitlines():
+        if raw.strip().startswith("```"):
+            fence = not fence
+            continue
+        if fence or raw.count("|") >= 2:
+            continue
+        ln = tidy(raw)
+        if not (12 < len(ln) <= 400) or ln.endswith("?") or ln.startswith("http"):
+            continue
+        for k, rx in LABELLED.items():
+            m = rx.match(ln)
+            if m and len(m.group(1)) > 8:
+                v = sentence(m.group(1).strip())
+                if v not in labelled[k]:
+                    labelled[k].append(v)
+        for k, rx in LINE_KEYS.items():
+            if rx.search(ln) and not LABELLED[k].match(ln):
+                v = sentence(ln)
+                if len(v) >= 20 and v not in plain[k]:
+                    plain[k].append(v)
+    for k in LINE_KEYS:
+        for v in labelled[k] + plain[k]:
+            if v not in signals[k] and len(signals[k]) < 5:
+                signals[k].append(v)
 
 
 def scan_folder(root: Path) -> dict:
@@ -269,15 +324,7 @@ def scan_folder(root: Path) -> dict:
                 if kind == "text":
                     txt = _read(p)
                     rec.update(summarise_text(txt, p.name))
-                    red = redact(txt)
-                    for m in PRICE_RX.findall(red)[:6]:
-                        if m.strip() not in signals["prices"] and len(signals["prices"]) < 12:
-                            signals["prices"].append(m.strip())
-                    for key, rx in LINE_KEYS.items():
-                        for line in red.splitlines():
-                            ln = line.strip().lstrip("-*# ").strip()
-                            if 12 < len(ln) <= 160 and rx.search(ln) and ln not in signals[key] and len(signals[key]) < 6:
-                                signals[key].append(ln)
+                    extract_signals(redact(txt), signals)
                 elif kind in ("json", "config"):
                     rec.update(summarise_json(_read(p), p.name) if kind == "json" else {"title": p.name, "summary": _para(redact(_read(p, 4000)))})
                 elif kind == "csv":
@@ -622,7 +669,7 @@ def adopt(slug: str, ref: str, apply: bool = False) -> str:
     elif mode == "seeds":
         if not web:
             raise ValueError("This engine works from website addresses, and that list has no website column.")
-        have = {re.sub(r"^https?://(www\.)?", "", (u.get("url") if isinstance(u, dict) else u or "").lower()).strip("/") for u in (cfg.get("seed_urls") or [])}
+        have = {re.sub(r"^https?://(www\.)?", "", (u.get("url") if isinstance(u, dict) else u or "").lower()).strip("/") for u in list(cfg.get("seed_urls") or []) + list(cfg.get("local_seed_urls") or [])}
         add = []
         for r in with_site:
             u = (r.get(web) or "").strip()
@@ -630,9 +677,9 @@ def adopt(slug: str, ref: str, apply: bool = False) -> str:
             if key and key not in have and len(have) + len(add) < MAX_SEEDS:
                 have.add(key)
                 add.append({"url": u if u.lower().startswith("http") else "https://" + u, "name": (r.get(name) or "").strip()[:80], "city": (r.get(city) or "").strip()[:60]})
-        target = f"add {len(add)} new website(s) to the engine's seed list ({len(with_site) - len(add)} already there or over the limit of {MAX_SEEDS})"
+        target = f"add {len(add)} new website(s) to the engine's seed list (kept on this PC) ({len(with_site) - len(add)} already there or over the limit of {MAX_SEEDS})"
         if apply and add:
-            cfg["seed_urls"] = list(cfg.get("seed_urls") or []) + add
+            cfg["local_seed_urls"] = list(cfg.get("local_seed_urls") or []) + add        # kept apart from Citadel's list so a sync never drops them
             _save_cfg(slug, cfg)
     else:
         dest = engine_dir(slug) / "adopted" / src.name

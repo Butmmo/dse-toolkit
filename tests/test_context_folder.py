@@ -1,6 +1,7 @@
 """Tests for engine context folders.   python tests/test_context_folder.py"""
 import importlib.util
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -89,7 +90,28 @@ check("secret, encrypted and archive files are listed as not read, with the reas
 check("env, key, hidden, library, binary and too-deep files are not in the read list", not any(p.startswith(("_private-keys", "node_modules", ".hidden", "deep")) or p in (".env", "passwords.txt", "vault.enc", "backup.zip", "logo.png") for p in paths))
 check("forbidden folders are listed as never read", any(s["path"] == "_private-keys/" for s in d["skipped"]) and any(s["path"] == "node_modules/" for s in d["skipped"]) and any(s["path"] == ".hidden/" for s in d["skipped"]))
 check("a folder deeper than the limit is reported", any("deeper than" in s["reason"] for s in d["skipped"]))
-check("prices, niche and goal lines are picked out", "$997" in d["signals"]["prices"] and any("$300" in x for x in d["signals"]["prices"]) and any("interior designers" in x for x in d["signals"]["niche"]) and any("sign two studios" in x for x in d["signals"]["goal"]), json.dumps(d["signals"]))
+check("prices, niche and goal lines are picked out", "$997 setup" in d["signals"]["prices"] and "$300 a month" in d["signals"]["prices"] and any("interior designers" in x for x in d["signals"]["niche"]) and any("sign two studios" in x for x in d["signals"]["goal"]), json.dumps(d["signals"]))
+
+# ---- tidy lines in the summary
+_sg = {"prices": [], "niche": [], "offer": [], "goal": []}
+_md = "\n".join([
+    "# Notes",
+    "- **Niche confirmed:** all 30 studios are design-led, so [interior designers](x.md) stay as the niche. See below.",
+    "2. The offer: the Inquiry Engine at $997 setup and $300 a month, or $2,400 a year.",
+    "Goal: sign two studios by January. Then a third.",
+    "| Part | Today | Problem for this offer |",
+    "You think traffic is the goal. What matters is what each visitor can do?",
+    "```",
+    "Goal: inside a code block",
+    "```",
+])
+C.extract_signals(_md, _sg)
+check("prices keep the words that make them mean something", _sg["prices"] == ["$997 setup", "$300 a month", "$2,400 a year"], str(_sg["prices"]))
+check("a labelled line gives the value, as plain words, cut at a sentence", _sg["goal"][0] == "sign two studios by January. Then a third." and _sg["niche"][0].startswith("all 30 studios are design-led, so interior designers stay as the niche."), str(_sg))
+check("no markdown marks, links, bullets or numbering are left in a signal line", all(not re.search(r"[*_`|]|\]\(", x) and not re.match(r"^\d+[.)]", x) for k in ("niche", "offer", "goal") for x in _sg[k]), str(_sg))
+check("table rows, code blocks and questions are not signal lines", not any("code block" in x or "Problem for this offer" in x or "visitor can do" in x for k in ("niche", "offer", "goal") for x in _sg[k]), str(_sg))
+check("a long line is cut at a sentence or a word, never mid-word", len(C.sentence("Word " * 60)) <= 143 and C.sentence("Short one.") == "Short one." and C.sentence("A fairly long first sentence that fills most of the space we have here. And then a second sentence that goes on and on and on.", 100).endswith("here."))
+check("tidy removes bold, links, code ticks, headings and numbering", C.tidy("## **Offer:** [the plan](a.md) at `$100`") == "Offer: the plan at $100" and C.tidy("3) Next step") == "Next step")
 
 # ---- attaching, refusing, reading, using
 check("a folder that is not there is refused kindly", "cannot find" in (raises(C.resolve_folder, str(tmp / "nope")) or ""))
@@ -150,12 +172,40 @@ try:
     set_cfg(path="authority")
     check("an Authority engine takes it as pasted experts", C.engine_mode(C.load(SLUG)) == "pasted" and (C.adopt(SLUG, "Studio work:leads.csv", True), (ed / "pasted" / "adopted-leads.csv").exists())[1])
     set_cfg(path="revenue", seed_urls=[{"url": "https://studio0.example", "name": "Studio 0", "city": "Tampa"}])
-    check("a seeds engine previews the new websites and skips ones it has", "add 5 new website(s)" in C.adopt(SLUG, "Studio work:leads.csv", False) and len(C.load(SLUG)["seed_urls"]) == 1)
+    check("a seeds engine previews the new websites and skips ones it has", "add 5 new website(s)" in C.adopt(SLUG, "Studio work:leads.csv", False) and len(C.load(SLUG)["seed_urls"]) == 1 and not C.load(SLUG).get("local_seed_urls"))
     C.adopt(SLUG, "Studio work:leads.csv", True)
-    seeds = C.load(SLUG)["seed_urls"]
-    check("applying adds only the new websites, with name and city", len(seeds) == 6 and sum(1 for x in seeds if x["url"].endswith("studio0.example")) == 1 and seeds[-1]["city"] == "Tampa" and seeds[-1]["name"].startswith("Studio"))
+    seeds = C.load(SLUG)["seed_urls"] + C.load(SLUG)["local_seed_urls"]
+    check("applying adds only the new websites, with name and city, apart from Citadel's own list", len(C.load(SLUG)["seed_urls"]) == 1 and len(C.load(SLUG)["local_seed_urls"]) == 5 and len(seeds) == 6 and sum(1 for x in seeds if x["url"].endswith("studio0.example")) == 1 and seeds[-1]["city"] == "Tampa" and seeds[-1]["name"].startswith("Studio"))
     C.adopt(SLUG, "Studio work:leads.csv", True)
-    check("adopting twice does not add the same websites twice", len(C.load(SLUG)["seed_urls"]) == 6)
+    check("adopting twice does not add the same websites twice", len(C.load(SLUG)["seed_urls"]) + len(C.load(SLUG)["local_seed_urls"]) == 6)
+    # the engine sync from Citadel must never drop what lives only on this PC
+    import importlib.util as _iu
+    _sp = _iu.spec_from_file_location("engines_sync_under_test", ROOT / "bridge" / "engines_sync.py")
+    _es = _iu.module_from_spec(_sp)
+    _sp.loader.exec_module(_es)
+    _old = C.load(SLUG)
+    _new = _es.engine_json({"slug": SLUG, "name": "Context test", "path": "revenue", "config": {"seed_urls": [{"url": "https://studio0.example"}]}, "updated_at": "x"}, _old)
+    check("a sync from Citadel keeps the attached folders and the brought-in websites", _new.get("context_folders") == _old.get("context_folders") and len(_new.get("local_seed_urls", [])) == 5 and _new["seed_urls"] == [{"url": "https://studio0.example"}])
+    check("without an old file the sync adds nothing of its own", "context_folders" not in _es.engine_json({"slug": SLUG, "name": "x", "path": "smb", "config": {}, "updated_at": "x"}, None))
+    check("the sync's own settings still win for everything else", _es.engine_json({"slug": SLUG, "name": "New name", "path": "revenue", "config": {}, "updated_at": "y"}, _old)["name"] == "New name")
+    check("the engine works from both seed lists", "local_seed_urls" in (ROOT / "dse" / "engines.py").read_text(encoding="utf-8"))
+    # the earlier-work folder set in Citadel's engine form is attached here once
+    set_cfg(path="smb")
+    for k in list(C.attached(SLUG)):
+        C.detach(SLUG, k["path"])
+    shutil.rmtree(ed / "context", ignore_errors=True)
+    cfg_c = {**C.load(SLUG), "context_folder": str(tmp)}
+    m1 = _es.apply_context(SLUG, cfg_c)
+    check("a folder named in Citadel is attached and read, and the sync says so", m1 and "readable files" in m1 and [x["label"] for x in C.attached(SLUG)] == ["From Citadel"] and (ed / "context" / "digest.md").exists(), str(m1))
+    check("the next sync does nothing more (once is enough)", _es.apply_context(SLUG, cfg_c) is None and len(C.attached(SLUG)) == 1)
+    check("a folder that is not there is reported, not a crash", "not found" in (_es.apply_context(SLUG, {**cfg_c, "context_folder": str(tmp / "gone")}) or ""))
+    check("an unsafe folder is refused by the same rules", "not attached" in (_es.apply_context(SLUG, {**cfg_c, "context_folder": str(Path.home())}) or "") or "not found" in (_es.apply_context(SLUG, {**cfg_c, "context_folder": str(Path.home())}) or ""))
+    check("no folder in Citadel means nothing happens", _es.apply_context(SLUG, {**cfg_c, "context_folder": ""}) is None)
+    check("the status sent to Citadel says how much was read, never what", (lambda st: st.get("context", {}).get("files", 0) >= 5 and "Interior" not in json.dumps(st))(_es.status_of(SLUG)))
+    for _k in list(C.attached(SLUG)):                  # back to the folder name the later checks use
+        C.detach(SLUG, _k["path"])
+    C.attach(SLUG, str(tmp), "Studio work")
+    C.scan(SLUG)
     set_cfg(path="custom", source="none")
     check("a chat-and-notes engine has no lead lists to bring in", "chat-and-notes" in (raises(C.adopt, SLUG, "Studio work:leads.csv", True) or ""))
     set_cfg(path="smb")

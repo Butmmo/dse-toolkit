@@ -151,7 +151,7 @@ def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
             r["gap_line"] = r.get("gap_used", "")
         return rows[:need]
 
-    seeds = cfg.get("seed_urls") or []
+    seeds = list(cfg.get("seed_urls") or []) + list(cfg.get("local_seed_urls") or [])      # the ones from Citadel, plus the ones brought in from a folder on this PC
     if seeds or path in ("ministry", "revenue", "ascent") or mode == "seeds":
         rows = [{"business": u.get("name") or domain(u.get("url", "")), "website": u.get("url", ""), "city": u.get("city", "")}
                 if isinstance(u, dict) else {"business": domain(u), "website": u, "city": ""} for u in seeds]
