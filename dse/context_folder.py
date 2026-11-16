@@ -4,6 +4,8 @@
     python dse.py context <engine> --scan                                                 read the attached folders again
     python dse.py context <engine> --show                                                 what the engine understood from them
     python dse.py context <engine> --remove <folder>                                      detach a folder (the folder itself is never touched)
+    python dse.py context <engine> --suggest                                              what the folders suggest for this engine's settings (nothing is changed)
+    python dse.py context <engine> --adopt <lead-list.csv> [--apply]                      bring a lead list from the folder into the engine (preview unless --apply)
 
 What it reads: markdown, text, JSON, CSV and spreadsheets (the first sheet's header and row count), inside the folder and a few levels down.
 README, CONTEXT, AGENTS, CLAUDE, HANDOVER and numbered "00-" files are read first, because that is where the story of the work usually is.
@@ -28,6 +30,8 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
+from collections import Counter
 from pathlib import Path
 
 from .common import ROOT
@@ -183,7 +187,16 @@ def summarise_csv(path: Path) -> dict:
     cols = [c.strip() for c in head][:30]
     hits = {c.lower() for c in cols} & LEAD_COLS
     lead = len(hits) >= 2 and n >= 5
-    return {"title": path.name, "columns": cols, "rows": n, "lead_list": lead,
+    cities: list[str] = []
+    if lead and any(c.lower() == "city" for c in cols):
+        try:
+            with path.open(encoding="utf-8-sig", errors="ignore", newline="") as f:
+                dr = csv.DictReader(f, delimiter=delim)
+                key = next(c for c in dr.fieldnames or [] if (c or "").strip().lower() == "city")
+                cities = [f"{c} ({k})" for c, k in Counter((r.get(key) or "").strip() for _i, r in zip(range(5000), dr) if (r.get(key) or "").strip()).most_common(5)]
+        except (OSError, csv.Error, StopIteration):
+            cities = []
+    return {"title": path.name, "columns": cols, "rows": n, "lead_list": lead, "cities": cities,
             "summary": f"{n} rows; columns: {', '.join(cols[:12])}" + (" ... " if len(cols) > 12 else "")}
 
 
@@ -449,4 +462,192 @@ def report(slug: str, add: str = "", label: str = "", remove: str = "", do_scan:
                 L.append(f"Not read yet: python dse.py context {slug} --scan")
     if add or do_scan:
         L += ["", "DBI-AI chat now uses a short part of this when you ask about this engine. Nothing leaves this PC unless you chat with your own key."]
+    return "\n".join(L)
+
+
+# ------------------------------------------------------------------ suggest and adopt (the digest stays on this PC, so this is done here)
+
+MAX_ADOPT_BYTES = 5_000_000
+MAX_SEEDS = 500
+
+
+def lead_lists(slug: str) -> list[dict]:
+    """Lead-list candidates from the engine's digest: {folder, label, path (relative), rows, columns, cities}."""
+    p = engine_dir(slug) / "context" / "digest.json"
+    if not p.is_file():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except ValueError:
+        return []
+    out = []
+    for d in data.get("folders", []):
+        for x in d.get("files", []):
+            if x.get("lead_list"):
+                out.append({"folder": d.get("root", ""), "label": d.get("label", ""), "path": x["path"], "rows": x.get("rows", 0), "columns": x.get("columns", []), "cities": x.get("cities", []), "kind": x.get("kind", "csv")})
+    return out
+
+
+def engine_mode(cfg: dict) -> str:
+    """How this engine gets its leads: import, pasted, seeds, podcasts, finder, or none (a chat-and-notes engine)."""
+    path = cfg.get("path", "smb")
+    mode = cfg.get("source") if path == "custom" else {"gtm": "import", "authority": "pasted"}.get(path)
+    if path == "custom" and (mode or "none") == "none":
+        return "none"
+    if mode in ("import", "pasted"):
+        return mode
+    if path == "broadcast" or mode == "podcasts":
+        return "podcasts"
+    if path in ("ministry", "revenue", "ascent") or mode == "seeds":
+        return "seeds"
+    return "finder"
+
+
+def suggest(slug: str) -> str:
+    """What the attached folders suggest for this engine. Nothing is changed."""
+    cfg = load(slug)
+    p = engine_dir(slug) / "context" / "digest.json"
+    if not attached(slug):
+        return f"No folders attached to '{slug}'. Attach one first: python dse.py context {slug} --add <folder>"
+    if not p.is_file():
+        return f"Not read yet: python dse.py context {slug} --scan"
+    data = json.loads(p.read_text(encoding="utf-8"))
+    sg = {k: [] for k in ("prices", "niche", "offer", "goal")}
+    cities: Counter = Counter()
+    for d in data.get("folders", []):
+        for k in sg:
+            sg[k] += [x for x in (d.get("signals") or {}).get(k, []) if x not in sg[k]]
+        for x in d.get("files", []):
+            for c in x.get("cities", []):
+                m = re.match(r"(.+) \((\d+)\)$", c)
+                if m:
+                    cities[m.group(1)] += int(m.group(2))
+    L = [f"What the folders suggest for '{slug}' (nothing was changed; edit the engine in Citadel, My engines):", ""]
+    L.append(f"- Cities in the lead lists: {', '.join(f'{c} ({n})' for c, n in cities.most_common(6))}" if cities else "- Cities: none found in the lead lists.")
+    cur = cfg.get("cities") or []
+    if cities and cur:
+        L.append(f"  This engine's cities today: {', '.join(cur)}.")
+    for k, label in (("niche", "Niche lines"), ("offer", "Offer lines"), ("goal", "Goal lines")):
+        if sg[k]:
+            L.append(f"- {label}: " + " | ".join(sg[k][:4]))
+    if sg["prices"]:
+        L.append("- Prices mentioned: " + ", ".join(sg["prices"][:8]))
+    leads = lead_lists(slug)
+    mode = engine_mode(cfg)
+    if leads:
+        L.append(f"- {len(leads)} lead list(s) you could bring in (this engine takes its leads by: {mode}):")
+        for x in leads[:8]:
+            L.append(f"    {x['label']}:{x['path']} ({x['rows']} rows)")
+        L.append(f"  Preview one: python dse.py context {slug} --adopt \"<label>:<path>\"   (add --apply to do it)")
+    else:
+        L.append("- No lead lists found in the folders.")
+    if not any(sg.values()) and not leads and not cities:
+        L.append("- Nothing to suggest yet. A CONTEXT.md in the folder (who it is for, the offer and price, what is done, what is next) gives the engine the most.")
+    return "\n".join(L)
+
+
+def _find_in_folders(slug: str, ref: str) -> Path:
+    """The file named by '<label>:<relative path>', a relative path, or a full path, but only inside an attached folder."""
+    items = attached(slug)
+    if not items:
+        raise ValueError("No folders are attached to this engine yet.")
+    ref = (ref or "").strip().strip('"')
+    label = ""
+    if ":" in ref and not re.match(r"^[A-Za-z]:[\\/]", ref):
+        label, ref = ref.split(":", 1)
+    roots = [Path(i["path"]) for i in items if not label or (i.get("label") or "").lower() == label.strip().lower() or Path(i["path"]).name.lower() == label.strip().lower()]
+    cands = []
+    for r in roots:
+        q = Path(ref)
+        cands.append(q if q.is_absolute() else r / q)
+    for q in cands:
+        try:
+            real = q.resolve()
+        except OSError:
+            continue
+        if real.is_file() and any(str(real).lower().startswith(str(r.resolve()).lower()) for r in roots):
+            return real
+    raise ValueError(f"I cannot find '{ref}' inside the folders attached to this engine. Use the path shown by --suggest, for example \"Label:leads.csv\".")
+
+
+def _rows(path: Path) -> tuple[list[str], list[dict]]:
+    delim = "\t" if path.suffix.lower() == ".tsv" else ","
+    with path.open(encoding="utf-8-sig", errors="ignore", newline="") as f:
+        dr = csv.DictReader(f, delimiter=delim)
+        rows = [r for _i, r in zip(range(20_000), dr)]
+        return [h for h in (dr.fieldnames or [])], rows
+
+
+def _col(headers: list[str], *names: str) -> str:
+    low = {h.strip().lower(): h for h in headers if h}
+    for n in names:
+        if n in low:
+            return low[n]
+    for h in low:
+        if any(n in h for n in names):
+            return low[h]
+    return ""
+
+
+def adopt(slug: str, ref: str, apply: bool = False) -> str:
+    """Bring a lead list from an attached folder into the engine. Preview unless apply. The original file is only ever copied from."""
+    cfg = load(slug)
+    mode = engine_mode(cfg)
+    if mode == "none":
+        raise ValueError("This engine is a chat-and-notes engine: it has no lead lists to bring in.")
+    src = _find_in_folders(slug, ref)
+    kind, why = classify(src)
+    if kind != "csv":
+        raise ValueError(f"Only CSV lead lists can be brought in ({src.name}: {why or kind}). Save the sheet as a CSV first.")
+    if src.stat().st_size > MAX_ADOPT_BYTES:
+        raise ValueError("That file is bigger than 5 MB. Split it first.")
+    headers, rows = _rows(src)
+    web = _col(headers, "website", "url", "domain", "site")
+    name = _col(headers, "business", "company", "name")
+    city = _col(headers, "city")
+    with_site = [r for r in rows if (r.get(web) or "").strip()] if web else []
+    L = [f"Lead list: {src.name}: {len(rows)} rows, {len(with_site)} with a website. Engine '{slug}' takes its leads by: {mode}."]
+    target = ""
+    if mode in ("import", "pasted"):
+        folder = engine_dir(slug) / ("imports" if mode == "import" else "pasted")
+        dest = folder / f"adopted-{src.name}"
+        n = 2
+        while dest.exists():
+            dest = folder / f"adopted-{src.stem}-{n}{src.suffix}"
+            n += 1
+        target = f"copy to engines/{slug}/{folder.name}/{dest.name}"
+        if apply:
+            folder.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+    elif mode == "seeds":
+        if not web:
+            raise ValueError("This engine works from website addresses, and that list has no website column.")
+        have = {re.sub(r"^https?://(www\.)?", "", (u.get("url") if isinstance(u, dict) else u or "").lower()).strip("/") for u in (cfg.get("seed_urls") or [])}
+        add = []
+        for r in with_site:
+            u = (r.get(web) or "").strip()
+            key = re.sub(r"^https?://(www\.)?", "", u.lower()).strip("/")
+            if key and key not in have and len(have) + len(add) < MAX_SEEDS:
+                have.add(key)
+                add.append({"url": u if u.lower().startswith("http") else "https://" + u, "name": (r.get(name) or "").strip()[:80], "city": (r.get(city) or "").strip()[:60]})
+        target = f"add {len(add)} new website(s) to the engine's seed list ({len(with_site) - len(add)} already there or over the limit of {MAX_SEEDS})"
+        if apply and add:
+            cfg["seed_urls"] = list(cfg.get("seed_urls") or []) + add
+            _save_cfg(slug, cfg)
+    else:
+        dest = engine_dir(slug) / "adopted" / src.name
+        n = 2
+        while dest.exists():
+            dest = engine_dir(slug) / "adopted" / f"{src.stem}-{n}{src.suffix}"
+            n += 1
+        target = f"keep a copy at engines/{slug}/adopted/{dest.name} for reference"
+        L.append("This engine finds its own leads (by business type and city), so the list is kept for reference and the engine's settings are NOT changed.")
+        L.append("To work those rows, make an engine that takes website addresses (Revenue or Ascent), or use Lead enrichment on the file.")
+        if apply:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+    L.append(("Done: " if apply else "Preview (nothing changed): would ") + target + ".")
+    if not apply:
+        L.append(f"To do it: python dse.py context {slug} --adopt \"{ref}\" --apply")
+    L.append("Your original file is never changed or moved.")
     return "\n".join(L)

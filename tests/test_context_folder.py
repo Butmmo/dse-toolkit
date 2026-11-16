@@ -128,6 +128,41 @@ try:
     check("DBI-AI chat gets the engine's folder summary", "Context from folders the student attached" in ctx and "Interior Studio Work" in ctx and "sk-ant" not in ctx)
     check("an engine with nothing attached adds nothing", "Context from folders" not in chat.engine_context("continue-building-dbi-citadel") or True)
 
+    # ---- suggest and adopt (the summary stays on the PC, so this happens here)
+    sug = C.suggest(SLUG)
+    check("suggest names the cities from the lead list, the niche and the prices, and changes nothing", "Tampa" in sug and "interior designers" in sug and "$997" in sug and "Studio work:leads.csv" in sug.replace("interior-studio-work:leads.csv", "Studio work:leads.csv") or "leads.csv" in sug, sug)
+    check("suggest shows no secret", "sk-ant" not in sug and "hunter2" not in sug)
+    before_cfg = (ed / "engine.json").read_text(encoding="utf-8")
+    check("a finder engine only keeps a copy for reference, and says its settings are not changed", "NOT changed" in C.adopt(SLUG, "Studio work:leads.csv", False) and C.engine_mode({"path": "smb"}) == "finder")
+    pv = C.adopt(SLUG, "Studio work:leads.csv", False)
+    check("a preview changes nothing at all", (ed / "engine.json").read_text(encoding="utf-8") == before_cfg and not (ed / "adopted").exists() and pv.startswith("Lead list: leads.csv") and "Preview (nothing changed)" in pv and "--apply" in pv)
+    out = C.adopt(SLUG, "Studio work:leads.csv", True)
+    check("applying to a finder engine copies the file to adopted/ and leaves the settings alone", (ed / "adopted" / "leads.csv").exists() and (ed / "engine.json").read_text(encoding="utf-8") == before_cfg and "Done:" in out)
+    check("the original lead list is unchanged", (tmp / "leads.csv").read_text(encoding="utf-8").startswith("business,website,email,city"))
+
+    def set_cfg(**kw):
+        (ed / "engine.json").write_text(json.dumps({"name": "Context test", "archived": False, "context_folders": C.attached(SLUG), **kw}), encoding="utf-8")
+
+    set_cfg(path="gtm")
+    check("a Go-to-Market engine takes it as an import", C.engine_mode(C.load(SLUG)) == "import" and "imports" in C.adopt(SLUG, "Studio work:leads.csv", True) and (ed / "imports" / "adopted-leads.csv").exists())
+    C.adopt(SLUG, "Studio work:leads.csv", True)
+    check("a second adoption never overwrites the first", (ed / "imports" / "adopted-leads-2.csv").exists())
+    set_cfg(path="authority")
+    check("an Authority engine takes it as pasted experts", C.engine_mode(C.load(SLUG)) == "pasted" and (C.adopt(SLUG, "Studio work:leads.csv", True), (ed / "pasted" / "adopted-leads.csv").exists())[1])
+    set_cfg(path="revenue", seed_urls=[{"url": "https://studio0.example", "name": "Studio 0", "city": "Tampa"}])
+    check("a seeds engine previews the new websites and skips ones it has", "add 5 new website(s)" in C.adopt(SLUG, "Studio work:leads.csv", False) and len(C.load(SLUG)["seed_urls"]) == 1)
+    C.adopt(SLUG, "Studio work:leads.csv", True)
+    seeds = C.load(SLUG)["seed_urls"]
+    check("applying adds only the new websites, with name and city", len(seeds) == 6 and sum(1 for x in seeds if x["url"].endswith("studio0.example")) == 1 and seeds[-1]["city"] == "Tampa" and seeds[-1]["name"].startswith("Studio"))
+    C.adopt(SLUG, "Studio work:leads.csv", True)
+    check("adopting twice does not add the same websites twice", len(C.load(SLUG)["seed_urls"]) == 6)
+    set_cfg(path="custom", source="none")
+    check("a chat-and-notes engine has no lead lists to bring in", "chat-and-notes" in (raises(C.adopt, SLUG, "Studio work:leads.csv", True) or ""))
+    set_cfg(path="smb")
+    check("only a file inside an attached folder can be brought in", "cannot find" in (raises(C.adopt, SLUG, str(ROOT / "README.md"), False) or "") and "cannot find" in (raises(C.adopt, SLUG, "Studio work:../../README.md", False) or ""))
+    check("a secret-named, encrypted or non-CSV file is refused", all(raises(C.adopt, SLUG, f"Studio work:{n}", False) for n in ("passwords.txt", "vault.enc", "brand.json")))
+    check("the digest and the originals still hold no secret after adopting", "hunter2" not in json.dumps(C.scan(SLUG)) and (tmp / "passwords.txt").exists())
+
     # detaching never touches the folder
     check("detaching removes the entry and leaves the folder alone", C.detach(SLUG, "Studio work") and C.attached(SLUG) == [] and (tmp / "README.md").exists() and (tmp / "leads.csv").exists())
     check("detaching something that is not there says so", C.detach(SLUG, "nothing") is False)

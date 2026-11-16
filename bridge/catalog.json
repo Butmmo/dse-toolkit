@@ -7910,6 +7910,89 @@
       ],
       "timeout_min": 3,
       "outputs": []
+    },
+    "dse.context_suggest": {
+      "label": "Engine context: what the folders suggest",
+      "group": "My engines",
+      "help": "Reads the engine's summary and suggests settings: the cities found in your lead lists, the niche, offer, goal and price lines, and which lead lists you could bring in. It changes nothing: you decide, and edit the engine in My engines. The summary stays on this PC.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "context"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "flag": "--suggest",
+          "field": "suggest"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "suggest",
+          "label": "Suggest",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.context_adopt": {
+      "label": "Engine context: bring a lead list in from the folder",
+      "group": "My engines",
+      "help": "Brings a CSV lead list from an attached folder into the engine, the way that engine takes its leads: a Go-to-Market engine gets it in its imports, an Authority engine in its pasted experts, a Revenue or Ascent engine gets the websites added to its seed list (new ones only, up to 500), and an engine that finds its own leads keeps a copy for reference without changing its settings. Leave the box off to preview exactly what would happen. Your original file is only ever copied from, never changed or moved.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "context"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--adopt",
+          "field": "file"
+        },
+        {
+          "flag": "--apply",
+          "field": "apply"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "file",
+          "label": "The lead list, as shown by 'what the folders suggest' (for example Studio work:leads.csv)",
+          "type": "text",
+          "required": true,
+          "max": 260
+        },
+        {
+          "name": "apply",
+          "label": "Do it now (leave off to preview)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
     }
   },
   "periodic": [

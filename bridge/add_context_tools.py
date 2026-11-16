@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.context_add", "dse.context_scan", "dse.context_show", "dse.context_remove"):
+for k in ("dse.context_add", "dse.context_scan", "dse.context_show", "dse.context_remove", "dse.context_suggest", "dse.context_adopt"):
     T.pop(k, None)
 
 ENGINE = {"name": "engine", "label": "Engine", "type": "choice", "required": True, "choices_from": "engines", "choices": []}
@@ -41,6 +41,17 @@ T["dse.context_remove"] = tool(
     "Stops the engine reading a folder. Your folder itself is never touched or deleted. Say the folder's path or the short name you gave it.",
     [{"lit": "context"}, {"field": "engine"}, {"opt": "--remove", "field": "folder"}],
     [ENGINE, {**FOLDER, "label": "The folder's path or short name"}])
+T["dse.context_suggest"] = tool(
+    "Engine context: what the folders suggest",
+    "Reads the engine's summary and suggests settings: the cities found in your lead lists, the niche, offer, goal and price lines, and which lead lists you could bring in. It changes nothing: you decide, and edit the engine in My engines. The summary stays on this PC.",
+    [{"lit": "context"}, {"field": "engine"}, {"flag": "--suggest", "field": "suggest"}],
+    [ENGINE, {"name": "suggest", "label": "Suggest", "type": "bool", "default": True}])
+T["dse.context_adopt"] = tool(
+    "Engine context: bring a lead list in from the folder",
+    "Brings a CSV lead list from an attached folder into the engine, the way that engine takes its leads: a Go-to-Market engine gets it in its imports, an Authority engine in its pasted experts, a Revenue or Ascent engine gets the websites added to its seed list (new ones only, up to 500), and an engine that finds its own leads keeps a copy for reference without changing its settings. Leave the box off to preview exactly what would happen. Your original file is only ever copied from, never changed or moved.",
+    [{"lit": "context"}, {"field": "engine"}, {"opt": "--adopt", "field": "file"}, {"flag": "--apply", "field": "apply"}],
+    [ENGINE, {"name": "file", "label": "The lead list, as shown by 'what the folders suggest' (for example Studio work:leads.csv)", "type": "text", "required": True, "max": 260},
+     {"name": "apply", "label": "Do it now (leave off to preview)", "type": "bool", "default": False}])
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len(T), "tools in all")
