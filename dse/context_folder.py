@@ -168,11 +168,11 @@ def _pdf_text(path: Path) -> str:
             out.append(page.extract_text() or "")
             if sum(len(x) for x in out) > MAX_READ:
                 break
-        return "\n".join(out)[:MAX_READ]
-    except ImportError:
-        pass
+        got = "\n".join(out)[:MAX_READ]
+        if got.strip():
+            return got
     except Exception:
-        return ""
+        pass            # not installed, or a file pypdf cannot parse: try the plain way below
     import zlib
     raw = path.read_bytes()
     out = []
