@@ -11,8 +11,8 @@
   "role_locals": ["info", "hello", "hi", "contact", "office", "admin", "support", "sales", "team", "enquiries", "inquiries", "mail", "reception", "frontdesk", "appointments", "bookings", "billing", "accounts"],
   "freemail": ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "proton.me", "protonmail.com", "live.com", "msn.com", "ymail.com"],
   "dkim_selectors": ["google", "selector1", "selector2", "default", "k1", "k2", "s1", "s2", "mail", "dkim", "mandrill", "smtp", "zoho", "mxvault"],
-  "mailbox_daily_warn": 40,
-  "mailbox_daily_note": "Cold email from one mailbox is usually kept to a few dozen a day, and a new domain or mailbox is warmed up slowly. 40 is a common ceiling; your own engine cap is also checked.",
+  "mailbox_daily_warn": 30,
+  "mailbox_daily_note": "Cold email from one mailbox is usually kept to a few dozen a day, and a new domain or mailbox is warmed up slowly. About 30 a day per mailbox matches the Outreach Stack's own limit; your own engine cap is also checked.",
   "spf_lookup_limit": 10,
   "sender_guidelines": "Google's Email sender guidelines (support.google.com/a/answer/81126) ask every sender to authenticate with SPF and DKIM, and bulk senders with DMARC as well."
 }

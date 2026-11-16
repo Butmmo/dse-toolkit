@@ -131,10 +131,10 @@ try:
             cfg["mailboxes"] = boxes
         (d / "engine.json").write_text(json.dumps(cfg), encoding="utf-8")
         return " | ".join(t for _l, t in P.check_list(SLUG, d / "send-lists" / "2026-11-11.csv")["list_notes"])
-    check("100 emails from one mailbox warns, and says how many mailboxes would suit", "100 emails in one day over 1 mailbox" in vol(0) and "About 3 warmed-up mailboxes" in vol(0), vol(0))
-    check("100 emails over 2 mailboxes still warns (over 40 each)", "over 2 mailbox" in vol(2))
-    check("100 emails over 3 mailboxes is within 40 each: no volume warning", "emails in one day" not in vol(3), vol(3))
-    check("no Email cap in the engine means no cap warning at that volume", "Email cap" not in vol(3))
+    check("100 emails from one mailbox warns, and says how many mailboxes would suit", "100 emails in one day over 1 mailbox" in vol(0) and "About 4 warmed-up mailboxes" in vol(0), vol(0))
+    check("100 emails over 3 mailboxes still warns (over 30 each)", "over 3 mailbox" in vol(3))
+    check("100 emails over 4 mailboxes is within 30 each: no volume warning", "emails in one day" not in vol(4), vol(4))
+    check("no Email cap in the engine means no cap warning at that volume", "Email cap" not in vol(4))
 finally:
     shutil.rmtree(d, ignore_errors=True)
 
