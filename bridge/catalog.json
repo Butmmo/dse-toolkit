@@ -7753,6 +7753,163 @@
       ],
       "timeout_min": 3,
       "outputs": []
+    },
+    "dse.context_add": {
+      "label": "Engine context: attach a folder of earlier work",
+      "group": "My engines",
+      "help": "Tell an engine to read a folder (one you copied over, or one inside the HQ folder) so DBI-AI and your tools can pick the work up with you. It reads markdown, text, JSON, CSV and spreadsheets, story files first (README, CONTEXT, AGENTS, CLAUDE, HANDOVER), and saves a short summary. Only the folder's path is stored in the engine. A CONTEXT.md that says who the work is for, what the offer is, what is done and what comes next helps most. Lead-list files are noticed but never imported. It never reads _private-keys, the encrypted memory vault, .env files, key files or files named like passwords. It never opens an encrypted file or an archive and never asks for a password: those are only listed as 'not read'. It hides anything that looks like a key, token or password. It never changes your folder. The summary stays on this PC.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "context"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--add",
+          "field": "folder"
+        },
+        {
+          "opt": "--label",
+          "field": "label"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "folder",
+          "label": "Folder (the full path, or a path inside the HQ folder)",
+          "type": "text",
+          "required": true,
+          "max": 260
+        },
+        {
+          "name": "label",
+          "label": "A short name for it (optional)",
+          "type": "text",
+          "required": false,
+          "max": 60
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.context_scan": {
+      "label": "Engine context: read the folders again",
+      "group": "My engines",
+      "help": "Reads the engine's attached folders again, after you added or changed files, and refreshes the summary. It never reads _private-keys, the encrypted memory vault, .env files, key files or files named like passwords. It never opens an encrypted file or an archive and never asks for a password: those are only listed as 'not read'. It hides anything that looks like a key, token or password. It never changes your folder. The summary stays on this PC.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "context"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "flag": "--scan",
+          "field": "scan"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "scan",
+          "label": "Read them again now",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.context_show": {
+      "label": "Engine context: show what it understood",
+      "group": "My engines",
+      "help": "Shows the folders attached to an engine and the summary the tools use: the story files, the other files, which CSVs look like lead lists, the prices, niche, offer and goal lines it found, and what it did not read and why.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "context"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "flag": "--show",
+          "field": "show"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "show",
+          "label": "Show it",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.context_remove": {
+      "label": "Engine context: detach a folder",
+      "group": "My engines",
+      "help": "Stops the engine reading a folder. Your folder itself is never touched or deleted. Say the folder's path or the short name you gave it.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "context"
+        },
+        {
+          "field": "engine"
+        },
+        {
+          "opt": "--remove",
+          "field": "folder"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        },
+        {
+          "name": "folder",
+          "label": "The folder's path or short name",
+          "type": "text",
+          "required": true,
+          "max": 260
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
     }
   },
   "periodic": [

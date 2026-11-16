@@ -6,7 +6,7 @@
 
 How it answers (best available, in this order):
   1. Claude, if you set your own ANTHROPIC_API_KEY (and `pip install anthropic`): the strongest answers. Your question
-     and the matching library material are sent to Anthropic; your progress files are sent only if you ask about them.
+     and the matching library material are sent to Anthropic; your progress files are sent only if you ask about them. If you attached folders to an engine, a short summary of them (secrets hidden) goes with the question.
   2. Your own free Ollama model on this PC (OLLAMA_MODEL, else the best model installed, gemma3:4b before gemma3:1b).
   3. The built-in library alone (guides.json and ../howto/recipes.json), shown in full.
 In every case the answer is grounded in the library: researched guides and step-by-step recipes with sources.
@@ -127,6 +127,21 @@ def from_progress(q):
     return "Where you are (from your HQ progress):" + NL + NL.join(keep)
 
 
+def engine_digest(tk, folder, budget=3500):
+    """A short summary of the folders attached to an engine (dse-toolkit context_folder.py), or empty."""
+    try:
+        if not (tk / "engines" / folder / "context" / "digest.json").is_file():
+            return ""
+        sys.path.insert(0, str(tk))
+        try:
+            from dse import context_folder as cf
+            return cf.digest_for_chat(folder, budget)
+        finally:
+            sys.path.remove(str(tk))
+    except Exception:
+        return ""
+
+
 def engine_context(folder):
     """A member's own engine (Citadel: HQ Tools > My engines) or an HQ engine folder: its settings, README and latest note."""
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,59}", folder or ""):
@@ -148,6 +163,9 @@ def engine_context(folder):
             sl = tk / "engines" / folder / "send-lists"
             lists = sorted(sl.glob("*.csv")) if sl.is_dir() else []
             out.append(str(len(lists)) + " send lists built so far" + (", newest " + lists[-1].name if lists else "") + ".")
+            dg = engine_digest(tk, folder)
+            if dg:
+                out.append("Context from folders the student attached to this engine (their own earlier work, summarised; secrets are hidden; use it to continue the work, and say when it is out of date):" + NL + dg)
             return (NL * 2).join(out)
     rd = root / folder / "README.md"
     if rd.is_file():

@@ -17,6 +17,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
+  python dse.py context <engine> [--add FOLDER] [--label L] [--scan] [--show] [--remove FOLDER]  read a folder of earlier work into the engine
   python dse.py outreach <engine|list> [--door review|inquiry] [--start DATE] [--name N] [--address A]  14-day touch plan and a mail-merge file (sends nothing)
   python dse.py proposal <engine> --client "Acme" --problem "..." --offer "..." --price 1500 --deliverables "a; b"  a one-page proposal, cover email and follow-up (it sends nothing)
   python dse.py client won <engine> --proposal NAME   the Client Desk: from a won proposal to onboarding, invoices, delivery and payments (client list|show|done|invoice|paid)
@@ -49,7 +50,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import brief, crmsync, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -160,6 +161,8 @@ def main():
     pr.add_argument("--currency", default="USD"); pr.add_argument("--excludes", default=""); pr.add_argument("--start", default=""); pr.add_argument("--quotes", action="store_true", help="add approved testimonials (their exact words, the attribution they chose)")
     pf = sub.add_parser("preflight"); pf.add_argument("target", nargs="?", default="", help="an engine (newest list) or a path to a list"); pf.add_argument("--domain", default="")
     pf.add_argument("--clean", action="store_true", help="write a copy without the blocked rows")
+    cx = sub.add_parser("context"); cx.add_argument("engine"); cx.add_argument("--add", default=""); cx.add_argument("--label", default="")
+    cx.add_argument("--remove", default=""); cx.add_argument("--scan", action="store_true"); cx.add_argument("--show", action="store_true")
     op = sub.add_parser("outreach"); op.add_argument("target"); op.add_argument("--door", default=""); op.add_argument("--start", default="")
     op.add_argument("--name", default=""); op.add_argument("--address", default="")
     rp = sub.add_parser("reply"); rp.add_argument("engine"); rp.add_argument("--text", required=True); rp.add_argument("--name", default=""); rp.add_argument("--source", default="")
@@ -246,6 +249,11 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "dnc":
         print(replies.dnc_report(a.engine))
+    elif a.cmd == "context":
+        try:
+            print(context_folder.report(a.engine, a.add, a.label, a.remove, a.scan, a.show))
+        except ValueError as e:
+            sys.exit(str(e))
     elif a.cmd == "outreach":
         try:
             print(outreach.report(a.target, a.door, a.start or None, a.name, a.address))
