@@ -180,6 +180,49 @@ fresh()
 check("the test says what to do when the sign-in is gone", G.test(MB, http=Http(token_code=409, token_body={"error": "signin_needed"}))["status"] == "error")
 pay = H.status_payload([{"id": MB, "email": "ada@outlook.com"}, {"id": "other", "email": "o@x.co"}], signed={MB})
 check("Citadel is told a signed-in mailbox has a login (so it shows as set up) and one that is not signed in does not", pay[MB]["secret_set"] is True and "Signed in with Microsoft" in pay[MB]["note"] and pay["other"]["secret_set"] is False)
+
+# ---- Google: sending through the Gmail API (sending only)
+class GHttp(Http):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.token_body = {"access_token": "GAT", "expires_in": 3600, "provider": "google"}
+        self.gmail_code, self.gmail_body = 200, b"{}"
+
+    def __call__(self, method, url, headers, data=None, timeout=30):
+        if url.startswith(G.GMAIL_SEND):
+            self.log.append((method, url, headers, data))
+            return self.gmail_code, self.gmail_body
+        return super().__call__(method, url, headers, data, timeout)
+
+
+fresh()
+gh = GHttp()
+G.send_mime(MB, msg(), http=gh)
+gsent = [x for x in gh.log if x[1] == G.GMAIL_SEND][0]
+raw64 = json.loads(gsent[3])["raw"]
+check("for a Google mailbox the message goes to the Gmail API as url-safe base64 MIME (the mail itself unchanged) with the bearer token, not to Microsoft Graph", gsent[0] == "POST" and gsent[2]["Authorization"] == "Bearer GAT" and gsent[2]["Content-Type"] == "application/json" and b"Subject: Hello" in base64.urlsafe_b64decode(raw64 + "=" * (-len(raw64) % 4)) and not any(x[1].endswith("/me/sendMail") for x in gh.log) and G.provider_of(MB) == "google")
+
+
+def graised(code, body=b"{}"):
+    fresh()
+    h = GHttp()
+    h.gmail_code, h.gmail_body = code, body
+    try:
+        G.send_mime(MB, msg(), http=h)
+    except Exception as e:
+        return e
+    return None
+
+
+check("Gmail refusals become the same errors as for Microsoft: a refused sign-in is a login error, a bad address is a recipient error, throttling is temporary, the rest is a permanent rejection", isinstance(graised(401), smtplib.SMTPAuthenticationError) and isinstance(graised(400, json.dumps({"error": {"code": 400, "message": "Invalid To header", "status": "INVALID_ARGUMENT"}}).encode()), smtplib.SMTPRecipientsRefused) and graised(429).smtp_code == 451 and graised(503).smtp_code == 451 and graised(400, json.dumps({"error": {"message": "Bad thing"}}).encode()).smtp_code == 554)
+fresh()
+gh2 = GHttp()
+check("a Google mailbox reads no replies here (the permission to read is restricted): the read is empty and changes nothing", G.fetch_new({"id": MB}, dt.date(2026, 11, 20), set(), http=gh2) == [] and not any("/messages" in x[1] and "gmail" in x[1] for x in gh2.log))
+fresh()
+tg = G.test(MB, http=GHttp())
+check("the test of a Google sign-in says ready for sending, and says plainly that replies are read in Gmail itself", tg["status"] == "ready" and tg["smtp"] is True and tg["imap"] is None and "Replies are read in Gmail" in tg["note"])
+fresh()
+check("a Microsoft sign-in is still tested through Graph (the provider decides, not a setting)", G.test(MB, http=Http())["imap"] is True)
 check("the marker is never written to disk and no token appears in the module", "write_text" not in (ROOT / "dse" / "herald_graph.py").read_text(encoding="utf-8") and "print(" not in (ROOT / "dse" / "herald_graph.py").read_text(encoding="utf-8"))
 check("no em dash", DASH not in (ROOT / "dse" / "herald_graph.py").read_text(encoding="utf-8") + Path(__file__).read_text(encoding="utf-8"))
 print("\nALL PASS" if not fails else f"\n{len(fails)} FAILED: " + ", ".join(fails))

@@ -1,4 +1,8 @@
-"""Herald: send and read through Microsoft Graph for a mailbox you signed in with Microsoft from Citadel (17 Nov 2026).
+"""Herald: send (and for Microsoft also read) through Microsoft Graph or the Gmail API for a mailbox you signed in with Microsoft or Google from Citadel (17 Nov 2026).
+
+Google is for SENDING only: reading a Gmail inbox needs a Google permission that is restricted (a paid yearly review), so a Google-signed-in mailbox does not read replies here; the member reads them in Gmail, or the old app-password way still reads them.
+
+The original text follows.
 
 The member presses "Sign in with Microsoft" on the mailbox in Citadel. Citadel keeps an encrypted token; this PC asks Citadel for a short-lived access token each time it needs one (the runner token proves the PC),
 and uses Microsoft Graph over HTTPS: no SMTP, no app password, nothing for Microsoft to block as a "less secure app". The refresh token never reaches this PC.
@@ -20,6 +24,7 @@ from email.message import EmailMessage
 
 SENTINEL = "citadel-ms:"
 GRAPH = "https://graph.microsoft.com/v1.0"
+GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 TIMEOUT = 30
 MAX_NEW = 300                      # at most this many NEW messages per read, oldest first; the rest are read on the next pass
 MAX_RAW = 20000                    # the same idea as the IMAP reader: only the start of each message is needed
@@ -107,11 +112,17 @@ def access_token(mailbox_id: str, now: float | None = None, http=_http) -> str:
     except ValueError:
         data = {}
     if code == 200 and data.get("access_token"):
-        _state["tokens"][mailbox_id] = (data["access_token"], now + int(data.get("expires_in", 3600)))
+        _state["tokens"][mailbox_id] = (data["access_token"], now + int(data.get("expires_in", 3600)), data.get("provider") or "microsoft")
         return data["access_token"]
     if code in (404, 409) or data.get("error") == "signin_needed":
         raise SignInNeeded("The Microsoft sign-in for this mailbox needs doing again: open Herald > Mailboxes in Citadel and press Sign in with Microsoft.")
     raise ConnectionError(f"Citadel could not give a Microsoft token ({code}).")
+
+
+def provider_of(mailbox_id: str) -> str:
+    """Which provider the mailbox is signed in with (known once a token has been fetched): microsoft or google."""
+    have = _state["tokens"].get(mailbox_id)
+    return have[2] if have and len(have) > 2 else "microsoft"
 
 
 def _graph_error(raw: bytes) -> tuple[str, str]:
@@ -128,14 +139,17 @@ def send_mime(mailbox_id: str, msg: EmailMessage, http=_http) -> None:
         token = access_token(mailbox_id, http=http)
     except SignInNeeded as e:
         raise smtplib.SMTPAuthenticationError(535, str(e).encode("utf-8")) from None
-    code, raw = http("POST", f"{GRAPH}/me/sendMail", {"Authorization": f"Bearer {token}", "Content-Type": "text/plain"}, base64.b64encode(msg.as_bytes()))
+    if provider_of(mailbox_id) == "google":
+        code, raw = http("POST", GMAIL_SEND, {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, json.dumps({"raw": base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")}).encode("utf-8"))
+    else:
+        code, raw = http("POST", f"{GRAPH}/me/sendMail", {"Authorization": f"Bearer {token}", "Content-Type": "text/plain"}, base64.b64encode(msg.as_bytes()))
     if code in (200, 202):
         return
     _state["tokens"].pop(mailbox_id, None)
     ecode, text = _graph_error(raw)
     if code in (401, 403):
         raise smtplib.SMTPAuthenticationError(535, f"Microsoft refused the sign-in ({ecode or code}): sign in again from Citadel.".encode("utf-8"))
-    if code == 400 and "Recipient" in ecode:
+    if code == 400 and ("Recipient" in ecode or "invalid to header" in text.lower() or "recipient" in text.lower()):
         raise smtplib.SMTPRecipientsRefused({"recipient": (550, f"Microsoft refused the address: {text}".encode("utf-8"))})
     if code == 429 or code >= 500:
         raise smtplib.SMTPResponseException(451, f"Microsoft is busy ({code}); tried again later.".encode("utf-8"))
@@ -145,6 +159,8 @@ def send_mime(mailbox_id: str, msg: EmailMessage, http=_http) -> None:
 def fetch_new(m: dict, since: dt.date, seen: set[str], http=_http, limit: int = MAX_NEW) -> list[tuple[str, bytes]]:
     """New inbox messages since a date, as the start of each raw message, without changing anything in the mailbox."""
     token = access_token(m["id"], http=http)
+    if provider_of(m["id"]) == "google":
+        return Batch()                 # a Gmail inbox cannot be read with the send-only permission (see the top of this file)
     h = {"Authorization": f"Bearer {token}"}
     q = urllib.parse.urlencode({"$top": "50", "$orderby": "receivedDateTime asc", "$select": "id,internetMessageId", "$filter": f"receivedDateTime ge {since.isoformat()}T00:00:00Z"})
     url = f"{GRAPH}/me/mailFolders/inbox/messages?{q}"
@@ -180,6 +196,8 @@ def test(mailbox_id: str, http=_http) -> dict:
         return {"status": "error", "secret_set": True, "smtp": False, "imap": False, "note": str(e)}
     except ConnectionError as e:
         return {"status": "error", "secret_set": True, "smtp": None, "imap": None, "note": str(e)}
+    if provider_of(mailbox_id) == "google":          # the sign-in works if Citadel could refresh it: nothing can be read to check with the send-only permission
+        return {"status": "ready", "secret_set": True, "smtp": True, "imap": None, "note": "Signed in with Google: this mailbox can send. Replies are read in Gmail itself (or with an app password on this PC)."}
     code, raw = http("GET", f"{GRAPH}/me/mailFolders/inbox?$select=id", {"Authorization": f"Bearer {token}"})
     if code == 200:
         return {"status": "ready", "secret_set": True, "smtp": True, "imap": True, "note": "Signed in with Microsoft: this mailbox can send and read through Microsoft."}
