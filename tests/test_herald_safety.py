@@ -171,6 +171,63 @@ G._state["tokens"] = {}
 G.fetch_new({"id": "11111111-1111-4111-8111-111111111111"}, dt.date(2026, 11, 20), set(), http=h)
 check("it asks the inbox for the oldest first", any("receivedDateTime+asc" in u for u in h.urls))
 
+
+# ---------------------------------------------------------------- answers and warmup mail are journalled (a failed report can never cause a second send)
+from dse import herald_warm as W  # noqa: E402
+
+MBX = {"id": "m9", "email": "ada@me.com", "display_name": "Ada", "provider": "custom", "paused": False}
+OUT_ITEM = {"id": "o1", "to_email": "lead@x.co", "subject": "Re: Hello", "body": "Thanks!", "lead_status": "new", "mailbox": MBX}
+
+
+class AnsApi:
+    def __init__(self, fail_report=True):
+        self.fail_report, self.reports, self.done = fail_report, [], set()
+
+    def rpc(self, name, body, tries=3):
+        if name == "hq_herald_outbox_due":
+            return [OUT_ITEM] if "o1" not in self.done else []        # the real Citadel stops listing an answer once it has been told it was sent
+        if name == "hq_herald_outbox_report":
+            if self.fail_report:
+                raise RuntimeError("Citadel is down")
+            self.reports.append(body["p_results"])
+            self.done.update(r["id"] for r in body["p_results"])
+        return None
+
+
+sent_to = []
+send_fn = lambda m, pw, msg: sent_to.append(msg["To"])  # noqa: E731
+H.DATA.mkdir(parents=True, exist_ok=True)
+api = AnsApi(fail_report=True)
+said = []
+n1 = S.send_answers(api, NOW, {"m9": "pw"}, send=send_fn, out=said.append)
+check("an answer is sent once, and when Citadel cannot be told it is written down on this PC instead of being lost", n1 == 1 and sent_to == ["lead@x.co"] and [r["id"] for r in S.journal_load("answers")] == ["o1"] and any("remembered on this PC" in x for x in said))
+n2 = S.send_answers(api, NOW + dt.timedelta(seconds=60), {"m9": "pw"}, send=send_fn, out=said.append)
+check("the next pass (Citadel still lists the answer as waiting, because it was never told) does NOT send it a second time", n2 == 0 and sent_to == ["lead@x.co"])
+api.fail_report = False
+n3 = S.send_answers(api, NOW + dt.timedelta(seconds=120), {"m9": "pw"}, send=send_fn, out=said.append)
+check("once Citadel is back it is told about the earlier answer, the journal is emptied, and still nothing is sent twice", n3 == 0 and sent_to == ["lead@x.co"] and api.reports and api.reports[0][0]["id"] == "o1" and S.journal_load("answers") == [])
+api2 = AnsApi(fail_report=False)
+sent_to.clear()
+S.send_answers(api2, NOW, {"m9": "pw"}, send=send_fn, out=said.append)
+check("when the report works at once the journal is emptied straight away", sent_to == ["lead@x.co"] and S.journal_load("answers") == [] and api2.reports[0][0]["status"] == "sent")
+jd = []
+S.journal_save("warm", [{"id": "w7", "status": "sent"}])
+
+
+class WApi:
+    def __init__(self, ok):
+        self.ok = ok
+
+    def rpc(self, name, body, tries=3):
+        if not self.ok:
+            raise RuntimeError("down")
+        jd.append((name, body))
+
+
+still = S.journal_flush(WApi(False), "warm", "hq_herald_warm_report", "p_results", out=lambda *a: None)
+check("sends that Citadel could not be told about stay on the journal and are named as owed, so they are skipped; once it can be told they are reported and cleared", still == {"w7"} and S.journal_load("warm") == [{"id": "w7", "status": "sent"}] and S.journal_flush(WApi(True), "warm", "hq_herald_warm_report", "p_results", out=lambda *a: None) == set() and S.journal_load("warm") == [] and jd[0][0] == "hq_herald_warm_report")
+warm_src = (ROOT / "dse" / "herald_warm.py").read_text(encoding="utf-8")
+check("the warmup sends and warmup answers use the same journal: flushed first, skipped while owed, written down before Citadel is told, cleared when it has been", warm_src.count("S.journal_flush(") == 2 and warm_src.count("S.journal_save(") == 4 and warm_src.count("in owed_ids") + warm_src.count("not in owed_ids") >= 2)
 check("no em dash", DASH not in (ROOT / "dse" / "herald_send.py").read_text(encoding="utf-8") + (ROOT / "dse" / "herald_graph.py").read_text(encoding="utf-8") + Path(__file__).read_text(encoding="utf-8"))
 shutil.rmtree(tmp, ignore_errors=True)
 print("\nALL PASS" if not fails else f"\n{len(fails)} FAILED: " + ", ".join(fails))

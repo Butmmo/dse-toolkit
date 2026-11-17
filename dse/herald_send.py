@@ -250,10 +250,13 @@ def build_answer(item: dict, now: dt.datetime) -> EmailMessage:
 
 def send_answers(api, now: dt.datetime, secrets: dict, dry: bool = False, send=_smtp_send, out=print) -> int:
     """Sends the answers the member wrote in the Citadel inbox, at once, in the same thread. Never to someone who unsubscribed or bounced."""
+    owed_ids = set() if dry else journal_flush(api, "answers", "hq_herald_outbox_report", "p_results", out)      # first: so the list below no longer holds answers that were already sent
     items = api.rpc("hq_herald_outbox_due", {}) or []
     results, sent, bad_login = [], 0, set()
     for it in items:
         m = it["mailbox"]
+        if str(it["id"]) in owed_ids:
+            continue
         if m["id"] in bad_login or m.get("paused") or not secrets.get(m["id"]):
             continue
         if it.get("lead_status") in ("unsubscribed", "bounced"):
@@ -270,6 +273,7 @@ def send_answers(api, now: dt.datetime, secrets: dict, dry: bool = False, send=_
         try:
             send(m, secrets[m["id"]], msg)
             results.append({"id": it["id"], "status": "sent", "message_id": msg["Message-ID"], "sent_at": now.isoformat(timespec="seconds")})
+            journal_save("answers", [r for r in results if r["status"] == "sent"])      # written down before Citadel is told
             sent += 1
             _extra_add(m["id"], now)
         except smtplib.SMTPAuthenticationError as e:
@@ -283,7 +287,11 @@ def send_answers(api, now: dt.datetime, secrets: dict, dry: bool = False, send=_
             results.append({"id": it["id"], "status": "retry", "count_attempt": False, "error": H._scrub(H.explain(e, m.get("provider", "")), secrets[m["id"]])})
         _log({"at": now.isoformat(timespec="seconds"), "to": it["to_email"], "from": m["email"], "step": 0, "result": results[-1]["status"], "error": results[-1].get("error", ""), "kind": "answer"})
     if results:
-        api.rpc("hq_herald_outbox_report", {"p_results": results})
+        try:
+            api.rpc("hq_herald_outbox_report", {"p_results": results})
+            journal_save("answers", [])
+        except Exception:
+            out("Citadel could not be told about these answers yet: they are remembered on this PC and reported next minute (nothing is sent twice).")
     return sent
 
 
@@ -327,6 +335,40 @@ def _journal_save(items: list) -> None:
     tmp = _journal().with_suffix(".tmp")
     tmp.write_text(json.dumps(items), encoding="utf-8")
     os.replace(tmp, _journal())
+
+
+# Answers and warmup mail are journalled like campaign mail: a sent email is written down on this PC BEFORE Citadel is told, so a crash or a failed report can never make the next pass send it a second time.
+def _jpath(name: str) -> Path:
+    return H.DATA / f"journal-{name}.json"
+
+
+def journal_load(name: str) -> list:
+    try:
+        d = json.loads(_jpath(name).read_text(encoding="utf-8")) if _jpath(name).exists() else []
+        return d if isinstance(d, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def journal_save(name: str, items: list) -> None:
+    H.DATA.mkdir(parents=True, exist_ok=True)
+    tmp = _jpath(name).with_suffix(".tmp")
+    tmp.write_text(json.dumps(items), encoding="utf-8")
+    os.replace(tmp, _jpath(name))
+
+
+def journal_flush(api, name: str, rpc: str, param: str, out=print) -> set:
+    """Tells Citadel about sends from an earlier pass that it was not told about. Returns the ids that are still owed (so they are not sent again)."""
+    owed = journal_load(name)
+    if not owed:
+        return set()
+    try:
+        api.rpc(rpc, {param: owed})
+        journal_save(name, [])
+        return set()
+    except Exception:
+        out("Citadel could not be told about earlier sends yet: they will not be sent again, and it is tried again next minute.")
+        return {str(o.get("id")) for o in owed}
 
 
 def _take_lock(now_s: float | None = None) -> bool:

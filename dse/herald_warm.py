@@ -95,12 +95,13 @@ def _msg(m: dict, to: str, subject: str, body: str, now: dt.datetime, reply_to: 
 def send_warm(api, now: dt.datetime, plan: dict, secrets: dict, send=S._smtp_send, rng=random.random, out=print) -> int:
     """At most one exchange email per opted-in mailbox per pass (and most passes none), inside the mailbox's own window."""
     results, sent = [], 0
+    owed_ids = S.journal_flush(api, "warm", "hq_herald_warm_report", "p_results", out)
     for m in H.load_mailboxes():
         p = plan.get(m["id"]) or {}
         if not p.get("warm_pool") or m.get("paused") or not secrets.get(m["id"]) or not in_window(m, now) or rng() < SKIP_ODDS:
             continue
         job = api.rpc("hq_herald_warm_next", {"p_mailbox": m["id"]})
-        if not isinstance(job, dict) or not job.get("to_email"):
+        if not isinstance(job, dict) or not job.get("to_email") or str(job.get("id")) in owed_ids:
             continue
         try:
             msg = _msg(m, job["to_email"], job["subject"], job["body"], now)
@@ -110,6 +111,7 @@ def send_warm(api, now: dt.datetime, plan: dict, secrets: dict, send=S._smtp_sen
         try:
             send(m, secrets[m["id"]], msg)
             results.append({"id": job["id"], "status": "sent", "message_id": msg["Message-ID"]})
+            S.journal_save("warm", [r for r in results if r["status"] == "sent"])      # written down before Citadel is told
             sent += 1
             S._extra_add(m["id"], now)
         except (smtplib.SMTPException, socket.timeout, TimeoutError, ConnectionError, OSError, ssl.SSLError) as e:
@@ -117,7 +119,11 @@ def send_warm(api, now: dt.datetime, plan: dict, secrets: dict, send=S._smtp_sen
             out(f"Herald warmup: could not send from {m['email']}: {H._scrub(H.explain(e, m.get('provider', '')), secrets[m['id']])}")
         S._log({"at": now.isoformat(timespec="seconds"), "to": "(exchange)", "from": m["email"], "step": 0, "result": results[-1]["status"], "error": "", "kind": "warmup"})
     if results:
-        api.rpc("hq_herald_warm_report", {"p_results": results})
+        try:
+            api.rpc("hq_herald_warm_report", {"p_results": results})
+            S.journal_save("warm", [])
+        except Exception:
+            out("Citadel could not be told about the warmup sends yet: they are remembered on this PC and reported next minute (nothing is sent twice).")
     return sent
 
 
@@ -162,6 +168,7 @@ def find_and_rescue(box, message_id: str, spam_folders=SPAM_FOLDERS) -> tuple[bo
 
 def answer_warm(api, now: dt.datetime, secrets: dict, send=S._smtp_send, connect=_imap, out=print) -> int:
     """Finds the exchange messages other members sent to this PC's mailboxes, rescues them from spam, marks them read and answers them."""
+    owed_ids = S.journal_flush(api, "warm", "hq_herald_warm_report", "p_results", out)      # first: so the list below no longer holds exchange mail that was already answered
     try:
         items = api.rpc("hq_herald_warm_inbox", {})
     except Exception:
@@ -171,6 +178,8 @@ def answer_warm(api, now: dt.datetime, secrets: dict, send=S._smtp_send, connect
     boxes = {m["id"]: m for m in H.load_mailboxes()}
     results, answered = [], 0
     for it in items:
+        if str(it.get("id")) in owed_ids:
+            continue
         m = boxes.get(it["to_mailbox_id"])
         if not m or m.get("paused") or not secrets.get(m["id"]):
             continue
@@ -200,11 +209,16 @@ def answer_warm(api, now: dt.datetime, secrets: dict, send=S._smtp_send, connect
         try:
             send(m, secrets[m["id"]], msg)
             results.append({"id": it["id"], "status": "replied", "reply_message_id": msg["Message-ID"], "rescued": rescued})
+            S.journal_save("warm", [r for r in results if r["status"] == "replied"])      # written down before Citadel is told
             answered += 1
             S._extra_add(m["id"], now)
         except (smtplib.SMTPException, socket.timeout, TimeoutError, ConnectionError, OSError, ssl.SSLError):
             continue          # try again next pass
         S._log({"at": now.isoformat(timespec="seconds"), "to": "(exchange)", "from": m["email"], "step": 0, "result": "replied", "error": "", "kind": "warmup"})
     if results:
-        api.rpc("hq_herald_warm_report", {"p_results": results})
+        try:
+            api.rpc("hq_herald_warm_report", {"p_results": results})
+            S.journal_save("warm", [])
+        except Exception:
+            out("Citadel could not be told about the warmup answers yet: they are remembered on this PC and reported next minute (nothing is sent twice).")
     return answered
