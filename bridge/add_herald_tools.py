@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.herald_google", "dse.herald_password", "dse.herald_list", "dse.herald_test", "dse.herald_sendstatus", "dse.herald_sendtest", "dse.herald_pause", "dse.herald_resume"):
+for k in ("dse.herald_google", "dse.herald_microsoft", "dse.herald_password", "dse.herald_list", "dse.herald_test", "dse.herald_sendstatus", "dse.herald_sendtest", "dse.herald_pause", "dse.herald_resume"):
     T.pop(k, None)
 
 NEVER = ("It sends nothing and reads nothing: it only tries to log in. The mailbox password is never shown, never logged and never leaves this PC; it is typed in a terminal "
@@ -14,6 +14,11 @@ T["dse.herald_google"] = {
     "label": "Herald: sign a Gmail mailbox in with Google (no app password)", "group": "My engines",
     "help": "For a Gmail address that will not give an app password. Opens a window on THIS PC and then your browser: you choose the account and press Allow. The first time it asks for the client ID and secret of your own free Google Cloud app (the Herald page shows how). The sign-in is kept on this PC only, under Windows' own protection, and is checked to belong to this exact address. It never goes through Citadel or this runner. Then press Test connection.",
     "script": "dse.py", "args": [{"lit": "herald"}, {"lit": "googlewin"}, {"field": "mailbox"}],
+    "fields": [{"name": "mailbox", "label": "Mailbox address", "type": "text", "required": True, "max": 254}], "timeout_min": 2, "outputs": []}
+T["dse.herald_microsoft"] = {
+    "label": "Herald: sign an Outlook or Microsoft 365 mailbox in with Microsoft (no app password)", "group": "My engines",
+    "help": "For an Outlook.com, Hotmail or Microsoft 365 address where a normal password no longer works for outside apps. Opens a window on THIS PC and then your browser: you choose the account and accept. The first time it asks for the Application (client) ID of your own free Microsoft Entra app (the Herald page shows how; there is no secret to copy). The sign-in is kept on this PC only, under Windows' own protection, and is checked to belong to this exact address. It never goes through Citadel or this runner. Then press Test connection.",
+    "script": "dse.py", "args": [{"lit": "herald"}, {"lit": "microsoftwin"}, {"field": "mailbox"}],
     "fields": [{"name": "mailbox", "label": "Mailbox address", "type": "text", "required": True, "max": 254}], "timeout_min": 2, "outputs": []}
 T["dse.herald_password"] = {
     "label": "Herald: type a mailbox password on this PC", "group": "My engines",

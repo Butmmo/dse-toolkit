@@ -8022,6 +8022,34 @@
       "timeout_min": 2,
       "outputs": []
     },
+    "dse.herald_microsoft": {
+      "label": "Herald: sign an Outlook or Microsoft 365 mailbox in with Microsoft (no app password)",
+      "group": "My engines",
+      "help": "For an Outlook.com, Hotmail or Microsoft 365 address where a normal password no longer works for outside apps. Opens a window on THIS PC and then your browser: you choose the account and accept. The first time it asks for the Application (client) ID of your own free Microsoft Entra app (the Herald page shows how; there is no secret to copy). The sign-in is kept on this PC only, under Windows' own protection, and is checked to belong to this exact address. It never goes through Citadel or this runner. Then press Test connection.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "herald"
+        },
+        {
+          "lit": "microsoftwin"
+        },
+        {
+          "field": "mailbox"
+        }
+      ],
+      "fields": [
+        {
+          "name": "mailbox",
+          "label": "Mailbox address",
+          "type": "text",
+          "required": true,
+          "max": 254
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
     "dse.herald_password": {
       "label": "Herald: type a mailbox password on this PC",
       "group": "My engines",

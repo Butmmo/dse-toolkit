@@ -8,6 +8,9 @@ Herald is the campaign platform inside Citadel. Phase 1 connects the mailboxes y
     python dse.py herald google <address|id>       sign in with Google instead of an app password (no password needed; see dse/herald_oauth.py)
     python dse.py herald googlewin <address|id>    the same, in its own window (this is what the Citadel button runs)
     python dse.py herald googleclient              store your Google Cloud client ID and secret (asked once)
+    python dse.py herald microsoft <address|id>    sign in with Microsoft (Outlook.com, Hotmail, Microsoft 365) instead of an app password (see dse/herald_oauth.py)
+    python dse.py herald microsoftwin <address|id> the same, in its own window (this is what the Citadel button runs)
+    python dse.py herald microsoftclient           store your Microsoft Entra app's Application (client) ID (asked once, no secret needed)
     python dse.py herald test <address|id|all>     try the SMTP (sending) and IMAP (reading) logins, and report the result to Citadel
     python dse.py herald forget <address|id>       delete a stored password
     python dse.py herald send [--dry]              one sending pass now (the runner does this every minute); --dry sends nothing
@@ -175,8 +178,11 @@ def explain(e: Exception, provider: str = "") -> str:
     low = s.lower()
     if O.MARKER in s:
         return "Google no longer accepts this mailbox's sign-in. Press Sign in with Google again on the mailbox card. " + s.replace(O.MARKER, "").strip("b'\" ").strip()[:160]
+    ms_marker = O.PROVIDERS["microsoft"]["marker"]
+    if ms_marker in s:
+        return "Microsoft no longer accepts this mailbox's sign-in. Press Sign in with Microsoft again on the mailbox card. " + s.replace(ms_marker, "").strip("b'\" ").strip()[:160]
     if isinstance(e, O.OAuthNetwork):
-        return "Google could not be reached to refresh the sign-in (your internet, or Google is busy). It is tried again by itself."
+        return "Google or Microsoft could not be reached to refresh the sign-in (your internet, or they are busy). It is tried again by itself."
     if isinstance(e, smtplib.SMTPAuthenticationError) or "authentication" in low or "invalid credentials" in low or "auth" in low and "fail" in low:
         tip = {"google": " Gmail needs a 16-character App Password, not your normal password. First turn on 2-Step Verification (myaccount.google.com/signinoptions/twosv), then make one at myaccount.google.com/apppasswords and paste it with or without the spaces. A Google Workspace address may need its administrator to allow app passwords.",
                "microsoft": " Microsoft 365 may need SMTP AUTH switched on for the mailbox, or an app password if two-step sign-in is on.",
@@ -280,6 +286,34 @@ def get_google_client() -> dict | None:
     return O.unpack_client(_read_secrets().get(O.CLIENT_KEY))
 
 
+def get_microsoft_client() -> dict | None:
+    return O.unpack_client(_read_secrets().get(O.PROVIDERS["microsoft"]["client_key"]), "microsoft")
+
+
+def microsoft_sign_in(m: dict, ask=input, out=print, flow=None) -> int:
+    """Signs this mailbox in with Microsoft (Outlook.com, Hotmail, Microsoft 365). The first time it asks for the Application (client) ID of your own free Microsoft Entra app and keeps it.
+    A public client has no secret, so nothing secret is asked for. Returns 0 on success."""
+    client = get_microsoft_client()
+    if not client:
+        out("First time: Herald needs the Application (client) ID of your own Microsoft Entra app (the Herald page shows where to find it, it takes about ten minutes once).")
+        cid = ask("Application (client) ID (looks like 8f2c1a3e-4b5d-...): ").strip()
+        problem = O.ms_client_ok(cid)
+        if problem:
+            out(problem)
+            return 1
+        set_secret_raw(O.PROVIDERS["microsoft"]["client_key"], O.pack_client(cid, ""))
+        client = {"cid": cid, "cs": ""}
+        out("Saved on this PC only.")
+    try:
+        bundle = (flow or O.run_flow)(m["email"], client, out=out, provider="microsoft")
+        set_secret_raw(m["id"], bundle)
+    except (O.OAuthSetupError, ValueError) as e:
+        out(str(e))
+        return 1
+    out("Signed in. Saved on this PC only. Now go back to Citadel and press Test connection (or run: python dse.py herald test " + m["email"] + ").")
+    return 0
+
+
 def google_sign_in(m: dict, ask=input, ask_secret=getpass.getpass, out=print, flow=None) -> int:
     """Signs this mailbox in with Google (see herald_oauth.py). The first time it also asks for your Google Cloud client ID and secret and keeps them. Returns 0 on success."""
     client = get_google_client()
@@ -312,6 +346,17 @@ def open_google_window(m: dict, popen=None) -> str:
         return "This is not Windows, so no window can be opened for you. Open a terminal and run: python dse.py herald google " + m["email"]
     popen([sys.executable, str(ROOT / "dse.py"), "herald", "google", m["id"], "--wait"], cwd=str(ROOT), creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
     return (f"A window has opened on your PC for {m['email']}. Go to it. The first time it asks for your Google client ID and secret; then your browser opens: choose {m['email']} and press Allow. "
+            "Then come back here and press Test connection. If you cannot see the window, look in your taskbar.")
+
+
+def open_microsoft_window(m: dict, popen=None) -> str:
+    """Opens a window on THIS PC for the Microsoft sign-in (the browser then asks you to accept). Same safety as the Google and password windows: no shell, only a mailbox Citadel gave this PC."""
+    import subprocess
+    popen = popen or subprocess.Popen
+    if os.name != "nt":
+        return "This is not Windows, so no window can be opened for you. Open a terminal and run: python dse.py herald microsoft " + m["email"]
+    popen([sys.executable, str(ROOT / "dse.py"), "herald", "microsoft", m["id"], "--wait"], cwd=str(ROOT), creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+    return (f"A window has opened on your PC for {m['email']}. Go to it. The first time it asks for your Microsoft app's Application (client) ID; then your browser opens: choose {m['email']} and accept. "
             "Then come back here and press Test connection. If you cannot see the window, look in your taskbar.")
 
 
@@ -375,6 +420,31 @@ def cli(args: list[str]) -> int:
         set_secret_raw(O.CLIENT_KEY, O.pack_client(cid, cs))
         print("Saved on this PC only.")
         return 0
+    if cmd == "microsoftclient":
+        cid = input("Application (client) ID (looks like 8f2c1a3e-4b5d-...): ").strip()
+        problem = O.ms_client_ok(cid)
+        if problem:
+            print(problem)
+            return 1
+        set_secret_raw(O.PROVIDERS["microsoft"]["client_key"], O.pack_client(cid, ""))
+        print("Saved on this PC only.")
+        return 0
+    if cmd in ("microsoft", "microsoftwin"):
+        if not rest:
+            print(f"Which mailbox? python dse.py herald {cmd} <address>")
+            return 1
+        try:
+            m = find(rest[0])
+        except ValueError as e:
+            print(e)
+            return 1
+        if cmd == "microsoftwin":
+            print(open_microsoft_window(m))
+            return 0
+        code = microsoft_sign_in(m)
+        if "--wait" in rest[1:]:
+            input("Press Enter to close this window.")
+        return code
     if cmd in ("google", "googlewin"):
         if not rest:
             print(f"Which mailbox? python dse.py herald {cmd} <address>")
@@ -445,5 +515,5 @@ def cli(args: list[str]) -> int:
         except Exception as e:
             print(f"(Citadel was not told yet: {e}. The next sync will.)")
         return 1 if bad else 0
-    print(f"Unknown command '{cmd}'. Try: list, secret, password, google, test, forget, send, sendtest, pause, resume")
+    print(f"Unknown command '{cmd}'. Try: list, secret, password, google, microsoft, test, forget, send, sendtest, pause, resume")
     return 1

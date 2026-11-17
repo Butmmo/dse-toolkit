@@ -1,4 +1,4 @@
-"""Herald: sign in with Google instead of an app password (OAuth 2.0, on your PC).
+"""Herald: sign in with Google or Microsoft instead of an app password (OAuth 2.0, on your PC).
 
 Why: Google hides app passwords for many accounts (no 2-Step Verification, passkeys only, Workspace). Signing in with Google needs no app password: you approve Herald once in your browser,
 and Google gives this PC a long-lasting token that can send and read this one mailbox.
@@ -9,7 +9,8 @@ How it stays private (the same promise as the password):
   * The token is checked to belong to the SAME address as the mailbox before it is saved.
   * It uses PKCE and a random "state", the standard protections for a desktop sign-in.
 
-You set Google up once (about ten minutes, free): a Google Cloud project with an OAuth "Desktop app" client. The Herald page walks through it. Stdlib only.
+You set Google up once (about ten minutes, free): a Google Cloud project with an OAuth "Desktop app" client. Microsoft (Outlook.com, Hotmail, Microsoft 365) is the same idea: a free Microsoft Entra
+"app registration" for a public client (no client secret needed). The Herald page walks through both. Stdlib only.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import base64
 import hashlib
 import http.server
 import json
+import re
 import secrets as _secrets
 import smtplib
 import threading
@@ -34,15 +36,34 @@ CLIENT_KEY = "_google_client"
 MARKER = "[google-sign-in]"                          # lets herald.explain() tell a Google sign-in failure from a wrong password
 SKEW_S = 90
 
+# Each way of signing in. "common" lets both personal accounts (Outlook.com, Hotmail) and work or school accounts (Microsoft 365) sign in. The Outlook scopes are what Microsoft's own IMAP and SMTP accept.
+PROVIDERS = {
+    "google": {"name": "Google", "auth": AUTH_URL, "token": TOKEN_URL, "scope": SCOPE, "client_key": CLIENT_KEY, "marker": MARKER, "redirect_host": "127.0.0.1", "secret_needed": True},
+    "microsoft": {"name": "Microsoft", "auth": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", "token": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                  "scope": "offline_access openid email https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send", "client_key": "_microsoft_client",
+                  "marker": "[microsoft-sign-in]", "redirect_host": "localhost", "secret_needed": False},
+}
+GUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def provider_of(secret: str) -> str:
+    """Which way a saved sign-in was made. Sign-ins saved before Microsoft existed have no label and are Google's."""
+    try:
+        p = json.loads(secret[len(PREFIX):]).get("p", "google")
+    except (ValueError, AttributeError):
+        return "google"
+    return p if p in PROVIDERS else "google"
+
 
 class OAuthRevoked(smtplib.SMTPAuthenticationError):
-    """Google no longer accepts the saved sign-in (removed in your Google account, expired, or the client was deleted): sign in again."""
-    def __init__(self, why: str = ""):
-        super().__init__(535, f"{MARKER} {why}".encode("utf-8"))
+    """Google or Microsoft no longer accepts the saved sign-in (removed in the account, expired, or the client was deleted): sign in again."""
+    def __init__(self, why: str = "", provider: str = "google"):
+        self.provider = provider
+        super().__init__(535, f"{PROVIDERS.get(provider, PROVIDERS['google'])['marker']} {why}".encode("utf-8"))
 
 
 class OAuthNetwork(OSError):
-    """Google could not be reached to refresh the token: a temporary problem, the email is retried later."""
+    """The sign-in service could not be reached to refresh the token: a temporary problem, the email is retried later."""
 
 
 class OAuthSetupError(ValueError):
@@ -55,8 +76,11 @@ def is_oauth(secret: str | None) -> bool:
     return bool(secret) and str(secret).startswith(PREFIX)
 
 
-def pack(client_id: str, client_secret: str, refresh_token: str, email: str) -> str:
-    return PREFIX + json.dumps({"cid": client_id, "cs": client_secret, "rt": refresh_token, "email": email.lower()}, separators=(",", ":"))
+def pack(client_id: str, client_secret: str, refresh_token: str, email: str, provider: str = "google") -> str:
+    d = {"cid": client_id, "cs": client_secret, "rt": refresh_token, "email": email.lower()}
+    if provider != "google":
+        d["p"] = provider                    # Google sign-ins keep the exact old format
+    return PREFIX + json.dumps(d, separators=(",", ":"))
 
 
 def unpack(secret: str) -> dict:
@@ -66,19 +90,33 @@ def unpack(secret: str) -> dict:
             raise ValueError
         return d
     except ValueError:
-        raise OAuthRevoked("the saved Google sign-in is damaged") from None
+        raise OAuthRevoked("the saved sign-in is damaged", provider_of(secret)) from None
 
 
 def pack_client(client_id: str, client_secret: str) -> str:
     return json.dumps({"cid": client_id.strip(), "cs": client_secret.strip()}, separators=(",", ":"))
 
 
-def unpack_client(raw: str | None) -> dict | None:
+def unpack_client(raw: str | None, provider: str = "google") -> dict | None:
     try:
         d = json.loads(raw or "")
-        return d if isinstance(d, dict) and d.get("cid") and d.get("cs") else None
     except ValueError:
         return None
+    if not (isinstance(d, dict) and d.get("cid")):
+        return None
+    if PROVIDERS[provider]["secret_needed"] and not d.get("cs"):
+        return None
+    d.setdefault("cs", "")
+    return d
+
+
+def ms_client_ok(client_id: str, client_secret: str = "") -> str:
+    """The problem with Microsoft app details, or '' when they look right. The Application (client) ID is a GUID; a public client has no secret, so none is needed."""
+    if not GUID.match(client_id.strip()):
+        return "The Application (client) ID looks like 8f2c1a3e-4b5d-4e6f-9a7b-1c2d3e4f5a6b: copy it from the app's Overview page in Microsoft Entra."
+    if client_secret.strip() and len(client_secret.strip()) < 10:
+        return "Leave the secret empty (a public client needs none), or paste the whole secret value."
+    return ""
 
 
 def client_ok(client_id: str, client_secret: str) -> str:
@@ -93,6 +131,7 @@ def client_ok(client_id: str, client_secret: str) -> str:
 # ------------------------------------------------------------------ talking to Google
 
 def _post_form(url: str, data: dict, timeout: int = 20) -> dict:
+    data = {k: v for k, v in data.items() if v != ""}          # a public Microsoft client sends no secret
     req = urllib.request.Request(url, data=urllib.parse.urlencode(data).encode("ascii"), headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -105,7 +144,7 @@ def _post_form(url: str, data: dict, timeout: int = 20) -> dict:
         body.setdefault("error", f"http_{e.code}")
         return body
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise OAuthNetwork(f"Could not reach Google: {e}") from e
+        raise OAuthNetwork(f"Could not reach the sign-in service: {e}") from e
 
 
 _CACHE: dict[str, tuple[str, float]] = {}
@@ -119,14 +158,24 @@ def access_token(secret: str, now: float | None = None, post=_post_form) -> str:
     hit = _CACHE.get(key)
     if hit and hit[1] - SKEW_S > now:
         return hit[0]
-    r = post(TOKEN_URL, {"client_id": d["cid"], "client_secret": d["cs"], "refresh_token": d["rt"], "grant_type": "refresh_token"})
+    prov = provider_of(secret)
+    P = PROVIDERS[prov]
+    form = {"client_id": d["cid"], "client_secret": d.get("cs", ""), "refresh_token": d["rt"], "grant_type": "refresh_token"}
+    if prov == "microsoft":
+        form["scope"] = P["scope"]
+    r = post(P["token"], form)
     if r.get("access_token"):
         _CACHE[key] = (r["access_token"], now + float(r.get("expires_in", 3600)))
         return r["access_token"]
     err = str(r.get("error", ""))
-    if err in ("invalid_grant", "invalid_client", "unauthorized_client", "access_denied"):
-        raise OAuthRevoked("Google says this sign-in is no longer valid" + (" (if the Google Cloud app is still in Testing mode, its sign-ins expire after 7 days: publish it)" if err == "invalid_grant" else ""))
-    raise OAuthNetwork(f"Google did not give a token ({err or 'no answer'}).")
+    if err in ("invalid_grant", "invalid_client", "unauthorized_client", "access_denied", "interaction_required", "consent_required"):
+        hint = ""
+        if err == "invalid_grant" and prov == "google":
+            hint = " (if the Google Cloud app is still in Testing mode, its sign-ins expire after 7 days: publish it)"
+        elif prov == "microsoft":
+            hint = " (the password may have changed, or an administrator may need to allow the app: sign in again)"
+        raise OAuthRevoked(f"{P['name']} says this sign-in is no longer valid" + hint, prov)
+    raise OAuthNetwork(f"{P['name']} did not give a token ({err or 'no answer'}).")
 
 
 def xoauth2(email: str, token: str) -> str:
@@ -146,7 +195,7 @@ def smtp_auth(s, m: dict, secret: str) -> None:
         s.auth("XOAUTH2", lambda challenge=None: line if challenge is None else "", initial_response_ok=True)
     except smtplib.SMTPAuthenticationError as e:
         _CACHE.clear()
-        raise OAuthRevoked("Gmail refused the Google sign-in token") from e
+        raise OAuthRevoked(f"{PROVIDERS[provider_of(secret)]['name']} refused the sign-in token", provider_of(secret)) from e
 
 
 def imap_auth(box, m: dict, secret: str) -> None:
@@ -160,7 +209,7 @@ def imap_auth(box, m: dict, secret: str) -> None:
     except Exception as e:                  # imaplib.IMAP4.error and friends
         if e.__class__.__name__ in ("error", "abort", "readonly"):
             _CACHE.clear()
-            raise OAuthRevoked("Gmail refused the Google sign-in token") from e
+            raise OAuthRevoked(f"{PROVIDERS[provider_of(secret)]['name']} refused the sign-in token", provider_of(secret)) from e
         raise
 
 
@@ -172,17 +221,20 @@ def pkce() -> tuple[str, str]:
     return verifier, challenge
 
 
-def build_auth_url(client_id: str, redirect_uri: str, state: str, challenge: str, login_hint: str) -> str:
-    q = {"client_id": client_id, "redirect_uri": redirect_uri, "response_type": "code", "scope": SCOPE, "state": state, "code_challenge": challenge, "code_challenge_method": "S256",
-         "access_type": "offline", "prompt": "consent", "login_hint": login_hint}
-    return AUTH_URL + "?" + urllib.parse.urlencode(q)
+def build_auth_url(client_id: str, redirect_uri: str, state: str, challenge: str, login_hint: str, provider: str = "google") -> str:
+    P = PROVIDERS[provider]
+    q = {"client_id": client_id, "redirect_uri": redirect_uri, "response_type": "code", "scope": P["scope"], "state": state, "code_challenge": challenge, "code_challenge_method": "S256",
+         "prompt": "consent", "login_hint": login_hint}
+    if provider == "google":
+        q["access_type"] = "offline"
+    return P["auth"] + "?" + urllib.parse.urlencode(q)
 
 
 class Loopback:
     """A one-time web page on THIS computer only (127.0.0.1) that catches Google's answer after you approve in the browser."""
-    PAGE = b"<!doctype html><meta charset=utf-8><title>Herald</title><body style='font-family:sans-serif;max-width:32rem;margin:4rem auto'><h2>You can close this tab.</h2><p>Herald received Google's answer. Go back to the window on your PC.</p></body>"
+    PAGE = b"<!doctype html><meta charset=utf-8><title>Herald</title><body style='font-family:sans-serif;max-width:32rem;margin:4rem auto'><h2>You can close this tab.</h2><p>Herald received the answer. Go back to the window on your PC.</p></body>"
 
-    def __init__(self):
+    def __init__(self, host: str = "127.0.0.1"):
         outer = self
         self.params: dict = {}
         self._done = threading.Event()
@@ -202,7 +254,7 @@ class Loopback:
                 pass
 
         self._srv = http.server.HTTPServer(("127.0.0.1", 0), H)
-        self.redirect_uri = f"http://127.0.0.1:{self._srv.server_address[1]}"
+        self.redirect_uri = f"http://{host}:{self._srv.server_address[1]}"      # Microsoft wants the word localhost; the page still listens on this computer only
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
 
     def wait(self, timeout: float = 300) -> dict:
@@ -226,13 +278,15 @@ def _id_token_claims(id_token: str) -> dict:
         return {}
 
 
-def run_flow(email: str, client: dict, loop=None, opener=webbrowser.open, post=_post_form, out=print, timeout: float = 300) -> str:
-    """Opens Google in the browser, waits for the approval, checks the account is the mailbox's own, and returns the secret to store. Raises OAuthSetupError with what to do when it cannot."""
-    loop = loop or Loopback()
+def run_flow(email: str, client: dict, loop=None, opener=webbrowser.open, post=_post_form, out=print, timeout: float = 300, provider: str = "google") -> str:
+    """Opens Google or Microsoft in the browser, waits for the approval, checks the account is the mailbox's own, and returns the secret to store. Raises OAuthSetupError with what to do when it cannot."""
+    P = PROVIDERS[provider]
+    name = P["name"]
+    loop = loop or Loopback(P["redirect_host"])
     verifier, challenge = pkce()
     state = _secrets.token_urlsafe(24)
-    url = build_auth_url(client["cid"], loop.redirect_uri, state, challenge, email)
-    out("Opening Google in your browser. Choose the account " + email + " and press Allow.")
+    url = build_auth_url(client["cid"], loop.redirect_uri, state, challenge, email, provider)
+    out(f"Opening {name} in your browser. Choose the account " + email + " and press Allow.")
     out("If nothing opens, copy this address into your browser:\n" + url)
     try:
         opener(url)
@@ -240,22 +294,26 @@ def run_flow(email: str, client: dict, loop=None, opener=webbrowser.open, post=_
         pass
     params = loop.wait(timeout)
     if not params:
-        raise OAuthSetupError("Nothing came back from Google in time. Run it again and press Allow in the browser.")
+        raise OAuthSetupError(f"Nothing came back from {name} in time. Run it again and press Allow in the browser.")
     if params.get("error"):
-        raise OAuthSetupError("Google did not allow it (" + params["error"] + "). Run it again and press Allow.")
+        raise OAuthSetupError(f"{name} did not allow it (" + params["error"] + "). Run it again and press Allow.")
     if params.get("state") != state:
         raise OAuthSetupError("The answer did not match this sign-in, so it was refused. Run it again.")
-    r = post(TOKEN_URL, {"code": params.get("code", ""), "client_id": client["cid"], "client_secret": client["cs"], "redirect_uri": loop.redirect_uri, "grant_type": "authorization_code", "code_verifier": verifier})
+    form = {"code": params.get("code", ""), "client_id": client["cid"], "client_secret": client.get("cs", ""), "redirect_uri": loop.redirect_uri, "grant_type": "authorization_code", "code_verifier": verifier}
+    if provider == "microsoft":
+        form["scope"] = P["scope"]
+    r = post(P["token"], form)
     if not r.get("access_token"):
         err = str(r.get("error", "no answer"))
-        hint = " Check the client ID and secret (Google Cloud, Credentials)." if err in ("invalid_client", "unauthorized_client") else ""
-        raise OAuthSetupError(f"Google would not finish the sign-in ({err}).{hint}")
+        where = "Google Cloud, Credentials" if provider == "google" else "Microsoft Entra, the app's Overview page"
+        hint = f" Check the client ID{' and secret' if provider == 'google' else ''} ({where})." if err in ("invalid_client", "unauthorized_client") else ""
+        raise OAuthSetupError(f"{name} would not finish the sign-in ({err}).{hint}")
     claims = _id_token_claims(str(r.get("id_token", "")))
-    got = str(claims.get("email", "")).lower()
+    got = str(claims.get("email") or (claims.get("preferred_username") if provider == "microsoft" else "") or "").lower()
     if not got:
-        raise OAuthSetupError("Google did not say which account signed in. Run it again.")
+        raise OAuthSetupError(f"{name} did not say which account signed in. Run it again.")
     if got != email.lower():
         raise OAuthSetupError(f"You signed in as {got}, but this mailbox is {email.lower()}. Run it again and choose {email.lower()}.")
     if not r.get("refresh_token"):
-        raise OAuthSetupError("Google did not give a long-lasting sign-in. Remove Herald at myaccount.google.com/permissions, then run it again.")
-    return pack(client["cid"], client["cs"], r["refresh_token"], email)
+        raise OAuthSetupError("Google did not give a long-lasting sign-in. Remove Herald at myaccount.google.com/permissions, then run it again." if provider == "google" else "Microsoft did not give a long-lasting sign-in. Run it again and accept every permission it lists.")
+    return pack(client["cid"], client.get("cs", ""), r["refresh_token"], email, provider)
