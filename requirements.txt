@@ -1,3 +1,6 @@
 requests
 beautifulsoup4
 duckdb
+
+# Herald sending reads time zones (Windows has no time zone data of its own); free, pure data
+tzdata

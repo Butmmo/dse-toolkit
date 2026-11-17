@@ -165,7 +165,7 @@ def main():
     cx = sub.add_parser("context"); cx.add_argument("engine"); cx.add_argument("--add", default=""); cx.add_argument("--label", default="")
     cx.add_argument("--remove", default=""); cx.add_argument("--scan", action="store_true"); cx.add_argument("--show", action="store_true")
     cx.add_argument("--suggest", action="store_true"); cx.add_argument("--adopt", default=""); cx.add_argument("--apply", action="store_true")
-    hd = sub.add_parser("herald", help="Herald: your sending mailboxes"); hd.add_argument("rest", nargs="*")
+    hd = sub.add_parser("herald", help="Herald: your sending mailboxes"); hd.add_argument("rest", nargs=argparse.REMAINDER)
     op = sub.add_parser("outreach"); op.add_argument("target"); op.add_argument("--door", default=""); op.add_argument("--start", default="")
     op.add_argument("--name", default=""); op.add_argument("--address", default="")
     rp = sub.add_parser("reply"); rp.add_argument("engine"); rp.add_argument("--text", required=True); rp.add_argument("--name", default=""); rp.add_argument("--source", default="")

@@ -6,6 +6,9 @@ Herald is the campaign platform inside Citadel. Phase 1 connects the mailboxes y
     python dse.py herald secret <address|id>       type a mailbox's password or app password (asked here, hidden, never printed)
     python dse.py herald test <address|id|all>     try the SMTP (sending) and IMAP (reading) logins, and report the result to Citadel
     python dse.py herald forget <address|id>       delete a stored password
+    python dse.py herald send [--dry]              one sending pass now (the runner does this every minute); --dry sends nothing
+    python dse.py herald sendtest <mailbox> <to>   send ONE test email to an address you choose
+    python dse.py herald pause | resume            stop or restart all sending on this PC
 
 THE PASSWORD STAYS ON THIS PC. Citadel only holds a mailbox's settings (address, mail servers, limits). A password is asked for here, stored in data/herald/secrets.dat under
 Windows' own protection (DPAPI: only this Windows user on this PC can read it), and only ever used to log in to YOUR mail server. It is never written to a log, a CSV, a
@@ -256,6 +259,28 @@ def cli(args: list[str]) -> int:
         print(__doc__)
         return 0
     cmd, rest = args[0], args[1:]
+    if cmd in ("send", "sendtest", "pause", "resume"):
+        from . import herald_send as S
+        try:
+            if cmd == "pause":
+                print(S.pause()); return 0
+            if cmd == "resume":
+                print(S.resume()); return 0
+            if cmd == "sendtest":
+                if len(rest) < 2:
+                    print("python dse.py herald sendtest <mailbox address> <send the test to this address>")
+                    return 1
+                print(S.send_test(rest[0], rest[1])); return 0
+            sys.path.insert(0, str(ROOT / "bridge"))
+            import herald_sync
+            s = S.run_pass(herald_sync._api(), dry="--dry" in rest)
+            if "--dry" in rest or s["held"]:
+                for why, n in sorted(s["held"].items(), key=lambda x: -x[1]):
+                    print(f"held: {n} email(s): {why}")
+            print(f"checked {s['checked']} due email(s); sent {s['sent']}; events from your inboxes: {s['events']}")
+            return 0
+        except (ValueError, RuntimeError) as e:
+            print(e); return 1
     if cmd == "list":
         rows = load_mailboxes()
         if not rows:
@@ -313,5 +338,5 @@ def cli(args: list[str]) -> int:
         except Exception as e:
             print(f"(Citadel was not told yet: {e}. The next sync will.)")
         return 1 if bad else 0
-    print(f"Unknown command '{cmd}'. Try: list, secret, test, forget")
+    print(f"Unknown command '{cmd}'. Try: list, secret, test, forget, send, sendtest, pause, resume")
     return 1
