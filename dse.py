@@ -175,7 +175,7 @@ def main():
     dn = sub.add_parser("dnc"); dn.add_argument("engine")
     en = sub.add_parser("enrich"); en.add_argument("source", nargs="?", default="", help="a CSV with a website or domain column"); en.add_argument("--site", default="", help="look at one website instead")
     en.add_argument("--icp", default="", help="words you want to find on their site, comma separated"); en.add_argument("--engine", default="", help="also save an import-ready copy in this engine")
-    en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser")
+    en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser"); en.add_argument("--result-line", action="store_true", dest="result_line", help="with --site: also print one RESULT line a BPS Table workflow reads")
     en.add_argument("--provider", default="", help="optional: your own paid provider, set up with --add-provider"); en.add_argument("--budget", type=int, default=enrich_providers.DEFAULT_BUDGET)
     en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
     gl = sub.add_parser("goal"); gl.add_argument("engine"); gl.add_argument("--month", default=""); gl.add_argument("--stretch", type=float, default=goals.STRETCH_DEFAULT)
@@ -240,7 +240,7 @@ def main():
             elif a.add_provider:
                 print(enrich_providers.add_provider(a.add_provider))
             elif a.site:
-                print(enrich.card(a.site, a.icp, not a.fast, a.provider, a.budget))
+                print(enrich.card(a.site, a.icp, not a.fast, a.provider, a.budget, a.result_line))
             elif a.source:
                 print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget))
             else:

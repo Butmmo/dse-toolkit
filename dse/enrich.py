@@ -641,7 +641,17 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
     return text + f"\nSaved: {out_csv.relative_to(ROOT).as_posix()} (and the summary next to it).{extra}"
 
 
-def card(website: str, icp: str = "", render: bool = True, provider: str = "", budget: int = 1) -> str:
+def result_json(s: dict, sc: int | None = None) -> str:
+    """One line a BPS Table workflow can read: RESULT {json}. Plain values only (text, numbers); an empty value means it was not found."""
+    em = s["emails"][0] if s["emails"] else {}
+    pe = s["people"][0] if s["people"] else {}
+    out = {"status": s["status"] or "", "domain": s["domain"] or "", "email": em.get("email", "") or (s["guesses"][0] if s["guesses"] else ""), "email_kind": em.get("kind", "") if em else ("guess" if s["guesses"] else ""),
+           "owner": pe.get("name", ""), "owner_title": pe.get("title", ""), "phone": s["phones"][0] if s["phones"] else "", "contact_form": s["contact_form"] or "", "booking": s["booking"] or "",
+           "linkedin": (s["socials"] or {}).get("linkedin", "") or "", "score": sc if sc is not None else ""}
+    return "RESULT " + json.dumps(out, ensure_ascii=True, separators=(",", ":"))
+
+
+def card(website: str, icp: str = "", render: bool = True, provider: str = "", budget: int = 1, result_line: bool = False) -> str:
     prov = None
     try:
         prov = ep.load(provider) if provider else None
