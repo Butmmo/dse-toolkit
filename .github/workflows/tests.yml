@@ -1,0 +1,35 @@
+name: Toolkit tests
+
+# Runs every tests/test_*.py on each push and pull request. Nothing real is contacted: the tests replace mail servers, Citadel and Google with fakes.
+# The tests were written and run on Windows so far; until this has gone green once on Linux it reports a failure but does not mark the commit as failed (continue-on-error).
+# After the first green run, delete the `continue-on-error` line.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install what the tests import
+        run: pip install -r requirements.txt openpyxl
+      - name: Run every test file
+        run: |
+          fail=0
+          for f in tests/test_*.py; do
+            echo "== $f"
+            if ! python "$f" > /tmp/out.txt 2>&1; then
+              fail=1
+              grep -E "FAIL|Error|Traceback" /tmp/out.txt | head -8
+            fi
+          done
+          exit $fail
