@@ -160,10 +160,13 @@ def explain(e: Exception, provider: str = "") -> str:
     s = str(e)
     low = s.lower()
     if isinstance(e, smtplib.SMTPAuthenticationError) or "authentication" in low or "invalid credentials" in low or "auth" in low and "fail" in low:
-        tip = {"google": " Gmail needs an App Password (Google account > Security > 2-Step Verification > App passwords), not your normal password.",
+        tip = {"google": " Gmail needs a 16-character App Password, not your normal password. First turn on 2-Step Verification (myaccount.google.com/signinoptions/twosv), then make one at myaccount.google.com/apppasswords and paste it with or without the spaces. A Google Workspace address may need its administrator to allow app passwords.",
                "microsoft": " Microsoft 365 may need SMTP AUTH switched on for the mailbox, or an app password if two-step sign-in is on.",
                "yahoo": " Yahoo needs an app password (Account security > Generate app password)."}.get(provider, " Check the password, and whether your provider needs an app password for outside apps.")
         return "The mail server refused the login." + tip
+    if isinstance(e, smtplib.SMTPServerDisconnected) or "connection unexpectedly closed" in low or "connection closed" in low:
+        extra = " For Gmail: in the mailbox settings (Edit) try port 587 with STARTTLS instead of 465." if provider == "google" else " Try the other security option (SSL on 465, or STARTTLS on 587) in the mailbox settings."
+        return "The mail server closed the connection before the login. Your network, firewall or antivirus may be blocking this port, or the server closed it after too many wrong passwords (wait ten minutes)." + extra
     if isinstance(e, (socket.gaierror,)) or "name or service not known" in low or "getaddrinfo" in low:
         return "That mail server name was not found. Check the host name."
     if isinstance(e, (socket.timeout, TimeoutError)) or "timed out" in low:

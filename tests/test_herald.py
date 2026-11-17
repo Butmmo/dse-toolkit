@@ -141,6 +141,12 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ---- Gmail: what the errors now say
+g_dis = H.explain(smtplib.SMTPServerDisconnected("Connection unexpectedly closed"), "google")
+check("a connection closed before login names the likely causes and the 587 STARTTLS fix for Gmail", "firewall" in g_dis and "587" in g_dis and "STARTTLS" in g_dis)
+check("a refused Gmail login says app password, 2-Step Verification and where to make one", all(x in H.explain(smtplib.SMTPAuthenticationError(535, b"x"), "google") for x in ("App Password", "2-Step Verification", "apppasswords", "Workspace")))
+check("other providers get the other-security-option hint on a closed connection", "465" in H.explain(smtplib.SMTPServerDisconnected("x"), "custom"))
+
 # ---- the password window (opened from the Citadel mailbox card)
 calls = []
 real_name = H.os.name
