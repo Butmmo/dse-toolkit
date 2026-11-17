@@ -17,8 +17,8 @@ def main():
     import herald_sync
     from dse import herald_send
     s = herald_send.run_pass(herald_sync._api(), out=lambda *a: print(*a))
-    if s["sent"] or s["events"] or s.get("answers"):
-        print(f"herald send: sent {s['sent']}, answers {s.get('answers', 0)}, events {s['events']}")
+    if s["sent"] or s["events"] or s.get("answers") or s.get("warm"):
+        print(f"herald send: sent {s['sent']}, answers {s.get('answers', 0)}, warmup {s.get('warm', 0)}, events {s['events']}")
 
 
 if __name__ == "__main__":

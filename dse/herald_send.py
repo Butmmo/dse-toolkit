@@ -268,14 +268,19 @@ def _log(line: dict) -> None:
 def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_send, poll=True, out=print) -> dict:
     """One pass: send what is due (at most one per mailbox), report, and now and then read the inboxes."""
     now = now or dt.datetime.now(dt.timezone.utc)
-    summary = {"checked": 0, "sent": 0, "held": {}, "events": 0, "paused": False, "answers": 0}
+    summary = {"checked": 0, "sent": 0, "held": {}, "events": 0, "paused": False, "answers": 0, "warm": 0, "ramped": 0}
     if PAUSE().exists():
         summary["paused"] = True
         out("Herald sending is paused on this PC (data/herald/PAUSE). Run: python dse.py herald resume")
         return summary
     secrets = H._read_secrets()
     summary["answers"] = send_answers(api, now, secrets, dry, send, out)
+    from . import herald_warm as W        # the ramp and the opt-in exchange (phase 6); imported here because it imports this module
+    plan = W.get_plan(api)
+    if not dry:
+        summary["warm"] = W.answer_warm(api, now, secrets, send, out=out) + W.send_warm(api, now, plan, secrets, send, out=out)
     due = api.rpc("hq_herald_due", {"p_limit": 200}) or []
+    summary["ramped"] = W.apply_ramp(due, plan)
     summary["checked"] = len(due)
     boxes = {d["mailbox"]["id"]: d["mailbox"] for d in due}
     recent = api.rpc("hq_herald_recent_sent", {}) or []
