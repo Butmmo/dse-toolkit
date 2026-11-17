@@ -83,23 +83,45 @@ def unprotect(blob: bytes) -> bytes:
     raise ValueError("The password file is not in a known format.")
 
 
-def _read_secrets() -> dict[str, str]:
+def _read_secrets(strict: bool = False) -> dict[str, str]:
+    """The saved passwords and sign-ins. Reading for sending is forgiving (an unreadable file just means nothing can send). Saving a new one uses strict=True, which protects the other entries:
+      * the file cannot be opened right now (locked, another program, a disk hiccup): refuse, so one new entry never replaces the whole file;
+      * the file is damaged (not in a known format): it is kept aside as secrets.damaged (never deleted) and a fresh one is started."""
     if not SECRETS.exists():
         return {}
     try:
-        data = json.loads(unprotect(SECRETS.read_bytes()).decode("utf-8"))
-    except (OSError, ValueError):
+        raw = SECRETS.read_bytes()
+    except OSError:
+        if strict:
+            raise ValueError("The saved passwords file could not be opened just now, so nothing was changed (your other passwords are safe). Try again in a moment.") from None
+        return {}
+    try:
+        data = json.loads(unprotect(raw).decode("utf-8"))
+    except ValueError:
+        if not strict:
+            return {}
+        try:
+            SECRETS.with_suffix(".damaged").write_bytes(raw)          # kept aside, never deleted
+        except OSError:
+            pass
         return {}
     return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
 
 
 def _write_secrets(d: dict[str, str]) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
-    SECRETS.write_bytes(protect(json.dumps(d).encode("utf-8")))
+    tmp = SECRETS.with_suffix(".tmp")
+    tmp.write_bytes(protect(json.dumps(d).encode("utf-8")))
     try:
-        os.chmod(SECRETS, 0o600)
+        os.chmod(tmp, 0o600)
     except OSError:
         pass
+    if SECRETS.exists():
+        try:
+            SECRETS.with_suffix(".bak").write_bytes(SECRETS.read_bytes())          # the last good copy, kept beside it
+        except OSError:
+            pass
+    os.replace(tmp, SECRETS)                                                          # the file is never half-written
 
 
 def has_secret(mailbox_id: str) -> bool:
@@ -110,7 +132,7 @@ def set_secret_raw(key: str, value: str) -> None:
     """Stores a value that is not a typed password (a Google sign-in, the Google client details). Never print it."""
     if not value or len(value) > 4000 or "\n" in value:
         raise ValueError("That does not look like a sign-in.")
-    d = _read_secrets()
+    d = _read_secrets(strict=True)
     d[key] = value
     _write_secrets(d)
 
@@ -118,13 +140,13 @@ def set_secret_raw(key: str, value: str) -> None:
 def set_secret(mailbox_id: str, password: str) -> None:
     if not password or len(password) > 200 or "\n" in password:
         raise ValueError("That does not look like a password.")
-    d = _read_secrets()
+    d = _read_secrets(strict=True)
     d[mailbox_id] = password
     _write_secrets(d)
 
 
 def forget_secret(mailbox_id: str) -> bool:
-    d = _read_secrets()
+    d = _read_secrets(strict=True)
     if mailbox_id not in d:
         return False
     del d[mailbox_id]

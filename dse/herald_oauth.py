@@ -184,11 +184,24 @@ def xoauth2(email: str, token: str) -> str:
 
 # ------------------------------------------------------------------ logging in: password or Google, one place
 
+_HOSTS = {"google": (".gmail.com", ".googlemail.com", ".google.com"), "microsoft": (".office365.com", ".outlook.com", ".office.com", ".hotmail.com", ".live.com")}
+
+
+def _own_server(secret: str, host: str) -> None:
+    """A Google or Microsoft sign-in token is only ever handed to that provider's own mail servers, whatever host Citadel says (so a changed host setting cannot collect it)."""
+    prov = provider_of(secret)
+    h = ("." + str(host or "").lower().strip().rstrip("."))
+    if not any(h.endswith(suffix) for suffix in _HOSTS[prov]):
+        raise OAuthRevoked(f"the mail server {host!r} is not {PROVIDERS[prov]['name']}'s, so the sign-in was not sent to it. Check the server in the mailbox settings", prov)
+
+
 def smtp_auth(s, m: dict, secret: str) -> None:
     """Logs an open SMTP connection in: with Google's token when the secret is a Google sign-in, otherwise with the password."""
     if not is_oauth(secret):
         s.login(m.get("username") or m["email"], secret)
         return
+    _own_server(secret, m.get("smtp_host", ""))
+    getattr(s, "ehlo_or_helo_if_needed", lambda: None)()          # smtplib's auth() does not say hello first, and an SSL connection has not yet
     d = unpack(secret)
     line = xoauth2(d["email"], access_token(secret))
     try:
@@ -202,6 +215,7 @@ def imap_auth(box, m: dict, secret: str) -> None:
     if not is_oauth(secret):
         box.login(m.get("username") or m["email"], secret)
         return
+    _own_server(secret, m.get("imap_host", ""))
     d = unpack(secret)
     line = xoauth2(d["email"], access_token(secret)).encode("utf-8")
     try:

@@ -43,7 +43,9 @@ POLL_EVERY_S = 300
 MAX_ATTEMPTS = 3
 HARD_PC_DAILY_CAP = 1500
 DOW = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-PERMANENT = (550, 551, 553)               # the address does not exist (a bounce)
+PERMANENT = (550, 551, 553)               # the address does not exist (a bounce) ... unless the server's own words say it is about us (SOFT_REFUSAL below)
+# a 5xx that is really about the sender, a quota, spam rules or a block: the lead is fine and must NOT be marked bounced or suppressed
+SOFT_REFUSAL = re.compile(r"\b5\.7\.\d|\b5\.4\.5|quota|spam|block(ed|list)|denied|polic(y|ies)|reputation|rate|too many|throttl|limit|try again|temporar|sender", re.I)
 
 
 # ------------------------------------------------------------------ time
@@ -173,7 +175,11 @@ def _smtp_send(m: dict, password: str, msg: EmailMessage) -> None:
 
 def deliver(item: dict, password: str, now: dt.datetime, send=_smtp_send) -> dict:
     """Sends one email and says what happened, in the form Citadel stores. Never includes the password."""
-    msg = build_message(item, now)
+    try:
+        msg = build_message(item, now)
+    except ValueError:
+        # a header with a line break or an illegal character (a mailbox name, a reply reference): this one email fails, the pass and the other mailboxes carry on
+        return {"id": item["id"], "status": "failed", "bounced": False, "error": "This email could not be built: a mailbox name, subject or reply reference has a line break or an illegal character. Fix it in Citadel."}
     mid = msg["Message-ID"]
     try:
         send(item["mailbox"], password, msg)
@@ -181,11 +187,13 @@ def deliver(item: dict, password: str, now: dt.datetime, send=_smtp_send) -> dic
     except smtplib.SMTPAuthenticationError as e:
         return {"id": item["id"], "status": "retry", "count_attempt": False, "error": H._scrub("The mail server refused the login: " + H.explain(e, item["mailbox"].get("provider", "")), password), "auth": True}
     except smtplib.SMTPRecipientsRefused as e:
-        code = next((c for c, _ in e.recipients.values()), 550)
+        code, text = next(((c, t) for c, t in e.recipients.values()), (550, b""))
+        why = text.decode("utf-8", "replace") if isinstance(text, (bytes, bytearray)) else str(text)
+        if 400 <= code < 500 or (code in PERMANENT and SOFT_REFUSAL.search(why)):
+            return {"id": item["id"], "status": "retry", "count_attempt": True, "error": H._scrub(f"The server could not take this email now ({code}); it is tried again.", password)}
         return {"id": item["id"], "status": "failed", "bounced": code in PERMANENT, "error": H._scrub(f"The server refused the address ({code}).", password)}
     except smtplib.SMTPResponseException as e:
-        if e.smtp_code in PERMANENT:
-            return {"id": item["id"], "status": "failed", "bounced": True, "error": H._scrub(f"Address does not exist ({e.smtp_code}).", password)}
+        # a sender or content refusal says nothing about whether the lead's address exists: never a bounce
         if 500 <= e.smtp_code < 600:
             return {"id": item["id"], "status": "failed", "bounced": False, "error": H._scrub(f"The server rejected the email ({e.smtp_code}): {e.smtp_error!r}"[:300], password)}
         return {"id": item["id"], "status": "retry", "count_attempt": True, "error": H._scrub(f"Temporary server error ({e.smtp_code}).", password)}
@@ -266,6 +274,27 @@ def _log(line: dict) -> None:
         f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 
+# Results Citadel has not been told about yet. An email that WAS sent is written here the moment it is sent, before the report is made: if the report fails (internet, a crash), the next pass
+# reports it first and does not send that email again. Without this, a failed report meant the same email went out again every minute.
+def _journal() -> Path:
+    return H.DATA / "unreported.json"
+
+
+def _journal_load() -> list:
+    try:
+        d = json.loads(_journal().read_text(encoding="utf-8"))
+        return d if isinstance(d, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _journal_save(items: list) -> None:
+    H.DATA.mkdir(parents=True, exist_ok=True)
+    tmp = _journal().with_suffix(".tmp")
+    tmp.write_text(json.dumps(items), encoding="utf-8")
+    os.replace(tmp, _journal())
+
+
 def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_send, poll=True, out=print) -> dict:
     """One pass: send what is due (at most one per mailbox), report, and now and then read the inboxes."""
     now = now or dt.datetime.now(dt.timezone.utc)
@@ -280,12 +309,25 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
     plan = W.get_plan(api)
     if not dry:
         summary["warm"] = W.answer_warm(api, now, secrets, send, out=out) + W.send_warm(api, now, plan, secrets, send, out=out)
+    owed = [] if dry else _journal_load()
+    if owed:
+        try:
+            api.rpc("hq_herald_report", {"p_results": [o["r"] for o in owed]})
+            owed = []
+            _journal_save([])
+        except Exception:
+            out("Citadel could not be told about earlier sends yet: they will not be sent again, and it is tried again next minute.")
+    owed_ids = {o["r"]["id"] for o in owed}
     due = api.rpc("hq_herald_due", {"p_limit": 200}) or []
     summary["ramped"] = W.apply_ramp(due, plan)
     summary["checked"] = len(due)
     boxes = {d["mailbox"]["id"]: d["mailbox"] for d in due}
     recent = api.rpc("hq_herald_recent_sent", {}) or []
     sent_today, last_sent = count_today(recent, boxes, now)
+    for o in owed:                                       # sent but not yet known to Citadel: they still count against today's limits
+        if o["r"].get("status") == "sent":
+            sent_today[o["mb"]] = sent_today.get(o["mb"], 0) + 1
+            last_sent[o["mb"]] = now
     if sum(sent_today.values()) >= HARD_PC_DAILY_CAP:
         out(f"This PC has sent {sum(sent_today.values())} today: the safety cap of {HARD_PC_DAILY_CAP} is reached.")
         due = []
@@ -295,6 +337,9 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
     for it in due:
         mid = it["mailbox"]["id"]
         if mid in bad_login:
+            continue
+        if it["id"] in owed_ids:
+            summary["held"]["already sent, waiting to be reported"] = summary["held"].get("already sent, waiting to be reported", 0) + 1
             continue
         ok, why = decide(it, now, sent_today, last_sent, used, bool(secrets.get(mid)))
         if not ok:
@@ -307,6 +352,8 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
         r = deliver(it, secrets[mid], now, send)
         used.add(mid)
         results.append(r)
+        owed.append({"r": {k: v for k, v in r.items() if k != "auth"}, "mb": mid})
+        _journal_save(owed)                              # written before the report, so a crash or a failed report cannot cause a second send
         _log({"at": now.isoformat(timespec="seconds"), "to": it["to_email"], "from": it["mailbox"]["email"], "step": it["step"], "result": r["status"], "error": r.get("error", "")})
         if r.get("auth"):
             bad_login.add(mid)
@@ -315,7 +362,11 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
             sent_today[mid] = sent_today.get(mid, 0) + 1
             last_sent[mid] = now
     if results:
-        api.rpc("hq_herald_report", {"p_results": [{k: v for k, v in r.items() if k != "auth"} for r in results]})
+        try:
+            api.rpc("hq_herald_report", {"p_results": [{k: v for k, v in r.items() if k != "auth"} for r in results]})
+            _journal_save([])
+        except Exception:
+            out("Citadel could not be told about this pass yet: the sends are remembered on this PC and reported next minute (nothing is sent twice).")
     if poll and not dry:
         summary["events"] = poll_all(api, now, secrets, out)
     if not dry:
@@ -362,10 +413,19 @@ def classify(raw: bytes, leads: set[str]) -> dict | None:
     sender = email.utils.parseaddr(str(msg.get("From", "")))[1].lower()
     subject = re.sub(r"\s+", " ", str(msg.get("Subject", ""))).strip()
     text = _text_of(msg)
-    when = _parse_ts(email.utils.parsedate_to_datetime(str(msg["Date"])).isoformat()) if msg.get("Date") else None
+    try:
+        when = _parse_ts(email.utils.parsedate_to_datetime(str(msg["Date"])).isoformat()) if msg.get("Date") else None
+    except (TypeError, ValueError, IndexError):
+        when = None
     base = {"subject": subject[:300], "received_at": (when or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds"), "message_id": str(msg.get("Message-ID", "")).strip()[:300]}
     local = sender.split("@")[0]
     ctype = (msg.get_content_type() or "").lower()
+    rtype = str(msg.get_param("report-type") or "").lower()
+    if "report" in ctype and rtype and rtype != "delivery-status":
+        return None                                      # a read receipt or another kind of report: not a failure
+    raw_text = raw.decode("utf-8", "ignore")
+    if rtype == "delivery-status" and re.search(r"^Action:\s*(delayed|delivered|relayed|expanded)", raw_text, re.I | re.M) and not re.search(r"^Action:\s*failed", raw_text, re.I | re.M):
+        return None                                      # "your email is delayed" or "delivered": nothing failed
     if local in ("mailer-daemon", "postmaster") or "delivery-status" in ctype or "report" in ctype or BOUNCE_SUBJECT.search(subject):
         found = [a.lower() for a in ADDR.findall(text) if a.lower() in leads]
         if not found:
