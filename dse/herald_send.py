@@ -13,6 +13,7 @@ The rules, all enforced here and never by trust:
   * at most the mailbox's daily limit (counted from what was really sent today), one email per mailbox per pass, and at least the mailbox's gap since its last email;
   * a follow-up only after the previous step went out, and not sooner than its delay;
   * never to a lead who replied, bounced or unsubscribed; stop switch: data/herald/PAUSE;
+  * answers you write in the Citadel inbox are sent at once from the same mailbox, in the same thread (never to someone who unsubscribed or bounced);
   * the mailbox password is read from this PC only, and never printed or logged. Stdlib only.
 """
 from __future__ import annotations
@@ -191,6 +192,58 @@ def deliver(item: dict, password: str, now: dt.datetime, send=_smtp_send) -> dic
         return {"id": item["id"], "status": "retry", "count_attempt": False, "error": H._scrub(H.explain(e, item["mailbox"].get("provider", "")), password)}
 
 
+# ------------------------------------------------------------------ answers written in the Citadel inbox
+
+def build_answer(item: dict, now: dt.datetime) -> EmailMessage:
+    m = item["mailbox"]
+    msg = EmailMessage()
+    name = (m.get("display_name") or "").strip()
+    msg["From"] = email.utils.formataddr((name, m["email"])) if name else m["email"]
+    msg["To"] = item["to_email"]
+    msg["Subject"] = item.get("subject") or ""
+    msg["Date"] = email.utils.format_datetime(now)
+    msg["Message-ID"] = email.utils.make_msgid(domain=m["email"].split("@")[1])
+    if item.get("in_reply_to"):
+        msg["In-Reply-To"] = item["in_reply_to"]
+        msg["References"] = (item.get("refs") or item["in_reply_to"]).strip()[:1000]
+    msg.set_content(item["body"])
+    return msg
+
+
+def send_answers(api, now: dt.datetime, secrets: dict, dry: bool = False, send=_smtp_send, out=print) -> int:
+    """Sends the answers the member wrote in the Citadel inbox, at once, in the same thread. Never to someone who unsubscribed or bounced."""
+    items = api.rpc("hq_herald_outbox_due", {}) or []
+    results, sent, bad_login = [], 0, set()
+    for it in items:
+        m = it["mailbox"]
+        if m["id"] in bad_login or m.get("paused") or not secrets.get(m["id"]):
+            continue
+        if it.get("lead_status") in ("unsubscribed", "bounced"):
+            results.append({"id": it["id"], "status": "failed", "error": "They unsubscribed or the address bounced: not sent."})
+            continue
+        if dry:
+            out(f"WOULD SEND an answer to {it['to_email']} from {m['email']}")
+            continue
+        msg = build_answer(it, now)
+        try:
+            send(m, secrets[m["id"]], msg)
+            results.append({"id": it["id"], "status": "sent", "message_id": msg["Message-ID"], "sent_at": now.isoformat(timespec="seconds")})
+            sent += 1
+        except smtplib.SMTPAuthenticationError as e:
+            bad_login.add(m["id"])
+            results.append({"id": it["id"], "status": "retry", "count_attempt": False, "error": H._scrub("The mail server refused the login: " + H.explain(e, m.get("provider", "")), secrets[m["id"]])})
+        except smtplib.SMTPRecipientsRefused:
+            results.append({"id": it["id"], "status": "failed", "error": "The server refused the address."})
+        except smtplib.SMTPResponseException as e:
+            results.append({"id": it["id"], "status": "failed" if 500 <= e.smtp_code < 600 else "retry", "count_attempt": True, "error": H._scrub(f"The server answered {e.smtp_code}.", secrets[m["id"]])})
+        except (socket.timeout, TimeoutError, ConnectionError, OSError, smtplib.SMTPException, ssl.SSLError) as e:
+            results.append({"id": it["id"], "status": "retry", "count_attempt": False, "error": H._scrub(H.explain(e, m.get("provider", "")), secrets[m["id"]])})
+        _log({"at": now.isoformat(timespec="seconds"), "to": it["to_email"], "from": m["email"], "step": 0, "result": results[-1]["status"], "error": results[-1].get("error", ""), "kind": "answer"})
+    if results:
+        api.rpc("hq_herald_outbox_report", {"p_results": results})
+    return sent
+
+
 # ------------------------------------------------------------------ one pass
 
 def _state() -> dict:
@@ -215,14 +268,15 @@ def _log(line: dict) -> None:
 def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_send, poll=True, out=print) -> dict:
     """One pass: send what is due (at most one per mailbox), report, and now and then read the inboxes."""
     now = now or dt.datetime.now(dt.timezone.utc)
-    summary = {"checked": 0, "sent": 0, "held": {}, "events": 0, "paused": False}
+    summary = {"checked": 0, "sent": 0, "held": {}, "events": 0, "paused": False, "answers": 0}
     if PAUSE().exists():
         summary["paused"] = True
         out("Herald sending is paused on this PC (data/herald/PAUSE). Run: python dse.py herald resume")
         return summary
+    secrets = H._read_secrets()
+    summary["answers"] = send_answers(api, now, secrets, dry, send, out)
     due = api.rpc("hq_herald_due", {"p_limit": 200}) or []
     summary["checked"] = len(due)
-    secrets = H._read_secrets()
     boxes = {d["mailbox"]["id"]: d["mailbox"] for d in due}
     recent = api.rpc("hq_herald_recent_sent", {}) or []
     sent_today, last_sent = count_today(recent, boxes, now)
@@ -283,6 +337,16 @@ def _text_of(msg) -> str:
     return re.sub(r"<[^>]+>", " ", txt)
 
 
+QUOTE_START = re.compile(r"(?im)^(>.*|on .{5,120} wrote:\s*|-{2,}\s*original message\s*-{2,}.*|from:\s.+sent:\s.+|_{5,}\s*)$")
+
+
+def strip_quoted(text: str) -> str:
+    """Their own words only: everything from the first quoted line ("> ..." or "On Mon, ... wrote:") on is the earlier thread and is cut."""
+    m = QUOTE_START.search(text or "")
+    body = (text[: m.start()] if m else text or "").strip()
+    return re.sub(r"\n{3,}", "\n\n", body)
+
+
 def classify(raw: bytes, leads: set[str]) -> dict | None:
     """Reads one message: a reply, a bounce or an unsubscribe request from one of YOUR leads, or None (auto-replies and everything else are ignored)."""
     msg = email.message_from_bytes(raw, policy=email.policy.default)
@@ -290,7 +354,7 @@ def classify(raw: bytes, leads: set[str]) -> dict | None:
     subject = re.sub(r"\s+", " ", str(msg.get("Subject", ""))).strip()
     text = _text_of(msg)
     when = _parse_ts(email.utils.parsedate_to_datetime(str(msg["Date"])).isoformat()) if msg.get("Date") else None
-    base = {"subject": subject[:300], "received_at": (when or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds")}
+    base = {"subject": subject[:300], "received_at": (when or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds"), "message_id": str(msg.get("Message-ID", "")).strip()[:300]}
     local = sender.split("@")[0]
     ctype = (msg.get_content_type() or "").lower()
     if local in ("mailer-daemon", "postmaster") or "delivery-status" in ctype or "report" in ctype or BOUNCE_SUBJECT.search(subject):
@@ -301,9 +365,10 @@ def classify(raw: bytes, leads: set[str]) -> dict | None:
     auto = str(msg.get("Auto-Submitted", "no")).lower() != "no" or msg.get("X-Autoreply") or msg.get("X-Autorespond") or str(msg.get("Precedence", "")).lower() in ("auto_reply", "bulk", "junk") or AUTO_SUBJECT.search(subject)
     if auto or sender not in leads:
         return None
-    first = text.strip()[:300]
+    own = strip_quoted(text)
+    first = own[:300]
     kind = "unsubscribe" if UNSUB_BODY.search(first) or re.match(r"^\s*(unsubscribe|stop)\s*$", subject, re.I) else "reply"
-    return {**base, "kind": kind, "from_email": sender, "snippet": re.sub(r"\s+", " ", first)[:600]}
+    return {**base, "kind": kind, "from_email": sender, "snippet": re.sub(r"\s+", " ", first)[:600], "body": own[:6000]}
 
 
 def fetch_new(m: dict, password: str, since: dt.date, seen: set[str], connect=None) -> list[tuple[str, bytes]]:
@@ -316,7 +381,7 @@ def fetch_new(m: dict, password: str, since: dt.date, seen: set[str], connect=No
         box.select("INBOX", readonly=True)
         typ, data = box.search(None, "SINCE", since.strftime("%d-%b-%Y"))
         for num in (data[0].split() if typ == "OK" and data and data[0] else [])[-300:]:
-            typ, parts = box.fetch(num, "(BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.6000>)")
+            typ, parts = box.fetch(num, "(BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.14000>)")
             if typ != "OK":
                 continue
             blobs = [p[1] for p in parts if isinstance(p, tuple)]

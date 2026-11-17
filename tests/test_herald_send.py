@@ -108,7 +108,7 @@ try:
 
         def rpc(self, name, body):
             self.calls.append((name, body))
-            return {"hq_herald_due": self.due, "hq_herald_recent_sent": self.recent, "hq_herald_lead_emails": self.leads}.get(name, 1)
+            return {"hq_herald_due": self.due, "hq_herald_recent_sent": self.recent, "hq_herald_lead_emails": self.leads, "hq_herald_outbox_due": getattr(self, "outbox", [])}.get(name, 1)
 
     H.set_secret("m1", PW)
     H.set_secret("m2", PW)
@@ -170,6 +170,50 @@ try:
     S.poll_all(api3, MON_10 + dt.timedelta(seconds=900), H._read_secrets(), out=out.append, fetch=seen_fetch)
     check("seen messages are remembered", not [c for c in api3.calls if c[0] == "hq_herald_events"])
     check("a mailbox that cannot be read is reported plainly and does not stop the others", (lambda o: any("could not read" in x for x in o))((lambda o: (S.poll_all(FakeApi([], leads=["a@b.co"]), MON_10 + dt.timedelta(seconds=2000), H._read_secrets(), out=o.append, fetch=lambda *a: (_ for _ in ()).throw(ConnectionRefusedError("refused"))), o)[1])([])))
+
+
+    # ---- phase 4: the whole message, and answers written in the Citadel inbox
+    quoted = "Yes, interested. Call me tomorrow.\n\nOn Mon, 23 Nov 2026 at 10:00, Ada Obi <ada@me.com> wrote:\n> Hi Ann, short note\n> from Ada"
+    check("only their own words are kept: the quoted earlier thread is cut", S.strip_quoted(quoted) == "Yes, interested. Call me tomorrow." and S.strip_quoted("Plain reply\n\n\n\nStill me") == "Plain reply\n\nStill me" and S.strip_quoted("> only quote") == "")
+    full = S.classify(raw("Ann <ann@acme.com>", "Re: Hello", quoted), leads)
+    check("a reply keeps the whole message (without the quote) and its Message-ID, so it can be read and answered in the thread", full["body"] == "Yes, interested. Call me tomorrow." and full["message_id"].startswith("<") and full["message_id"].endswith("@x>"))
+    check("a bounce also carries its Message-ID", S.classify(raw("MAILER-DAEMON@mail.me.com", "Undelivered", "Final-Recipient: rfc822; bob@x.co"), leads)["message_id"].startswith("<"))
+
+    def ans(i=1, mid="m1", **o):
+        return {"id": f"a{i}", "to_email": f"lead{i}@x.co", "subject": "Re: Hello", "body": f"Thanks, answer {i}", "in_reply_to": "<their@x>", "refs": "<first@me> <their@x>", "attempts": 0, "lead_status": "replied", "mailbox": mbox(mid), **o}
+    m_ans = S.build_answer(ans(1), MON_10)
+    check("an answer is threaded under their message, from the mailbox, with no unsubscribe header (it is one-to-one)", m_ans["In-Reply-To"] == "<their@x>" and "<first@me>" in m_ans["References"] and m_ans["To"] == "lead1@x.co" and "Ada Obi" in m_ans["From"] and m_ans["List-Unsubscribe"] is None and PW not in str(m_ans))
+    apiA = FakeApi([])
+    apiA.outbox = [ans(1), ans(2, mid="m2"), ans(3, lead_status="unsubscribed"), ans(4, lead_status="bounced"), ans(5, mid="m9"), ans(6)]
+    apiA.outbox[5]["mailbox"] = mbox("m1", paused=True)
+    sentA = []
+    n = S.send_answers(apiA, MON_10, H._read_secrets(), send=lambda m, pw, ms: sentA.append((ms["To"], pw)), out=out.append)
+    repA = {r["id"]: r for r in [c for c in apiA.calls if c[0] == "hq_herald_outbox_report"][0][1]["p_results"]}
+    check("answers go at once, outside any send window, to people who are still emailable, from mailboxes with a password", n == 2 and sorted(x[0] for x in sentA) == ["lead1@x.co", "lead2@x.co"] and all(pw == PW for _, pw in sentA))
+    check("an answer to someone who unsubscribed or bounced is refused and reported, never sent", repA["a3"]["status"] == "failed" and repA["a4"]["status"] == "failed" and "lead3@x.co" not in [x[0] for x in sentA] and "lead4@x.co" not in [x[0] for x in sentA])
+    check("a paused mailbox, or one with no password, leaves the answer waiting", "a5" not in repA and "a6" not in repA)
+    check("the result report has no password", PW not in json.dumps(apiA.calls) and all(r["status"] in ("sent", "failed") for r in repA.values()))
+    apiB = FakeApi([])
+    apiB.outbox = [ans(1)]
+    S.send_answers(apiB, MON_10, H._read_secrets(), send=lambda m, pw, ms: (_ for _ in ()).throw(smtplib.SMTPAuthenticationError(535, b"x")), out=out.append)
+    rB = [c for c in apiB.calls if c[0] == "hq_herald_outbox_report"][0][1]["p_results"][0]
+    check("a refused login keeps the answer queued without using an attempt", rB["status"] == "retry" and rB["count_attempt"] is False)
+    apiC = FakeApi([])
+    apiC.outbox = [ans(1)]
+    sentC = []
+    S.send_answers(apiC, MON_10, H._read_secrets(), dry=True, send=lambda *a: sentC.append(1), out=out.append)
+    check("a dry run sends and reports no answers", sentC == [] and not [c for c in apiC.calls if c[0] == "hq_herald_outbox_report"])
+    S.pause()
+    apiD = FakeApi([])
+    apiD.outbox = [ans(1)]
+    sentD = []
+    S.run_pass(apiD, now=MON_10, send=lambda *a: sentD.append(1), poll=False, out=out.append)
+    S.resume()
+    check("the stop switch holds answers too", sentD == [] and not [c for c in apiD.calls if c[0] == "hq_herald_outbox_due"])
+    apiE = FakeApi([])
+    apiE.outbox = [ans(1)]
+    sE = S.run_pass(apiE, now=MON_10, send=lambda m, pw, ms: None, poll=False, out=out.append)
+    check("an ordinary pass sends the waiting answers first and counts them", sE["answers"] == 1)
 
     # ---- the test email
     sent_t = []
