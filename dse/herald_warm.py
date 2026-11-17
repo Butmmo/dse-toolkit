@@ -102,11 +102,16 @@ def send_warm(api, now: dt.datetime, plan: dict, secrets: dict, send=S._smtp_sen
         job = api.rpc("hq_herald_warm_next", {"p_mailbox": m["id"]})
         if not isinstance(job, dict) or not job.get("to_email"):
             continue
-        msg = _msg(m, job["to_email"], job["subject"], job["body"], now)
+        try:
+            msg = _msg(m, job["to_email"], job["subject"], job["body"], now)
+        except ValueError:
+            results.append({"id": job["id"], "status": "failed"})
+            continue
         try:
             send(m, secrets[m["id"]], msg)
             results.append({"id": job["id"], "status": "sent", "message_id": msg["Message-ID"]})
             sent += 1
+            S._extra_add(m["id"], now)
         except (smtplib.SMTPException, socket.timeout, TimeoutError, ConnectionError, OSError, ssl.SSLError) as e:
             results.append({"id": job["id"], "status": "failed"})
             out(f"Herald warmup: could not send from {m['email']}: {H._scrub(H.explain(e, m.get('provider', '')), secrets[m['id']])}")
@@ -188,11 +193,15 @@ def answer_warm(api, now: dt.datetime, secrets: dict, send=S._smtp_send, connect
                 results.append({"id": it["id"], "status": "missing"})
             continue
         subj = it["subject"] if re.match(r"(?i)re:", it["subject"]) else "Re: " + it["subject"]
-        msg = _msg(m, it["from_email"], subj, it["reply_body"] or "Thank you.", now, {"message_id": it["message_id"]})
+        try:
+            msg = _msg(m, it["from_email"], subj, it["reply_body"] or "Thank you.", now, {"message_id": it["message_id"]})
+        except ValueError:
+            continue
         try:
             send(m, secrets[m["id"]], msg)
             results.append({"id": it["id"], "status": "replied", "reply_message_id": msg["Message-ID"], "rescued": rescued})
             answered += 1
+            S._extra_add(m["id"], now)
         except (smtplib.SMTPException, socket.timeout, TimeoutError, ConnectionError, OSError, ssl.SSLError):
             continue          # try again next pass
         S._log({"at": now.isoformat(timespec="seconds"), "to": "(exchange)", "from": m["email"], "step": 0, "result": "replied", "error": "", "kind": "warmup"})

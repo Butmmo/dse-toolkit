@@ -62,6 +62,17 @@ class OAuthRevoked(smtplib.SMTPAuthenticationError):
         super().__init__(535, f"{PROVIDERS.get(provider, PROVIDERS['google'])['marker']} {why}".encode("utf-8"))
 
 
+class HostChanged(smtplib.SMTPAuthenticationError):
+    """The mail server for this mailbox is not the one its password was set for. The password is NOT sent: a changed server setting could be someone collecting it."""
+    def __init__(self, host: str = ""):
+        super().__init__(535, f"[host-changed] the mail server is now {host!r}, not the one this password was saved for. If you changed it on purpose, type the password again: python dse.py herald secret <address>".encode("utf-8"))
+
+
+# Set by herald.py (they need its saved-passwords file): HOST_GUARD checks and remembers which server a password belongs to, ROTATE_HOOK saves a refreshed long-lasting token.
+HOST_GUARD = None
+ROTATE_HOOK = None
+
+
 class OAuthNetwork(OSError):
     """The sign-in service could not be reached to refresh the token: a temporary problem, the email is retried later."""
 
@@ -166,6 +177,12 @@ def access_token(secret: str, now: float | None = None, post=_post_form) -> str:
     r = post(P["token"], form)
     if r.get("access_token"):
         _CACHE[key] = (r["access_token"], now + float(r.get("expires_in", 3600)))
+        new_rt = r.get("refresh_token")
+        if new_rt and new_rt != d["rt"] and ROTATE_HOOK:          # Microsoft gives a fresh long-lasting token each time: keep it, or the sign-in ends 90 days after the first one
+            try:
+                ROTATE_HOOK(secret, pack(d["cid"], d.get("cs", ""), str(new_rt), d["email"], prov))
+            except Exception:
+                pass
         return r["access_token"]
     err = str(r.get("error", ""))
     if err in ("invalid_grant", "invalid_client", "unauthorized_client", "access_denied", "interaction_required", "consent_required"):
@@ -198,6 +215,8 @@ def _own_server(secret: str, host: str) -> None:
 def smtp_auth(s, m: dict, secret: str) -> None:
     """Logs an open SMTP connection in: with Google's token when the secret is a Google sign-in, otherwise with the password."""
     if not is_oauth(secret):
+        if HOST_GUARD:
+            HOST_GUARD(m, secret, "smtp")
         s.login(m.get("username") or m["email"], secret)
         return
     _own_server(secret, m.get("smtp_host", ""))
@@ -213,6 +232,8 @@ def smtp_auth(s, m: dict, secret: str) -> None:
 
 def imap_auth(box, m: dict, secret: str) -> None:
     if not is_oauth(secret):
+        if HOST_GUARD:
+            HOST_GUARD(m, secret, "imap")
         box.login(m.get("username") or m["email"], secret)
         return
     _own_server(secret, m.get("imap_host", ""))
@@ -257,7 +278,7 @@ class Loopback:
             def do_GET(self):               # noqa: N802
                 q = urllib.parse.urlparse(self.path)
                 if q.path == "/" and ("code" in q.query or "error" in q.query):
-                    outer.params = {k: v[0] for k, v in urllib.parse.parse_qs(q.query).items()}
+                    outer.params = {k: v[0][:2000] for k, v in urllib.parse.parse_qs(q.query).items() if k in ("code", "state", "error")}
                     outer._done.set()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -310,7 +331,7 @@ def run_flow(email: str, client: dict, loop=None, opener=webbrowser.open, post=_
     if not params:
         raise OAuthSetupError(f"Nothing came back from {name} in time. Run it again and press Allow in the browser.")
     if params.get("error"):
-        raise OAuthSetupError(f"{name} did not allow it (" + params["error"] + "). Run it again and press Allow.")
+        raise OAuthSetupError(f"{name} did not allow it (" + re.sub(r"[^A-Za-z0-9_.-]", "", str(params["error"]))[:40] + "). Run it again and press Allow.")
     if params.get("state") != state:
         raise OAuthSetupError("The answer did not match this sign-in, so it was refused. Run it again.")
     form = {"code": params.get("code", ""), "client_id": client["cid"], "client_secret": client.get("cs", ""), "redirect_uri": loop.redirect_uri, "grant_type": "authorization_code", "code_verifier": verifier}

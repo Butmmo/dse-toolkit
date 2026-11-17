@@ -124,6 +124,40 @@ def _write_secrets(d: dict[str, str]) -> None:
     os.replace(tmp, SECRETS)                                                          # the file is never half-written
 
 
+def host_guard(m: dict, secret: str, which: str) -> None:
+    """A password is only ever sent to the mail server it was first used with. The first login remembers the server; a later change (someone editing the host in Citadel) stops the login
+    until the password is typed again on this PC, so a changed setting cannot collect it. (Google and Microsoft sign-ins have their own rule: only that provider's own servers.)"""
+    mid = m.get("id")
+    host = str(m.get(f"{which}_host") or "").strip().lower()
+    if not mid or not host:
+        return
+    key = f"_host:{mid}:{which}"
+    pinned = _read_secrets().get(key)
+    if pinned is None:
+        try:
+            set_secret_raw(key, host)
+        except ValueError:
+            pass
+    elif pinned != host:
+        raise O.HostChanged(host)
+
+
+def _rotate_secret(old: str, new: str) -> None:
+    """Replace a saved sign-in with its refreshed version (the same mailbox, a newer long-lasting token)."""
+    d = _read_secrets(strict=True)
+    changed = False
+    for k, v in list(d.items()):
+        if v == old:
+            d[k] = new
+            changed = True
+    if changed:
+        _write_secrets(d)
+
+
+O.HOST_GUARD = host_guard
+O.ROTATE_HOOK = _rotate_secret
+
+
 def has_secret(mailbox_id: str) -> bool:
     return bool(_read_secrets().get(mailbox_id))
 
@@ -141,6 +175,8 @@ def set_secret(mailbox_id: str, password: str) -> None:
     if not password or len(password) > 200 or "\n" in password:
         raise ValueError("That does not look like a password.")
     d = _read_secrets(strict=True)
+    for k in [k for k in d if k.startswith(f"_host:{mailbox_id}:")]:
+        del d[k]                                       # a newly typed password starts afresh: the server is remembered again at its first use
     d[mailbox_id] = password
     _write_secrets(d)
 
@@ -198,6 +234,8 @@ def explain(e: Exception, provider: str = "") -> str:
     """A plain reason for a failed login or connection, with what to try."""
     s = str(e)
     low = s.lower()
+    if "[host-changed]" in s:
+        return "The mail server in this mailbox's settings is not the one its password was saved for, so the password was not sent. " + s.replace("[host-changed]", "").strip("b'\" ").strip()[:240]
     if O.MARKER in s:
         return "Google no longer accepts this mailbox's sign-in. Press Sign in with Google again on the mailbox card. " + s.replace(O.MARKER, "").strip("b'\" ").strip()[:160]
     ms_marker = O.PROVIDERS["microsoft"]["marker"]

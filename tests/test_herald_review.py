@@ -30,6 +30,7 @@ H.MAILBOXES = H.DATA / "mailboxes.json"
 H.SECRETS = H.DATA / "secrets.dat"
 H.STATUS = H.DATA / "status.json"
 PW = "app-pass-SECRET-123"
+REAL_ACCESS = O.access_token                     # kept: a later test replaces O.access_token with a fake
 UTC = dt.timezone.utc
 MON_10 = dt.datetime(2026, 11, 23, 10, 0, tzinfo=UTC)
 
@@ -184,6 +185,77 @@ try:
     reply = b"From: lead1@x.co\r\nSubject: Re: Hello\r\nDate: not a real date\r\nMessage-ID: <r1@x>\r\n\r\nSounds good, call me Tuesday.\r\n"
     c = S.classify(reply, leads)
     check("a reply with a broken Date header is still read (the message is not lost)", c is not None and c["kind"] == "reply" and "Tuesday" in c["body"])
+    # ---- second batch of review fixes
+    check("'Stop by Tuesday' is a reply, but a real stop request is an unsubscribe", all((S.classify(f"From: lead1@x.co\r\nSubject: Re: Hello\r\nMessage-ID: <u{i}@x>\r\n\r\n{t}\r\n".encode(), {"lead1@x.co"}) or {}).get("kind") == k
+          for i, (t, k) in enumerate([("Stop by Tuesday and we can talk", "reply"), ("Stop", "unsubscribe"), ("Please stop emailing me.", "unsubscribe"), ("Unsubscribe", "unsubscribe"), ("Remove me from your list", "unsubscribe"), ("Do not contact me again", "unsubscribe"), ("Can you stop over on Friday?", "reply")])))
+    r = S.deliver(item(), PW, MON_10, send=boom(smtplib.SMTPNotSupportedError("SMTPUTF8 not supported")))
+    check("an address the server can never take (accents without SMTPUTF8) fails that one email instead of blocking its mailbox forever", r["status"] == "failed" and r["bounced"] is False)
+    r = S.deliver(item(), PW, MON_10, send=boom(smtplib.SMTPException("strange protocol problem")))
+    check("any other mail-protocol problem counts as an attempt, so it gives up after a few tries", r["status"] == "retry" and r["count_attempt"] is True)
+    r = S.deliver(item(), PW, MON_10, send=boom(smtplib.SMTPServerDisconnected("closed")))
+    check("a dropped connection is a network problem: tried again without using an attempt", r["status"] == "retry" and r["count_attempt"] is False)
+
+    # a password goes only to the server it was first used with
+    H.set_secret("pm", "pw-pm-123456")
+
+    class Login:
+        def __init__(self):
+            self.log = []
+
+        def login(self, *a):
+            self.log.append("login")
+    pm = {"id": "pm", "email": "pm@me.com", "smtp_host": "smtp.me.com", "imap_host": "imap.me.com"}
+    l1 = Login()
+    O.smtp_auth(l1, pm, "pw-pm-123456")
+    l2 = Login()
+    O.smtp_auth(l2, pm, "pw-pm-123456")
+    check("the first login remembers the server, and the same server keeps working", l1.log == ["login"] and l2.log == ["login"] and H._read_secrets().get("_host:pm:smtp") == "smtp.me.com")
+    l3 = Login()
+    try:
+        O.smtp_auth(l3, {**pm, "smtp_host": "smtp.evil.example"}, "pw-pm-123456")
+        moved = False
+    except O.HostChanged as e:
+        moved = "type the password again" in str(e) and "pw-pm-123456" not in str(e) and "The mail server in this mailbox" in H.explain(e)
+    check("a changed server setting stops the login: the password is not sent, and the message says what to do", moved and l3.log == [])
+    box = Login()
+    box.login = lambda *a: box.log.append("login")
+    O.imap_auth(box, pm, "pw-pm-123456")
+    check("the reading server is pinned separately from the sending server", box.log == ["login"] and H._read_secrets().get("_host:pm:imap") == "imap.me.com")
+    H.set_secret("pm", "pw-pm-123456")
+    l4 = Login()
+    O.smtp_auth(l4, {**pm, "smtp_host": "smtp.moved.example"}, "pw-pm-123456")
+    check("typing the password again on this PC accepts the new server", l4.log == ["login"] and H._read_secrets().get("_host:pm:smtp") == "smtp.moved.example")
+
+    # a refreshed long-lasting token is kept
+    old = O.pack("8f2c1a3e-4b5d-4e6f-9a7b-1c2d3e4f5a6b", "", "OLD-RT", "bob@outlook.com", "microsoft")
+    H.set_secret_raw("mb-ms", old)
+    O._CACHE.clear()
+    REAL_ACCESS(old, now=1.0, post=lambda u, d: {"access_token": "AT", "refresh_token": "NEW-RT", "expires_in": 3600})
+    check("Microsoft's newer long-lasting token replaces the old one in the saved sign-in (so it does not expire 90 days after the first)", O.unpack(H.get_secret("mb-ms"))["rt"] == "NEW-RT" and O.provider_of(H.get_secret("mb-ms")) == "microsoft")
+
+    # answers and warmup mail count toward the day
+    S._save_state({})
+    H.set_secret("m1", PW)
+    S._extra_add("m1", MON_10)
+    sends_x = []
+    apiX = Api([item(7, mailbox=mbox("m1", daily_limit=1))])
+    sX = S.run_pass(apiX, now=MON_10, send=lambda m, pw, ms: sends_x.append(1), poll=False, out=lambda *a: None)
+    check("an inbox answer or warmup email sent today uses up the mailbox's daily limit: no campaign email goes past it", sends_x == [] and sX["sent"] == 0 and sum(sX["held"].values()) == 1, str(sX["held"]))
+    check("the count restarts the next day", S._extra_today(MON_10 + dt.timedelta(days=1)) == {} and S._extra_today(MON_10) == {"m1": 1})
+
+    # the sign-in page's error text is cleaned
+    class ErrLoop:
+        redirect_uri = "http://127.0.0.1:5555"
+
+        def wait(self, timeout=0):
+            return {"error": "x<script>alert(1)</script>\x1b[31m", "code": "C", "extra": "ignored"}
+    try:
+        O.run_flow("bob@gmail.com", {"cid": "1.apps.googleusercontent.com", "cs": "GOCSPX-secretvalue"}, loop=ErrLoop(), opener=lambda u: None, out=lambda *a: None)
+        msg_err = ""
+    except O.OAuthSetupError as e:
+        msg_err = str(e)
+    check("an error a web page puts in the local sign-in address is cleaned before it is shown", "did not allow it" in msg_err and "<" not in msg_err and "\x1b" not in msg_err)
+
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

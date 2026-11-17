@@ -197,8 +197,31 @@ def deliver(item: dict, password: str, now: dt.datetime, send=_smtp_send) -> dic
         if 500 <= e.smtp_code < 600:
             return {"id": item["id"], "status": "failed", "bounced": False, "error": H._scrub(f"The server rejected the email ({e.smtp_code}): {e.smtp_error!r}"[:300], password)}
         return {"id": item["id"], "status": "retry", "count_attempt": True, "error": H._scrub(f"Temporary server error ({e.smtp_code}).", password)}
-    except (socket.timeout, TimeoutError, ConnectionError, OSError, smtplib.SMTPException, ssl.SSLError) as e:
+    except smtplib.SMTPNotSupportedError:
+        # for example an address with accented letters through a server that does not take them: it will never work, so it must not block this mailbox's queue
+        return {"id": item["id"], "status": "failed", "bounced": False, "error": "The mail server does not support something this email needs (for example an address with accented letters)."}
+    except (smtplib.SMTPServerDisconnected, socket.timeout, TimeoutError, ConnectionError, ssl.SSLError) as e:
         return {"id": item["id"], "status": "retry", "count_attempt": False, "error": H._scrub(H.explain(e, item["mailbox"].get("provider", "")), password)}
+    except smtplib.SMTPException as e:
+        # any other mail-protocol problem counts as an attempt, so one strange email gives up after a few tries instead of blocking its mailbox forever
+        return {"id": item["id"], "status": "retry", "count_attempt": True, "error": H._scrub(H.explain(e, item["mailbox"].get("provider", "")), password)}
+    except OSError as e:
+        return {"id": item["id"], "status": "retry", "count_attempt": False, "error": H._scrub(H.explain(e, item["mailbox"].get("provider", "")), password)}
+
+
+# Mail that is not a campaign email (inbox answers, warmup) still uses the mailbox's day. This counts it on this PC so the daily limit sees it.
+def _extra_add(mailbox_id: str, now: dt.datetime) -> None:
+    st = _state()
+    day = now.date().isoformat()
+    ex = st.get("extra") if isinstance(st.get("extra"), dict) and st["extra"].get("day") == day else {"day": day, "n": {}}
+    ex["n"][mailbox_id] = int(ex["n"].get(mailbox_id, 0)) + 1
+    st["extra"] = ex
+    _save_state(st)
+
+
+def _extra_today(now: dt.datetime) -> dict:
+    ex = _state().get("extra")
+    return dict(ex["n"]) if isinstance(ex, dict) and ex.get("day") == now.date().isoformat() and isinstance(ex.get("n"), dict) else {}
 
 
 # ------------------------------------------------------------------ answers written in the Citadel inbox
@@ -233,11 +256,16 @@ def send_answers(api, now: dt.datetime, secrets: dict, dry: bool = False, send=_
         if dry:
             out(f"WOULD SEND an answer to {it['to_email']} from {m['email']}")
             continue
-        msg = build_answer(it, now)
+        try:
+            msg = build_answer(it, now)
+        except ValueError:
+            results.append({"id": it["id"], "status": "failed", "error": "This answer could not be built: a name or reply reference has a line break or an illegal character."})
+            continue
         try:
             send(m, secrets[m["id"]], msg)
             results.append({"id": it["id"], "status": "sent", "message_id": msg["Message-ID"], "sent_at": now.isoformat(timespec="seconds")})
             sent += 1
+            _extra_add(m["id"], now)
         except smtplib.SMTPAuthenticationError as e:
             bad_login.add(m["id"])
             results.append({"id": it["id"], "status": "retry", "count_attempt": False, "error": H._scrub("The mail server refused the login: " + H.explain(e, m.get("provider", "")), secrets[m["id"]])})
@@ -324,6 +352,8 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
     boxes = {d["mailbox"]["id"]: d["mailbox"] for d in due}
     recent = api.rpc("hq_herald_recent_sent", {}) or []
     sent_today, last_sent = count_today(recent, boxes, now)
+    for mb, n in _extra_today(now).items():              # answers and warmup mail sent from this PC today
+        sent_today[mb] = sent_today.get(mb, 0) + int(n)
     for o in owed:                                       # sent but not yet known to Citadel: they still count against today's limits
         if o["r"].get("status") == "sent":
             sent_today[o["mb"]] = sent_today.get(o["mb"], 0) + 1
@@ -379,7 +409,7 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
 
 AUTO_SUBJECT = re.compile(r"^\s*(automatic reply|auto(matic)?[- ]?reply|autoreply|auto:|out of (the )?office|away from|vacation)", re.I)
 BOUNCE_SUBJECT = re.compile(r"(undeliverable|delivery status notification|mail delivery (failed|subsystem)|returned mail|failure notice|delivery failure)", re.I)
-UNSUB_BODY = re.compile(r"^\s*(please\s+)?(stop|unsubscribe|remove me|opt[- ]?out|take me off|do not (contact|email))\b", re.I)
+UNSUB_BODY = re.compile(r"^\s*(please\s+)?(stop|unsubscribe|remove me|opt[- ]?out|take me off|do not (contact|email))(?=\s*$|\s*[.!,;:]|\s+(?:emailing|contacting|sending|messaging|texting|calling|me|us|this|these|my|please|now|immediately|all|the|from|it)\b)", re.I)
 ADDR = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
