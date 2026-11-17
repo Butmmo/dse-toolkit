@@ -7993,6 +7993,52 @@
       ],
       "timeout_min": 3,
       "outputs": []
+    },
+    "dse.herald_list": {
+      "label": "Herald: my mailboxes on this PC",
+      "group": "My engines",
+      "help": "Lists the mailboxes you connected in Citadel (Herald > Mailboxes) and whether a password is set for each on this PC. It sends nothing and reads nothing: it only tries to log in. The mailbox password is never shown, never logged and never leaves this PC; it is typed in a terminal (python dse.py herald secret <address>) and kept under Windows' own protection.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "herald"
+        },
+        {
+          "lit": "list"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.herald_test": {
+      "label": "Herald: test a mailbox connection",
+      "group": "My engines",
+      "help": "Tries the sending (SMTP) and reading (IMAP) logins for one mailbox, or all of them, and tells Citadel the result so the mailbox shows Ready or what to fix. Set the password first in a terminal: python dse.py herald secret <address>. It sends nothing and reads nothing: it only tries to log in. The mailbox password is never shown, never logged and never leaves this PC; it is typed in a terminal (python dse.py herald secret <address>) and kept under Windows' own protection.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "herald"
+        },
+        {
+          "lit": "test"
+        },
+        {
+          "field": "mailbox"
+        }
+      ],
+      "fields": [
+        {
+          "name": "mailbox",
+          "label": "Mailbox address (or all)",
+          "type": "text",
+          "required": true,
+          "default": "all",
+          "max": 254
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
     }
   },
   "periodic": [
@@ -8050,6 +8096,11 @@
       "script": "bridge/schedule_sync.py",
       "every_s": 60,
       "what": "Schedules: run your scheduled tools when they are due (an ordinary job in your Jobs list)"
+    },
+    {
+      "script": "bridge/herald_sync.py",
+      "every_s": 60,
+      "what": "Herald: your mailbox settings from Citadel onto this PC, each mailbox's status back (never a password)"
     }
   ]
 }
