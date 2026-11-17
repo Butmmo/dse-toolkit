@@ -141,6 +141,18 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ---- the password window (opened from the Citadel mailbox card)
+calls = []
+real_name = H.os.name
+H.os.name = "nt"
+msg_w = H.open_password_window({"id": "m-1", "email": "ada@me.com"}, popen=lambda cmd, **kw: calls.append((cmd, kw)))
+H.os.name = real_name
+check("the Citadel button opens a window on this PC that runs the password command for that mailbox", len(calls) == 1 and calls[0][0][-3:] == ["secret", "m-1", "--wait"] and "ada@me.com" in msg_w and calls[0][0][0] == sys.executable)
+check("the address is one argument, never a shell string", isinstance(calls[0][0], list) and "shell" not in calls[0][1])
+check("the message says where to type the password (that window) and what to do next", "paste the app password" in msg_w and "Test connection" in msg_w and "Go to it" in msg_w)
+cat2 = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))
+check("the password tool takes only an address, never a password", [f["name"] for f in cat2["tools"]["dse.herald_password"]["fields"]] == ["mailbox"] and "never goes through Citadel" in cat2["tools"]["dse.herald_password"]["help"])
+
 # ---- the catalog and the program
 cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))
 check("the two Herald tools are in the catalog, and say the password never leaves this PC", {"dse.herald_list", "dse.herald_test"} <= set(cat["tools"]) and "never leaves this PC" in cat["tools"]["dse.herald_test"]["help"])

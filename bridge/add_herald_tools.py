@@ -5,11 +5,16 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.herald_list", "dse.herald_test", "dse.herald_sendstatus", "dse.herald_sendtest", "dse.herald_pause", "dse.herald_resume"):
+for k in ("dse.herald_password", "dse.herald_list", "dse.herald_test", "dse.herald_sendstatus", "dse.herald_sendtest", "dse.herald_pause", "dse.herald_resume"):
     T.pop(k, None)
 
 NEVER = ("It sends nothing and reads nothing: it only tries to log in. The mailbox password is never shown, never logged and never leaves this PC; it is typed in a terminal "
          "(python dse.py herald secret <address>) and kept under Windows' own protection.")
+T["dse.herald_password"] = {
+    "label": "Herald: type a mailbox password on this PC", "group": "My engines",
+    "help": "Opens a window on THIS PC that asks for the mailbox's password (an app password for Gmail). You type it in that window: nothing shows while you type, and it is saved on this PC only, under Windows' own protection. It never goes through Citadel, this runner or a log. Then press Test connection.",
+    "script": "dse.py", "args": [{"lit": "herald"}, {"lit": "password"}, {"field": "mailbox"}],
+    "fields": [{"name": "mailbox", "label": "Mailbox address", "type": "text", "required": True, "max": 254}], "timeout_min": 2, "outputs": []}
 T["dse.herald_list"] = {
     "label": "Herald: my mailboxes on this PC", "group": "My engines",
     "help": "Lists the mailboxes you connected in Citadel (Herald > Mailboxes) and whether a password is set for each on this PC. " + NEVER,

@@ -7994,6 +7994,34 @@
       "timeout_min": 3,
       "outputs": []
     },
+    "dse.herald_password": {
+      "label": "Herald: type a mailbox password on this PC",
+      "group": "My engines",
+      "help": "Opens a window on THIS PC that asks for the mailbox's password (an app password for Gmail). You type it in that window: nothing shows while you type, and it is saved on this PC only, under Windows' own protection. It never goes through Citadel, this runner or a log. Then press Test connection.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "herald"
+        },
+        {
+          "lit": "password"
+        },
+        {
+          "field": "mailbox"
+        }
+      ],
+      "fields": [
+        {
+          "name": "mailbox",
+          "label": "Mailbox address",
+          "type": "text",
+          "required": true,
+          "max": 254
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
     "dse.herald_list": {
       "label": "Herald: my mailboxes on this PC",
       "group": "My engines",

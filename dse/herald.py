@@ -4,6 +4,7 @@ Herald is the campaign platform inside Citadel. Phase 1 connects the mailboxes y
 
     python dse.py herald list                      your mailboxes (from Citadel) and whether a password is set here
     python dse.py herald secret <address|id>       type a mailbox's password or app password (asked here, hidden, never printed)
+    python dse.py herald password <address|id>     the same, but opens its own window on this PC (this is what the Citadel button runs)
     python dse.py herald test <address|id|all>     try the SMTP (sending) and IMAP (reading) logins, and report the result to Citadel
     python dse.py herald forget <address|id>       delete a stored password
     python dse.py herald send [--dry]              one sending pass now (the runner does this every minute); --dry sends nothing
@@ -254,6 +255,19 @@ def status_payload(rows: list[dict] | None = None) -> dict:
 
 # ------------------------------------------------------------------ command line
 
+def open_password_window(m: dict, popen=None) -> str:
+    """Opens a window on THIS PC that asks for the mailbox's password (hidden, never printed) and saves it here. The password is typed in that window, never in Citadel and never through the
+    runner: this only starts the window. The address is passed as one argument (no shell), and only a mailbox Citadel gave this PC can be named."""
+    import subprocess
+    popen = popen or subprocess.Popen
+    cmd = [sys.executable, str(ROOT / "dse.py"), "herald", "secret", m["id"], "--wait"]
+    if os.name != "nt":
+        return "This is not Windows, so no window can be opened for you. Open a terminal and run: python dse.py herald secret " + m["email"]
+    popen(cmd, cwd=str(ROOT), creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+    return (f"A window titled with python has opened on your PC for {m['email']}. Go to it, paste the app password (nothing shows while you type), press Enter, then come back here and press "
+            "Test connection. If you cannot see the window, look in your taskbar.")
+
+
 def cli(args: list[str]) -> int:
     if not args or args[0] in ("-h", "--help", "help"):
         print(__doc__)
@@ -291,7 +305,7 @@ def cli(args: list[str]) -> int:
             s = pay[m["id"]]
             print(f"{m['email']}  password: {'set' if s['secret_set'] else 'NOT SET'}  status: {s['status']}  limit: {m.get('daily_limit', '?')} a day")
         return 0
-    if cmd in ("secret", "forget", "test"):
+    if cmd in ("secret", "forget", "test", "password"):
         if not rest:
             print(f"Which mailbox? python dse.py herald {cmd} <address>" + (" (or: all)" if cmd == "test" else ""))
             return 1
@@ -306,6 +320,9 @@ def cli(args: list[str]) -> int:
         except ValueError as e:
             print(e)
             return 1
+        if cmd == "password":
+            print(open_password_window(targets[0]))
+            return 0
         if cmd == "secret":
             m = targets[0]
             print(f"Password for {m['email']} ({m['smtp_host']}).")
@@ -318,8 +335,12 @@ def cli(args: list[str]) -> int:
                 set_secret(m["id"], pw)
             except ValueError as e:
                 print(e)
+                if "--wait" in rest[1:]:
+                    input("Press Enter to close this window.")
                 return 1
-            print("Saved on this PC only. Now test it: python dse.py herald test " + m["email"])
+            print("Saved on this PC only. Now go back to Citadel and press Test connection (or run: python dse.py herald test " + m["email"] + ").")
+            if "--wait" in rest[1:]:
+                input("Press Enter to close this window.")
             return 0
         if cmd == "forget":
             print("Deleted the password for " + targets[0]["email"] + "." if forget_secret(targets[0]["id"]) else "There was no password stored for " + targets[0]["email"] + ".")
@@ -338,5 +359,5 @@ def cli(args: list[str]) -> int:
         except Exception as e:
             print(f"(Citadel was not told yet: {e}. The next sync will.)")
         return 1 if bad else 0
-    print(f"Unknown command '{cmd}'. Try: list, secret, test, forget, send, sendtest, pause, resume")
+    print(f"Unknown command '{cmd}'. Try: list, secret, password, test, forget, send, sendtest, pause, resume")
     return 1
