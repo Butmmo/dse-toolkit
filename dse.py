@@ -97,6 +97,7 @@ def main():
         p.add_argument("--skip", default="", help="your own words that put a business out when they are in its name")
     c = sub.add_parser("check"); c.add_argument("pack"); c.add_argument("target", help="a CSV with a website column, or one web address")
     c.add_argument("--fast", action="store_true", help="skip the hidden browser (quicker, misses JavaScript-built sites)")
+    c.add_argument("--result-line", action="store_true", dest="result_line", help="with one web address: also print one RESULT line a BPS Table workflow reads")
     c.add_argument("--out", default="")
     l = sub.add_parser("list"); l.add_argument("pack"); l.add_argument("kind"); l.add_argument("cities")
     l.add_argument("--miles", type=float, default=25.0); l.add_argument("--max", type=int, default=40)
@@ -477,7 +478,7 @@ def main():
         places.find(a.kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip)
     elif a.cmd == "check":
         if a.target.lower().startswith(("http://", "https://", "www.")) or (a.target.count(".") and not a.target.lower().endswith(".csv")):
-            chk.check_one(a.pack, a.target, render=not a.fast)
+            chk.check_one(a.pack, a.target, render=not a.fast, result_line=a.result_line)
         else:
             chk.check_file(a.pack, a.target, render=not a.fast, out=a.out)
     elif a.cmd == "list":

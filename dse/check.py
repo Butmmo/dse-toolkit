@@ -192,7 +192,13 @@ def check_file(pack_name: str, src: str, render: bool = True, out: str = "") -> 
     return dst
 
 
-def check_one(pack_name: str, url: str, render: bool = True):
+def result_json(res: dict) -> str:
+    """One line a BPS Table workflow reads: RESULT {json}. The gap is the one-line problem to lead with; empty when none was found."""
+    out = {"gap_count": res.get("gap_count") or 0, "gap": res.get("gap_line") or "", "notes": res.get("check_notes") or ""}
+    return "RESULT " + json.dumps(out, ensure_ascii=True, separators=(",", ":"))
+
+
+def check_one(pack_name: str, url: str, render: bool = True, result_line: bool = False):
     pack = load_pack(pack_name)
     res = check_site(url, pack, render)
     print(f"{url} ({pack['label']} pack)")
@@ -201,3 +207,5 @@ def check_one(pack_name: str, url: str, render: bool = True):
     print(f"  Gaps: {res['gap_count'] or 0}. {res['check_notes']}")
     if res["gap_line"]:
         print(f"  Lead with: {res['gap_line']}")
+    if result_line:
+        print(result_json(res))

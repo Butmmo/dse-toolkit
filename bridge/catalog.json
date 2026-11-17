@@ -8360,6 +8360,92 @@
       ],
       "timeout_min": 6,
       "outputs": []
+    },
+    "dse.check_row": {
+      "label": "Problem check: one website, for a grid row",
+      "group": "Check websites",
+      "help": "Checks one website against your path's checklist and prints the gap to lead with as one result line that a workflow of your BPS Tables reads and writes into the row. A workflow runs this for you with the step 'Run a tool on this PC' (the PC must be on and connected); you can also run it here by hand. It only reads public pages and changes nothing of yours.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "check"
+        },
+        {
+          "field": "pack"
+        },
+        {
+          "field": "url"
+        },
+        {
+          "lit": "--result-line"
+        },
+        {
+          "flag": "--fast",
+          "field": "fast"
+        }
+      ],
+      "fields": [
+        {
+          "name": "pack",
+          "label": "Your path or your own check",
+          "type": "choice",
+          "required": true,
+          "choices_from": "packs",
+          "choices": [
+            {
+              "value": "ascent",
+              "label": "The Ascent (high-ticket closer)"
+            },
+            {
+              "value": "authority",
+              "label": "Authority Engine (LinkedIn ghostwriting)"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "carebridge",
+              "label": "CareBridge"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "ministry",
+              "label": "Digital Ministry Systems"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery Engine"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimization"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist"
+            }
+          ]
+        },
+        {
+          "name": "url",
+          "label": "Website",
+          "type": "url",
+          "required": true,
+          "placeholder": "https://example.com"
+        },
+        {
+          "name": "fast",
+          "label": "Fast (skip the hidden browser)",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 6,
+      "outputs": []
     }
   },
   "periodic": [
