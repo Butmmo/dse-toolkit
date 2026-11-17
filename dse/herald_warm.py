@@ -25,6 +25,7 @@ from email.message import EmailMessage
 
 from . import herald as H
 from . import herald_send as S
+from . import herald_oauth as O
 
 RAMP_START = 5
 RAMP_STEP = 2
@@ -117,7 +118,7 @@ def send_warm(api, now: dt.datetime, plan: dict, secrets: dict, send=S._smtp_sen
 
 def _imap(m: dict, password: str):
     box = imaplib.IMAP4_SSL(m["imap_host"], int(m["imap_port"]), ssl_context=ssl.create_default_context(), timeout=H.TIMEOUT)
-    box.login(m.get("username") or m["email"], password)
+    O.imap_auth(box, m, password)
     return box
 
 

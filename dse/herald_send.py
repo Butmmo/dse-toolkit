@@ -33,6 +33,7 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from . import herald as H
+from . import herald_oauth as O
 
 SITE_URL = (os.environ.get("HQ_SITE_URL") or "https://dbicitadel.vercel.app").rstrip("/")
 PAUSE = lambda: H.DATA / "PAUSE"          # noqa: E731  (looked up each time so tests can move DATA)
@@ -161,12 +162,12 @@ def _smtp_send(m: dict, password: str, msg: EmailMessage) -> None:
     ctx = ssl.create_default_context()
     if m.get("smtp_security", "ssl") == "ssl":
         with smtplib.SMTP_SSL(m["smtp_host"], int(m["smtp_port"]), timeout=H.TIMEOUT, context=ctx) as s:
-            s.login(m.get("username") or m["email"], password)
+            O.smtp_auth(s, m, password)
             s.send_message(msg)
     else:
         with smtplib.SMTP(m["smtp_host"], int(m["smtp_port"]), timeout=H.TIMEOUT) as s:
             s.ehlo(); s.starttls(context=ctx); s.ehlo()
-            s.login(m.get("username") or m["email"], password)
+            O.smtp_auth(s, m, password)
             s.send_message(msg)
 
 
@@ -385,7 +386,7 @@ def fetch_new(m: dict, password: str, since: dt.date, seen: set[str], connect=No
     box = connect()
     out: list[tuple[str, bytes]] = []
     try:
-        box.login(m.get("username") or m["email"], password)
+        O.imap_auth(box, m, password)
         box.select("INBOX", readonly=True)
         typ, data = box.search(None, "SINCE", since.strftime("%d-%b-%Y"))
         for num in (data[0].split() if typ == "OK" and data and data[0] else [])[-300:]:

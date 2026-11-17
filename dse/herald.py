@@ -5,6 +5,9 @@ Herald is the campaign platform inside Citadel. Phase 1 connects the mailboxes y
     python dse.py herald list                      your mailboxes (from Citadel) and whether a password is set here
     python dse.py herald secret <address|id>       type a mailbox's password or app password (asked here, hidden, never printed)
     python dse.py herald password <address|id>     the same, but opens its own window on this PC (this is what the Citadel button runs)
+    python dse.py herald google <address|id>       sign in with Google instead of an app password (no password needed; see dse/herald_oauth.py)
+    python dse.py herald googlewin <address|id>    the same, in its own window (this is what the Citadel button runs)
+    python dse.py herald googleclient              store your Google Cloud client ID and secret (asked once)
     python dse.py herald test <address|id|all>     try the SMTP (sending) and IMAP (reading) logins, and report the result to Citadel
     python dse.py herald forget <address|id>       delete a stored password
     python dse.py herald send [--dry]              one sending pass now (the runner does this every minute); --dry sends nothing
@@ -29,6 +32,8 @@ import socket
 import ssl
 import sys
 from pathlib import Path
+
+from . import herald_oauth as O
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "herald"
@@ -98,6 +103,15 @@ def has_secret(mailbox_id: str) -> bool:
     return bool(_read_secrets().get(mailbox_id))
 
 
+def set_secret_raw(key: str, value: str) -> None:
+    """Stores a value that is not a typed password (a Google sign-in, the Google client details). Never print it."""
+    if not value or len(value) > 4000 or "\n" in value:
+        raise ValueError("That does not look like a sign-in.")
+    d = _read_secrets()
+    d[key] = value
+    _write_secrets(d)
+
+
 def set_secret(mailbox_id: str, password: str) -> None:
     if not password or len(password) > 200 or "\n" in password:
         raise ValueError("That does not look like a password.")
@@ -159,6 +173,10 @@ def explain(e: Exception, provider: str = "") -> str:
     """A plain reason for a failed login or connection, with what to try."""
     s = str(e)
     low = s.lower()
+    if O.MARKER in s:
+        return "Google no longer accepts this mailbox's sign-in. Press Sign in with Google again on the mailbox card. " + s.replace(O.MARKER, "").strip("b'\" ").strip()[:160]
+    if isinstance(e, O.OAuthNetwork):
+        return "Google could not be reached to refresh the sign-in (your internet, or Google is busy). It is tried again by itself."
     if isinstance(e, smtplib.SMTPAuthenticationError) or "authentication" in low or "invalid credentials" in low or "auth" in low and "fail" in low:
         tip = {"google": " Gmail needs a 16-character App Password, not your normal password. First turn on 2-Step Verification (myaccount.google.com/signinoptions/twosv), then make one at myaccount.google.com/apppasswords and paste it with or without the spaces. A Google Workspace address may need its administrator to allow app passwords.",
                "microsoft": " Microsoft 365 may need SMTP AUTH switched on for the mailbox, or an app password if two-step sign-in is on.",
@@ -182,20 +200,20 @@ def _smtp_login(m: dict, password: str) -> None:
     ctx = ssl.create_default_context()
     if m.get("smtp_security", "ssl") == "ssl":
         with smtplib.SMTP_SSL(m["smtp_host"], int(m["smtp_port"]), timeout=TIMEOUT, context=ctx) as s:
-            s.login(m.get("username") or m["email"], password)
+            O.smtp_auth(s, m, password)
     else:
         with smtplib.SMTP(m["smtp_host"], int(m["smtp_port"]), timeout=TIMEOUT) as s:
             s.ehlo()
             s.starttls(context=ctx)
             s.ehlo()
-            s.login(m.get("username") or m["email"], password)
+            O.smtp_auth(s, m, password)
 
 
 def _imap_login(m: dict, password: str) -> None:
     ctx = ssl.create_default_context()
     box = imaplib.IMAP4_SSL(m["imap_host"], int(m["imap_port"]), ssl_context=ctx, timeout=TIMEOUT)
     try:
-        box.login(m.get("username") or m["email"], password)
+        O.imap_auth(box, m, password)
     finally:
         try:
             box.logout()
@@ -258,6 +276,45 @@ def status_payload(rows: list[dict] | None = None) -> dict:
 
 # ------------------------------------------------------------------ command line
 
+def get_google_client() -> dict | None:
+    return O.unpack_client(_read_secrets().get(O.CLIENT_KEY))
+
+
+def google_sign_in(m: dict, ask=input, ask_secret=getpass.getpass, out=print, flow=None) -> int:
+    """Signs this mailbox in with Google (see herald_oauth.py). The first time it also asks for your Google Cloud client ID and secret and keeps them. Returns 0 on success."""
+    client = get_google_client()
+    if not client:
+        out("First time: Herald needs the client ID and secret of your own Google Cloud app (the Herald page shows where to find them, it takes about ten minutes once).")
+        cid = ask("Client ID (ends in .apps.googleusercontent.com): ").strip()
+        cs = ask_secret("Client secret (nothing shows while you type): ").strip()
+        problem = O.client_ok(cid, cs)
+        if problem:
+            out(problem)
+            return 1
+        set_secret_raw(O.CLIENT_KEY, O.pack_client(cid, cs))
+        client = {"cid": cid, "cs": cs}
+        out("Saved on this PC only.")
+    try:
+        bundle = (flow or O.run_flow)(m["email"], client, out=out)
+        set_secret_raw(m["id"], bundle)
+    except (O.OAuthSetupError, ValueError) as e:
+        out(str(e))
+        return 1
+    out("Signed in. Saved on this PC only. Now go back to Citadel and press Test connection (or run: python dse.py herald test " + m["email"] + ").")
+    return 0
+
+
+def open_google_window(m: dict, popen=None) -> str:
+    """Opens a window on THIS PC for the Google sign-in (the browser then asks you to press Allow). Same safety as the password window: no shell, only a mailbox Citadel gave this PC."""
+    import subprocess
+    popen = popen or subprocess.Popen
+    if os.name != "nt":
+        return "This is not Windows, so no window can be opened for you. Open a terminal and run: python dse.py herald google " + m["email"]
+    popen([sys.executable, str(ROOT / "dse.py"), "herald", "google", m["id"], "--wait"], cwd=str(ROOT), creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+    return (f"A window has opened on your PC for {m['email']}. Go to it. The first time it asks for your Google client ID and secret; then your browser opens: choose {m['email']} and press Allow. "
+            "Then come back here and press Test connection. If you cannot see the window, look in your taskbar.")
+
+
 def open_password_window(m: dict, popen=None) -> str:
     """Opens a window on THIS PC that asks for the mailbox's password (hidden, never printed) and saves it here. The password is typed in that window, never in Citadel and never through the
     runner: this only starts the window. The address is passed as one argument (no shell), and only a mailbox Citadel gave this PC can be named."""
@@ -308,6 +365,32 @@ def cli(args: list[str]) -> int:
             s = pay[m["id"]]
             print(f"{m['email']}  password: {'set' if s['secret_set'] else 'NOT SET'}  status: {s['status']}  limit: {m.get('daily_limit', '?')} a day")
         return 0
+    if cmd == "googleclient":
+        cid = input("Client ID (ends in .apps.googleusercontent.com): ").strip()
+        cs = getpass.getpass("Client secret (nothing shows while you type): ").strip()
+        problem = O.client_ok(cid, cs)
+        if problem:
+            print(problem)
+            return 1
+        set_secret_raw(O.CLIENT_KEY, O.pack_client(cid, cs))
+        print("Saved on this PC only.")
+        return 0
+    if cmd in ("google", "googlewin"):
+        if not rest:
+            print(f"Which mailbox? python dse.py herald {cmd} <address>")
+            return 1
+        try:
+            m = find(rest[0])
+        except ValueError as e:
+            print(e)
+            return 1
+        if cmd == "googlewin":
+            print(open_google_window(m))
+            return 0
+        code = google_sign_in(m)
+        if "--wait" in rest[1:]:
+            input("Press Enter to close this window.")
+        return code
     if cmd in ("secret", "forget", "test", "password"):
         if not rest:
             print(f"Which mailbox? python dse.py herald {cmd} <address>" + (" (or: all)" if cmd == "test" else ""))
@@ -362,5 +445,5 @@ def cli(args: list[str]) -> int:
         except Exception as e:
             print(f"(Citadel was not told yet: {e}. The next sync will.)")
         return 1 if bad else 0
-    print(f"Unknown command '{cmd}'. Try: list, secret, password, test, forget, send, sendtest, pause, resume")
+    print(f"Unknown command '{cmd}'. Try: list, secret, password, google, test, forget, send, sendtest, pause, resume")
     return 1

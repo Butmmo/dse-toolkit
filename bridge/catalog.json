@@ -7994,6 +7994,34 @@
       "timeout_min": 3,
       "outputs": []
     },
+    "dse.herald_google": {
+      "label": "Herald: sign a Gmail mailbox in with Google (no app password)",
+      "group": "My engines",
+      "help": "For a Gmail address that will not give an app password. Opens a window on THIS PC and then your browser: you choose the account and press Allow. The first time it asks for the client ID and secret of your own free Google Cloud app (the Herald page shows how). The sign-in is kept on this PC only, under Windows' own protection, and is checked to belong to this exact address. It never goes through Citadel or this runner. Then press Test connection.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "herald"
+        },
+        {
+          "lit": "googlewin"
+        },
+        {
+          "field": "mailbox"
+        }
+      ],
+      "fields": [
+        {
+          "name": "mailbox",
+          "label": "Mailbox address",
+          "type": "text",
+          "required": true,
+          "max": 254
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
     "dse.herald_password": {
       "label": "Herald: type a mailbox password on this PC",
       "group": "My engines",
