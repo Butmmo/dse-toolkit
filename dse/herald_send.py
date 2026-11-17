@@ -268,7 +268,7 @@ def _log(line: dict) -> None:
 def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_send, poll=True, out=print) -> dict:
     """One pass: send what is due (at most one per mailbox), report, and now and then read the inboxes."""
     now = now or dt.datetime.now(dt.timezone.utc)
-    summary = {"checked": 0, "sent": 0, "held": {}, "events": 0, "paused": False, "answers": 0, "warm": 0, "ramped": 0}
+    summary = {"checked": 0, "sent": 0, "held": {}, "events": 0, "paused": False, "answers": 0, "warm": 0, "ramped": 0, "hooks": 0}
     if PAUSE().exists():
         summary["paused"] = True
         out("Herald sending is paused on this PC (data/herald/PAUSE). Run: python dse.py herald resume")
@@ -317,6 +317,9 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
         api.rpc("hq_herald_report", {"p_results": [{k: v for k, v in r.items() if k != "auth"} for r in results]})
     if poll and not dry:
         summary["events"] = poll_all(api, now, secrets, out)
+    if not dry:
+        from . import herald_hooks            # webhooks (phase 7): deliver what Citadel queued, including events found just now
+        summary["hooks"] = herald_hooks.run(api, now, out=out)
     return summary
 
 
