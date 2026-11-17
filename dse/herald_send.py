@@ -29,6 +29,7 @@ import re
 import smtplib
 import socket
 import ssl
+import time
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -37,6 +38,8 @@ from . import herald_oauth as O
 from . import herald_graph as G
 
 SITE_URL = (os.environ.get("HQ_SITE_URL") or "https://dbicitadel.vercel.app").rstrip("/")
+RUN_LOCK = lambda: H.DATA / "run.lock"          # noqa: E731
+LOCK_STALE_S = 20 * 60                                 # a pass that died leaves a lock behind: it is ignored after 20 minutes
 PAUSE = lambda: H.DATA / "PAUSE"          # noqa: E731  (looked up each time so tests can move DATA)
 ENGINE = lambda: H.DATA / "engine.json"   # noqa: E731
 SENDLOG = lambda: H.DATA / "sendlog.jsonl"  # noqa: E731
@@ -326,8 +329,50 @@ def _journal_save(items: list) -> None:
     os.replace(tmp, _journal())
 
 
+def _take_lock(now_s: float | None = None) -> bool:
+    """Only one send pass may run on this PC at a time (the periodic runner and a manual 'herald send' could otherwise send the same email twice). Created exclusively, so two passes cannot both get it."""
+    now_s = time.time() if now_s is None else now_s
+    p = RUN_LOCK()
+    H.DATA.mkdir(parents=True, exist_ok=True)
+    for _ in range(2):
+        try:
+            fd = os.open(str(p), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, f"{os.getpid()} {int(now_s)}\n".encode("ascii"))
+            os.close(fd)
+            return True
+        except FileExistsError:
+            try:
+                if now_s - p.stat().st_mtime < LOCK_STALE_S:
+                    return False
+                p.unlink()                              # left behind by a pass that died: take over
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return False
+    return False
+
+
+def _drop_lock() -> None:
+    try:
+        RUN_LOCK().unlink()
+    except OSError:
+        pass
+
+
 def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_send, poll=True, out=print) -> dict:
-    """One pass: send what is due (at most one per mailbox), report, and now and then read the inboxes."""
+    """One pass: send what is due (at most one per mailbox), report, and now and then read the inboxes. Only one pass runs at a time on this PC."""
+    if dry:
+        return _run_pass(api, now, dry, send, poll, out)
+    if not _take_lock():
+        out("Herald: another send pass is already running on this PC: this one stops so nothing is sent twice.")
+        return {"checked": 0, "sent": 0, "held": {"another pass is running": 1}, "events": 0, "paused": False, "answers": 0, "warm": 0, "ramped": 0, "hooks": 0}
+    try:
+        return _run_pass(api, now, dry, send, poll, out)
+    finally:
+        _drop_lock()
+
+
+def _run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_send, poll=True, out=print) -> dict:
     now = now or dt.datetime.now(dt.timezone.utc)
     summary = {"checked": 0, "sent": 0, "held": {}, "events": 0, "paused": False, "answers": 0, "warm": 0, "ramped": 0, "hooks": 0}
     if PAUSE().exists():
@@ -474,18 +519,25 @@ def classify(raw: bytes, leads: set[str]) -> dict | None:
     return {**base, "kind": kind, "from_email": sender, "snippet": re.sub(r"\s+", " ", first)[:600], "body": own[:6000]}
 
 
+MAX_NEW_PER_POLL = G.MAX_NEW
+Batch = G.Batch            # new messages found by one read; .capped is True when there were more than the cap (the next pass carries on)
+
+
 def fetch_new(m: dict, password: str, since: dt.date, seen: set[str], connect=None) -> list[tuple[str, bytes]]:
     """New messages in the inbox since a date, without marking anything as read."""
     if G.is_cloud(password):
         return G.fetch_new(m, since, seen)
     connect = connect or (lambda: imaplib.IMAP4_SSL(m["imap_host"], int(m["imap_port"]), ssl_context=ssl.create_default_context(), timeout=H.TIMEOUT))
     box = connect()
-    out: list[tuple[str, bytes]] = []
+    out = Batch()
     try:
         O.imap_auth(box, m, password)
         box.select("INBOX", readonly=True)
         typ, data = box.search(None, "SINCE", since.strftime("%d-%b-%Y"))
-        for num in (data[0].split() if typ == "OK" and data and data[0] else [])[-300:]:
+        for num in (data[0].split() if typ == "OK" and data and data[0] else [])[-2000:]:       # oldest first, so the oldest unseen mail is never the part that is dropped
+            if len(out) >= MAX_NEW_PER_POLL:
+                out.capped = True
+                break
             typ, parts = box.fetch(num, "(BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.14000>)")
             if typ != "OK":
                 continue
@@ -517,12 +569,16 @@ def poll_all(api, now: dt.datetime, secrets: dict, out=print, fetch=fetch_new) -
     for m in todo:
         since = (_parse_ts(polled.get(m["id"])) or now - dt.timedelta(days=3)).date() - dt.timedelta(days=1)
         try:
-            for key, raw in fetch(m, secrets[m["id"]], since, seen):
+            batch = fetch(m, secrets[m["id"]], since, seen)
+            for key, raw in batch:
                 seen.add(key)
                 ev = classify(raw, leads)
                 if ev:
                     events.append({**ev, "mailbox_id": m["id"]})
-            polled[m["id"]] = now.isoformat(timespec="seconds")
+            if getattr(batch, "capped", False):
+                out(f"Herald: {m['email']} has more than {MAX_NEW_PER_POLL} new messages: the rest are read on the next pass.")
+            else:
+                polled[m["id"]] = now.isoformat(timespec="seconds")      # only moved forward when everything in the window was read
         except Exception as e:
             out(f"Herald: could not read {m['email']}: {H._scrub(H.explain(e, m.get('provider', '')), secrets[m['id']])}")
     n = 0

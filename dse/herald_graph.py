@@ -21,9 +21,15 @@ from email.message import EmailMessage
 SENTINEL = "citadel-ms:"
 GRAPH = "https://graph.microsoft.com/v1.0"
 TIMEOUT = 30
+MAX_NEW = 300                      # at most this many NEW messages per read, oldest first; the rest are read on the next pass
 MAX_RAW = 20000                    # the same idea as the IMAP reader: only the start of each message is needed
 
 _state: dict = {"api": None, "tokens": {}, "signed": None}
+
+
+class Batch(list):
+    """New messages found by one read. capped is True when there were more than the cap."""
+    capped = False
 
 
 class SignInNeeded(Exception):
@@ -136,14 +142,14 @@ def send_mime(mailbox_id: str, msg: EmailMessage, http=_http) -> None:
     raise smtplib.SMTPResponseException(554, f"Microsoft rejected the email ({ecode or code}): {text}".encode("utf-8"))
 
 
-def fetch_new(m: dict, since: dt.date, seen: set[str], http=_http, limit: int = 300) -> list[tuple[str, bytes]]:
+def fetch_new(m: dict, since: dt.date, seen: set[str], http=_http, limit: int = MAX_NEW) -> list[tuple[str, bytes]]:
     """New inbox messages since a date, as the start of each raw message, without changing anything in the mailbox."""
     token = access_token(m["id"], http=http)
     h = {"Authorization": f"Bearer {token}"}
-    q = urllib.parse.urlencode({"$top": "50", "$orderby": "receivedDateTime desc", "$select": "id,internetMessageId", "$filter": f"receivedDateTime ge {since.isoformat()}T00:00:00Z"})
+    q = urllib.parse.urlencode({"$top": "50", "$orderby": "receivedDateTime asc", "$select": "id,internetMessageId", "$filter": f"receivedDateTime ge {since.isoformat()}T00:00:00Z"})
     url = f"{GRAPH}/me/mailFolders/inbox/messages?{q}"
-    out: list[tuple[str, bytes]] = []
-    while url and len(out) < limit:
+    out = Batch()
+    while url:
         code, raw = http("GET", url, h)
         if code != 200:
             ecode, text = _graph_error(raw)
@@ -156,6 +162,9 @@ def fetch_new(m: dict, since: dt.date, seen: set[str], http=_http, limit: int = 
             key = it.get("internetMessageId") or f"{m['id']}:{it.get('id')}"
             if key in seen:
                 continue
+            if len(out) >= limit:
+                out.capped = True
+                return out
             c2, body = http("GET", f"{GRAPH}/me/messages/{urllib.parse.quote(it['id'], safe='')}/$value", h)
             if c2 == 200:
                 out.append((key, body[:MAX_RAW]))
