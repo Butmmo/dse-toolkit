@@ -34,6 +34,7 @@ from pathlib import Path
 
 from . import herald as H
 from . import herald_oauth as O
+from . import herald_graph as G
 
 SITE_URL = (os.environ.get("HQ_SITE_URL") or "https://dbicitadel.vercel.app").rstrip("/")
 PAUSE = lambda: H.DATA / "PAUSE"          # noqa: E731  (looked up each time so tests can move DATA)
@@ -161,6 +162,8 @@ def build_message(item: dict, now: dt.datetime) -> EmailMessage:
 
 
 def _smtp_send(m: dict, password: str, msg: EmailMessage) -> None:
+    if G.is_cloud(password):                      # signed in with Microsoft from Citadel: send through Microsoft Graph, no SMTP
+        return G.send_mime(m["id"], msg)
     ctx = ssl.create_default_context()
     if m.get("smtp_security", "ssl") == "ssl":
         with smtplib.SMTP_SSL(m["smtp_host"], int(m["smtp_port"]), timeout=H.TIMEOUT, context=ctx) as s:
@@ -331,7 +334,8 @@ def run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp_
         summary["paused"] = True
         out("Herald sending is paused on this PC (data/herald/PAUSE). Run: python dse.py herald resume")
         return summary
-    secrets = H._read_secrets()
+    G.set_api(api)
+    secrets = G.with_signed_in(api, H._read_secrets())      # mailboxes signed in through Citadel count as having a login
     summary["answers"] = send_answers(api, now, secrets, dry, send, out)
     from . import herald_warm as W        # the ramp and the opt-in exchange (phase 6); imported here because it imports this module
     plan = W.get_plan(api)
@@ -472,6 +476,8 @@ def classify(raw: bytes, leads: set[str]) -> dict | None:
 
 def fetch_new(m: dict, password: str, since: dt.date, seen: set[str], connect=None) -> list[tuple[str, bytes]]:
     """New messages in the inbox since a date, without marking anything as read."""
+    if G.is_cloud(password):
+        return G.fetch_new(m, since, seen)
     connect = connect or (lambda: imaplib.IMAP4_SSL(m["imap_host"], int(m["imap_port"]), ssl_context=ssl.create_default_context(), timeout=H.TIMEOUT))
     box = connect()
     out: list[tuple[str, bytes]] = []
@@ -532,7 +538,7 @@ def poll_all(api, now: dt.datetime, secrets: dict, out=print, fetch=fetch_new) -
 def send_test(ref: str, to: str, send=_smtp_send) -> str:
     """ONE email from a mailbox to an address you type: to see that sending works and how it looks. It is not a campaign email."""
     m = H.find(ref)
-    pw = H.get_secret(m["id"])
+    pw = H.get_secret(m["id"]) or G.cloud_if_signed(m["id"])
     if not pw:
         raise ValueError(f"No password is set on this PC for {m['email']}. Run: python dse.py herald secret {m['email']}")
     if not H.EMAIL_RX.match(to or ""):

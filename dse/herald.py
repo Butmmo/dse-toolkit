@@ -289,7 +289,10 @@ def _imap_login(m: dict, password: str) -> None:
 
 def test_mailbox(m: dict, password: str | None = None) -> dict:
     """Logs in to the mailbox's sending (SMTP) and reading (IMAP) servers. Sends nothing and reads nothing. Never returns or prints the password."""
-    pw = password if password is not None else get_secret(m["id"])
+    pw = password if password is not None else (get_secret(m["id"]) or _cloud_secret(m["id"]))
+    if pw and pw.startswith("citadel-ms:"):          # signed in with Microsoft from Citadel: the check goes through Microsoft Graph
+        from . import herald_graph as G
+        return G.test(m["id"])
     if not pw:
         return {"status": "new", "secret_set": False, "smtp": None, "imap": None, "note": f"No password is set on this PC yet. Run: python dse.py herald secret {m['email']}"}
     out = {"secret_set": True, "smtp": None, "imap": None}
@@ -323,19 +326,29 @@ def record_test(mailbox_id: str, result: dict) -> None:
     STATUS.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
 
 
-def status_payload(rows: list[dict] | None = None) -> dict:
-    """What is reported to Citadel: for each mailbox, whether a password is set here and the last test. No secrets."""
+def _cloud_secret(mailbox_id: str) -> str | None:
+    try:
+        from . import herald_graph as G
+        return G.cloud_if_signed(mailbox_id)
+    except Exception:
+        return None
+
+
+def status_payload(rows: list[dict] | None = None, signed: set | None = None) -> dict:
+    """What is reported to Citadel: for each mailbox, whether a password is set here (or it is signed in through Citadel) and the last test. No secrets."""
     rows = load_mailboxes() if rows is None else rows
+    signed = {str(x).lower() for x in (signed or set())}
     last = _load_status()
     secrets = _read_secrets()
     out = {}
     for m in rows:
         t = last.get(m["id"], {})
-        have = bool(secrets.get(m["id"]))
+        cloud = m["id"].lower() in signed and not secrets.get(m["id"])
+        have = bool(secrets.get(m["id"])) or cloud
         status = t.get("status", "new") if have else "new"
         note = t.get("note", "") if have else f"No password set on this PC yet. Run: python dse.py herald secret {m['email']}"
         if have and not t:
-            note = "A password is set on this PC. Run the test to check the logins."
+            note = "Signed in with Microsoft through Citadel. Run the test to check it." if cloud else "A password is set on this PC. Run the test to check the logins."
         out[m["id"]] = {"status": status, "note": note, "secret_set": have, **({"checked_at": t["checked_at"]} if t.get("checked_at") and have else {})}
     return out
 

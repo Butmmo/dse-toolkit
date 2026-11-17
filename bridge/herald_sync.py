@@ -33,10 +33,12 @@ def _api():
 
 def push_status(api=None) -> int:
     from dse import herald
-    status = herald.status_payload()
+    from dse import herald_graph
+    api = api or _api()
+    status = herald.status_payload(signed=herald_graph.signed_in_ids(api))
     if not status:
         return 0
-    return int((api or _api()).rpc("hq_herald_status", {"p_status": status}) or 0)
+    return int(api.rpc("hq_herald_status", {"p_status": status}) or 0)
 
 
 def main():
