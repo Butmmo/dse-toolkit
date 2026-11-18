@@ -76,6 +76,19 @@ ok("two fades that would pass the clip are cut: the fade in keeps 1 s, the fade 
 W = E.parse_edit({"v": 1, "clips": [{"kind": "video", "name": "c", "srcSeconds": 100, "out": 100, "speed": 0.5}]})
 ok("a slowed clip that would run past 90 seconds is cut to fit (45 s of the file at half speed)", W["seconds"] == 90.0 and W["clips"][0]["out"] == 45.0)
 
+# ---- crossfade (slice 4): reading
+def pic(name, out, **kw):
+    d = {"kind": "picture", "name": name, "out": out}; d.update(kw); return d
+X1 = E.parse_edit({"v": 1, "clips": [pic("a", 3, mix=1), pic("b", 3, mix=1), pic("c", 0.4, mix=1)]})
+ok("the first clip has no blend; a blend is at most 1 s and half of either clip (0.4 s clip: 0.2 s)", [c["mix"] for c in X1["clips"]] == [0.0, 1.0, 0.2])
+ok("a blend overlaps the two clips: each starts where the one before ends minus the blend, and the video is shorter by the blends (3 + 3 + 0.4 - 1 - 0.2 = 5.2)", [c["start"] for c in X1["clips"]] == [0.0, 2.0, 4.8] and X1["seconds"] == 5.2)
+X4 = E.parse_edit({"v": 1, "clips": [pic("a", 10), pic("b", 10, mix=5), pic("c", 0.4), pic("d", 3, mix=1)]})
+ok("a blend asked for at 5 seconds is cut to 1 second; a blend is at most half of the clip before it (0.4 s before: 0.2 s)", X4["clips"][1]["mix"] == 1.0 and X4["clips"][3]["mix"] == 0.2)
+X2 = E.parse_edit({"v": 1, "clips": [pic("a", 30), pic("b", 30, mix=1), pic("c", 30, mix=1), pic("d", 30, mix=1)]})
+ok("blends are counted against the 90 second limit: the last clip is shortened to what is left (30 + 29 + 29 + 3 = 90)", len(X2["clips"]) == 4 and X2["seconds"] == 90.0 and X2["clips"][3]["seconds"] == 3.0 and X2["clips"][3]["start"] == 87.0)
+X3 = E.parse_edit({"v": 1, "clips": [pic("a", 29), pic("b", 29), pic("c", 29), pic("d", 30, mix=1)]})
+ok("a clip that blends in when the video is nearly full is shortened to fit, not dropped (3 s room, 1 s blend: 4 s long)", len(X3["clips"]) == 4 and X3["seconds"] == 90.0 and X3["clips"][3]["seconds"] == 4.0 and X3["clips"][3]["mix"] == 1.0)
+
 # ---- a real render
 ff = PM.find_ffmpeg()
 if not ff:
@@ -162,6 +175,21 @@ else:
     ok("the sound fades with the picture: much quieter in the first and last half second than in the middle", level_of(faded, 0.0, 0.3) < level_of(faded, 1.5, 1.0) - 6 and level_of(faded, 3.7, 0.3) < level_of(faded, 1.5, 1.0) - 6)
     mixed = E.render_edit({"v": 1, "title": "speedmix", "preset": "square", "clips": [{"kind": "video", "name": "bright.mp4", "srcSeconds": 4, "in": 1, "out": 3, "speed": 2}, {"kind": "color", "out": 1}]}, draft=True, say=lambda *_: None)
     ok("speed works together with a trimmed clip and the next clip (2 s of file at double speed is 1 s, then 1 s more)", abs(length_of(mixed) - 2.0) < 0.2)
+    def solid(name, out, color):
+        return {"kind": "color", "name": name, "out": out, "color": color}
+    def blend(clips, title):
+        return E.render_edit({"v": 1, "title": title, "preset": "square", "clips": clips}, draft=True, say=lambda *_: None)
+    bl = blend([solid("w", 2, "#ffffff"), dict(solid("k", 2, "#000000"), mix=1)], "xfade1")
+    ok("two clips blended by 1 second make a video 3 seconds long (2 + 2 - 1)", abs(length_of(bl) - 3.0) < 0.2)
+    ok("before the blend the first clip is pure white, in the middle of it the picture is about half way, after it pure black", luma(bl, 0.5) > 240 and 90 < luma(bl, 1.5) < 170 and luma(bl, 2.6) < 15)
+    ok("a blended video decodes with no error and has sound (silence under colours)", subprocess.run([ff, "-v", "error", "-i", str(bl), "-f", "null", "-"], capture_output=True, text=True).stderr.strip() == "" and "Audio: aac" in probe(bl))
+    mixed3 = blend([solid("w", 2, "#ffffff"), dict(solid("k", 2, "#000000"), mix=1), solid("w2", 2, "#ffffff")], "xfade3")
+    ok("a blend and a plain junction in one video: white, blended to black, then straight to white (2 + 2 - 1 + 2 = 5 seconds)", abs(length_of(mixed3) - 5.0) < 0.2 and luma(mixed3, 0.4) > 240 and 90 < luma(mixed3, 1.5) < 170 and luma(mixed3, 2.5) < 15 and luma(mixed3, 3.5) > 240)
+    chain = blend([solid("w", 2, "#ffffff"), dict(solid("k", 2, "#000000"), mix=1), dict(solid("w2", 2, "#ffffff"), mix=1)], "xfade-chain")
+    ok("two blends in a row: white into black into white (2 + 2 - 1 + 2 - 1 = 4 seconds), the second blend starting where the first ends", abs(length_of(chain) - 4.0) < 0.2 and luma(chain, 0.4) > 240 and 90 < luma(chain, 1.5) < 170 and luma(chain, 2.0) < 40 and 90 < luma(chain, 2.5) < 170 and luma(chain, 3.6) > 240)
+    vv = blend([{"kind": "video", "name": "bright.mp4", "srcSeconds": 4, "in": 0, "out": 3}, {"kind": "video", "name": "clip.mp4", "srcSeconds": 4, "in": 0, "out": 3, "mix": 1}], "xfade-video")
+    ok("two real video clips blended: 3 + 3 - 1 = 5 seconds with sound all the way through", abs(length_of(vv) - 5.0) < 0.2 and level_of(vv, 0.2, 0.6) > -40 and level_of(vv, 4.2, 0.6) > -40)
+    ok("the sound crosses over in the blend: it never drops out in the middle of it", level_of(vv, 1.8, 0.4) > -45)
     muted = dict(proj, clips=[dict(proj["clips"][0], muted=True)] + proj["clips"][1:])
     out2 = E.render_edit(muted, draft=True, out_path=td / "muted.mp4", say=lambda *_: None)
     out_keep, out = out, out2

@@ -24,6 +24,7 @@ MAX_SECONDS, MAX_CLIPS, MAX_TEXTS, MAX_AUDIO = 90.0, 12, 60, 4
 MIN_CLIP, MIN_TEXT, MAX_PICTURE = 0.2, 0.3, 30.0
 SPEEDS = (0.5, 0.75, 1, 1.25, 1.5, 2)   # a video clip plays at one of these (1 = normal); the same list as the editor
 MAX_FADE = 1.0
+MAX_MIX = 1.0   # seconds a clip may blend (a crossfade) with the one before it, at most half of either clip
 FPS = 30
 FONTS = ("sans", "serif", "mono")
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -72,14 +73,26 @@ def parse_edit(raw: object) -> dict:
         if room < MIN_CLIP:
             break
         speed = c.get("speed") if kind == "video" and c.get("speed") in SPEEDS else 1
-        if (out - inn) / speed > room:
-            out = inn + room * speed
         name = _clean(c.get("name"), 60) or kind
         length = _r3((_r3(out) - _r3(inn)) / speed)
+        prev_len = clips[-1]["seconds"] if clips else 0.0
+        # a blend (crossfade) with the clip before: at most 1 s and half of either clip, none for the first clip
+        mix = _r3(min(MAX_MIX, _num(c.get("mix"), 0, MAX_MIX, 0), prev_len / 2, length / 2)) if clips else 0.0
+        # the clip adds its length minus its blend to the video; shorten it when that would pass 90 seconds
+        over = _r3(length - mix - room)
+        if over > 0:
+            if length - over < MIN_CLIP:
+                break
+            out = _r3(_r3(out) - over * speed)
+            length = _r3((_r3(out) - _r3(inn)) / speed)
+            mix = _r3(min(mix, length / 2))
+            if length - mix > room + 1e-6:
+                break
         fi = _r3(min(MAX_FADE, _num(c.get("fadeIn"), 0, MAX_FADE, 0), length))
         fo = _r3(min(MAX_FADE, _num(c.get("fadeOut"), 0, MAX_FADE, 0), length - fi))
-        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f"), "speed": speed, "fadeIn": fi, "fadeOut": fo, "seconds": length})
-        total = _r3(total + length)
+        start = _r3(max(0.0, total - mix)) if clips else 0.0
+        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f"), "speed": speed, "fadeIn": fi, "fadeOut": fo, "mix": mix, "start": start, "seconds": length})
+        total = _r3(start + length)
     if not clips:
         raise ValueError("The project has no clips.")
     texts = []
@@ -253,10 +266,30 @@ def render_edit(project: dict, ffmpeg: str | None = None, out_path: str | Path |
             _segment(ff, c, path_of, W, H, seg, crf, preset)
             segs.append(seg)
             say(f"Clip {i} of {len(P['clips'])}: {c['name']}")
-        lst = td / "list.txt"
-        lst.write_text("".join("file '" + s.as_posix().replace("'", "'\\''") + "'\n" for s in segs), encoding="utf-8")
         base = td / "base.mp4"
-        _run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(base)], "joining the clips")
+        if any(c["mix"] > 0 for c in P["clips"]):
+            # the clips are joined in one pass: a blend overlaps the two (xfade for the picture, acrossfade for the sound), a plain junction just follows on
+            cmd = [ff, "-y", "-loglevel", "error"]
+            for sg in segs:
+                cmd += ["-i", str(sg)]
+            chains, v, a, acc = [], "[0:v]", "[0:a]", P["clips"][0]["seconds"]
+            for i in range(1, len(segs)):
+                c = P["clips"][i]
+                if c["mix"] > 0:
+                    chains.append(f"{v}[{i}:v]xfade=transition=fade:duration={c['mix']}:offset={_r3(acc - c['mix'])}[v{i}]")
+                    chains.append(f"{a}[{i}:a]acrossfade=d={c['mix']}[a{i}]")
+                    acc = _r3(acc + c["seconds"] - c["mix"])
+                else:
+                    chains.append(f"{v}[{i}:v]concat=n=2:v=1:a=0[v{i}]")
+                    chains.append(f"{a}[{i}:a]concat=n=2:v=0:a=1[a{i}]")
+                    acc = _r3(acc + c["seconds"])
+                v, a = f"[v{i}]", f"[a{i}]"
+            cmd += ["-filter_complex", ";".join(chains), "-map", v, "-map", a, "-c:v", "libx264", "-preset", preset, "-crf", crf, "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2", str(base)]
+            _run(cmd, "blending the clips")
+        else:
+            lst = td / "list.txt"
+            lst.write_text("".join("file '" + s.as_posix().replace("'", "'\\''") + "'\n" for s in segs), encoding="utf-8")
+            _run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(base)], "joining the clips")
         texts = [t for t in P["texts"] if t["text"].strip() and t["start"] < total - 0.05]
         sounds = [(a, path_of[a["name"]]) for a in P["audio"] if a["start"] < total]
         if not texts and not sounds:
