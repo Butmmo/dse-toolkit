@@ -1,0 +1,5933 @@
+[
+ {
+  "id": "garage-door-repair",
+  "name": "Garage Door Repair",
+  "term": "garage door repair",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Garage Door Supplier",
+   "Home Improvement Service",
+   "Doors and Windows Contractor"
+  ],
+  "words": "garage|door"
+ },
+ {
+  "id": "tree-services-and-arborists",
+  "name": "Tree Services & Arborists",
+  "term": "tree service",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Tree Service"
+  ],
+  "words": "tree|arborist"
+ },
+ {
+  "id": "junk-removal-and-hauling",
+  "name": "Junk Removal & Hauling",
+  "term": "junk removal",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Waste Management Service"
+  ],
+  "words": "junk|removal|haul"
+ },
+ {
+  "id": "septic-pumping-and-portable-toilets",
+  "name": "Septic Pumping & Portable Toilets",
+  "term": "septic pumping",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Sewer Contractor",
+   "Plumber",
+   "Waste Management Service"
+  ],
+  "words": "septic|pump|portable|toilet"
+ },
+ {
+  "id": "water-damage-and-mold-remediation",
+  "name": "Water Damage & Mold Remediation",
+  "term": "water damage",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "water|damage|mold|remediation"
+ },
+ {
+  "id": "asphalt-sealing-and-paving",
+  "name": "Asphalt Sealing & Paving",
+  "term": "asphalt sealing",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "asphalt|seal|paving"
+ },
+ {
+  "id": "chimney-sweeping-and-fireplace-service",
+  "name": "Chimney Sweeping & Fireplace Service",
+  "term": "chimney sweeping",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Chimney Sweep"
+  ],
+  "words": "chimney|sweep|fireplace"
+ },
+ {
+  "id": "pest-and-wildlife-control",
+  "name": "Pest & Wildlife Control",
+  "term": "pest",
+  "category": "Home trades",
+  "door": "review",
+  "same_as": "pest-control"
+ },
+ {
+  "id": "window-cleaning-and-pressure-washing",
+  "name": "Window Cleaning & Pressure Washing",
+  "term": "window cleaning",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service"
+  ],
+  "words": "window|clean|pressure|wash"
+ },
+ {
+  "id": "locksmiths-and-security-installers",
+  "name": "Locksmiths & Security Installers",
+  "term": "locksmith",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Locksmith",
+   "Security and Safety"
+  ],
+  "words": "locksmith|security"
+ },
+ {
+  "id": "hvac-plumbing-and-electrical-independents-only",
+  "name": "HVAC, Plumbing & Electrical (Independents Only)",
+  "term": "hvac",
+  "category": "Home trades",
+  "door": "review",
+  "same_as": "hvac"
+ },
+ {
+  "id": "moving-companies-and-storage",
+  "name": "Moving Companies & Storage",
+  "term": "moving company",
+  "category": "Auto and transport",
+  "door": "review",
+  "same_as": "movers"
+ },
+ {
+  "id": "mobile-diesel-mechanics",
+  "name": "Mobile Diesel Mechanics",
+  "term": "mobile diesel mechanic",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "mobile|diesel|mechanic"
+ },
+ {
+  "id": "commercial-grease-trap-cleaning",
+  "name": "Commercial Grease Trap Cleaning",
+  "term": "commercial grease trap cleaning",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Waste Management Service"
+  ],
+  "words": "grease|trap|clean"
+ },
+ {
+  "id": "foundation-and-crawlspace-repair",
+  "name": "Foundation & Crawlspace Repair",
+  "term": "foundation",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "foundation|crawlspace"
+ },
+ {
+  "id": "luxury-garage-epoxy",
+  "name": "Luxury Garage Epoxy",
+  "term": "luxury garage epoxy",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Design Studio",
+   "General Contractor"
+  ],
+  "words": "garage|epoxy"
+ },
+ {
+  "id": "gutter-guard-and-gutter-cleaning",
+  "name": "Gutter Guard & Gutter Cleaning",
+  "term": "gutter guard",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Roofer",
+   "Professional Cleaning Service"
+  ],
+  "words": "gutter|guard|clean"
+ },
+ {
+  "id": "commercial-office-cleaning",
+  "name": "Commercial Office Cleaning",
+  "term": "commercial office cleaning",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "same_as": "cleaning"
+ },
+ {
+  "id": "dumpster-rental",
+  "name": "Dumpster Rental",
+  "term": "dumpster rental",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Waste Management Service",
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "dumpster|rental"
+ },
+ {
+  "id": "restaurant-hood-cleaning",
+  "name": "Restaurant Hood Cleaning",
+  "term": "restaurant hood cleaning",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Waste Management Service"
+  ],
+  "words": "restaurant|hood|clean"
+ },
+ {
+  "id": "water-well-drilling-and-pumps",
+  "name": "Water Well Drilling & Pumps",
+  "term": "water well drilling",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Plumber"
+  ],
+  "words": "water|well|drill|pumps"
+ },
+ {
+  "id": "document-shredding",
+  "name": "Document Shredding",
+  "term": "document shredding",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Business Service"
+  ],
+  "words": "document|shredd"
+ },
+ {
+  "id": "pallet-recycling-and-supply",
+  "name": "Pallet Recycling & Supply",
+  "term": "pallet recycling",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Recycling Facility",
+   "Industrial Equipment Supplier"
+  ],
+  "words": "pallet|recycl|supply"
+ },
+ {
+  "id": "stump-grinding",
+  "name": "Stump Grinding",
+  "term": "stump grinding",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Tree Service"
+  ],
+  "words": "stump|grind"
+ },
+ {
+  "id": "towing-and-roadside-assistance",
+  "name": "Towing & Roadside Assistance",
+  "term": "towing",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Towing Service"
+  ],
+  "words": "towing|roadside|assistance"
+ },
+ {
+  "id": "emergency-plumbing-and-drain-snaking",
+  "name": "Emergency Plumbing & Drain Snaking",
+  "term": "emergency plumbing",
+  "category": "Home trades",
+  "door": "review",
+  "same_as": "plumber"
+ },
+ {
+  "id": "window-screen-repair",
+  "name": "Window Screen Repair",
+  "term": "window screen repair",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "window|screen"
+ },
+ {
+  "id": "forklift-repair-and-rental",
+  "name": "Forklift Repair & Rental",
+  "term": "forklift repair",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "forklift|rental"
+ },
+ {
+  "id": "radon-mitigation",
+  "name": "Radon Mitigation",
+  "term": "radon mitigation",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "radon|mitigation"
+ },
+ {
+  "id": "pet-cremation-and-aftercare",
+  "name": "Pet Cremation & Aftercare",
+  "term": "pet cremation",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Pet Service",
+   "Pet Sitting and Boarding Service"
+  ],
+  "words": "cremation|aftercare"
+ },
+ {
+  "id": "specialty-auto-repair",
+  "name": "Specialty Auto Repair",
+  "term": "specialty auto repair",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "specialty|auto"
+ },
+ {
+  "id": "boat-and-marine-repair",
+  "name": "Boat & Marine Repair",
+  "term": "boat",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Boat Dealership",
+   "Harbor or Marina"
+  ],
+  "words": "boat|marine"
+ },
+ {
+  "id": "appliance-repair",
+  "name": "Appliance Repair",
+  "term": "appliance repair",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Home Improvement Service",
+   "Home Service",
+   "Repair Service"
+  ],
+  "words": "appliance"
+ },
+ {
+  "id": "home-inspectors",
+  "name": "Home Inspectors",
+  "term": "home inspector",
+  "category": "Professional services",
+  "door": "review",
+  "fsq": [
+   "Home Inspection"
+  ],
+  "words": "inspector"
+ },
+ {
+  "id": "dentists-and-orthodontists",
+  "name": "Dentists & Orthodontists",
+  "term": "dentist",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "same_as": "dentist"
+ },
+ {
+  "id": "hair-salons-and-barbershops",
+  "name": "Hair Salons & Barbershops",
+  "term": "hair salon",
+  "category": "Beauty and personal",
+  "door": "review",
+  "same_as": "hair-salon"
+ },
+ {
+  "id": "restaurants-and-caf-s",
+  "name": "Restaurants & Cafés",
+  "term": "restaurant",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Restaurant",
+   "Cafe, Coffee, and Tea House"
+  ],
+  "words": "restaurant"
+ },
+ {
+  "id": "coaches-and-consultants",
+  "name": "Coaches & Consultants",
+  "term": "coach",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Management Consultant",
+   "Business and Strategy Consulting Office"
+  ],
+  "words": "coach|consultant"
+ },
+ {
+  "id": "gyms-and-fitness-studios",
+  "name": "Gyms & Fitness Studios",
+  "term": "gym",
+  "category": "Fitness and sport",
+  "door": "review",
+  "same_as": "gym"
+ },
+ {
+  "id": "real-estate-agents",
+  "name": "Real Estate Agents",
+  "term": "real estate agent",
+  "category": "Professional services",
+  "door": "inquiry",
+  "same_as": "real-estate"
+ },
+ {
+  "id": "law-firms",
+  "name": "Law Firms",
+  "term": "law firm",
+  "category": "Professional services",
+  "door": "inquiry",
+  "same_as": "law-office"
+ },
+ {
+  "id": "med-spas-and-aesthetic-clinics",
+  "name": "Med Spas & Aesthetic Clinics",
+  "term": "med spa",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Skin Care Clinic",
+   "Spa"
+  ],
+  "words": "spas|aesthetic"
+ },
+ {
+  "id": "chiropractors",
+  "name": "Chiropractors",
+  "term": "chiropractor",
+  "category": "Health and wellness",
+  "door": "review",
+  "same_as": "chiropractor"
+ },
+ {
+  "id": "roofing-contractors",
+  "name": "Roofing Contractors",
+  "term": "roofing contractor",
+  "category": "Home trades",
+  "door": "review",
+  "same_as": "roofer"
+ },
+ {
+  "id": "landscaping-and-lawn-care",
+  "name": "Landscaping & Lawn Care",
+  "term": "landscaping",
+  "category": "Outdoor and property",
+  "door": "review",
+  "same_as": "landscaper"
+ },
+ {
+  "id": "auto-detailing",
+  "name": "Auto Detailing",
+  "term": "auto detailing",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Car Wash and Detail"
+  ],
+  "words": "auto|detail"
+ },
+ {
+  "id": "handyman-services",
+  "name": "Handyman Services",
+  "term": "handyman service",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "General Contractor",
+   "Home Improvement Service",
+   "Home Service"
+  ],
+  "words": "handyman"
+ },
+ {
+  "id": "house-painters",
+  "name": "House Painters",
+  "term": "house painter",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Painter"
+  ],
+  "words": "house|paint"
+ },
+ {
+  "id": "cabinet-painting-and-refinishing",
+  "name": "Cabinet Painting & Refinishing",
+  "term": "cabinet painting",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Painter",
+   "Carpenter"
+  ],
+  "words": "cabinet|paint|refinish"
+ },
+ {
+  "id": "drywall-repair-and-finishing",
+  "name": "Drywall Repair & Finishing",
+  "term": "drywall repair",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Painter"
+  ],
+  "words": "drywall|finish"
+ },
+ {
+  "id": "plastering-and-skim-coat-specialists",
+  "name": "Plastering & Skim Coat Specialists",
+  "term": "plastering",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Painter"
+  ],
+  "words": "plaster|skim|coat"
+ },
+ {
+  "id": "flooring-installers",
+  "name": "Flooring Installers",
+  "term": "flooring installer",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor"
+  ],
+  "words": "floor"
+ },
+ {
+  "id": "hardwood-floor-sanding-and-refinishing",
+  "name": "Hardwood Floor Sanding & Refinishing",
+  "term": "hardwood floor sanding",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor"
+  ],
+  "words": "hardwood|floor|sand|refinish"
+ },
+ {
+  "id": "tile-and-stone-installers",
+  "name": "Tile & Stone Installers",
+  "term": "tile",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor"
+  ],
+  "words": "tile|stone"
+ },
+ {
+  "id": "kitchen-remodelers",
+  "name": "Kitchen Remodelers",
+  "term": "kitchen remodeler",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Kitchen Remodeler",
+   "General Contractor"
+  ],
+  "words": "kitchen|remodel"
+ },
+ {
+  "id": "bathroom-remodelers",
+  "name": "Bathroom Remodelers",
+  "term": "bathroom remodeler",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Bathroom Contractor",
+   "General Contractor"
+  ],
+  "words": "bathroom|remodel"
+ },
+ {
+  "id": "custom-home-builders",
+  "name": "Custom Home Builders",
+  "term": "custom home builder",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": ""
+ },
+ {
+  "id": "home-additions-and-extensions",
+  "name": "Home Additions & Extensions",
+  "term": "home addition",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "addition|extension"
+ },
+ {
+  "id": "basement-finishing-contractors",
+  "name": "Basement Finishing Contractors",
+  "term": "basement finishing contractor",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "basement|finish"
+ },
+ {
+  "id": "attic-conversions-and-loft-builders",
+  "name": "Attic Conversions & Loft Builders",
+  "term": "attic conversion",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "attic|conversion|loft"
+ },
+ {
+  "id": "custom-cabinetry-and-millwork-shops",
+  "name": "Custom Cabinetry & Millwork Shops",
+  "term": "custom cabinetry",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter"
+  ],
+  "words": "cabinetry|millwork"
+ },
+ {
+  "id": "closet-and-storage-systems-installers",
+  "name": "Closet & Storage Systems Installers",
+  "term": "closet",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter"
+  ],
+  "words": "closet|storage|system"
+ },
+ {
+  "id": "window-and-door-replacement-contractors",
+  "name": "Window & Door Replacement Contractors",
+  "term": "window",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "window|door"
+ },
+ {
+  "id": "home-theater-and-smart-home-installers",
+  "name": "Home Theater & Smart Home Installers",
+  "term": "home theater",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Audiovisual Service",
+   "Electrician"
+  ],
+  "words": "theater|smart"
+ },
+ {
+  "id": "ev-charger-installers",
+  "name": "EV Charger Installers",
+  "term": "ev charger installer",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Electrician"
+  ],
+  "words": "charger"
+ },
+ {
+  "id": "solar-panel-installers",
+  "name": "Solar Panel Installers",
+  "term": "solar panel installer",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Renewable Energy Service",
+   "Electrician"
+  ],
+  "words": "solar|panel"
+ },
+ {
+  "id": "whole-home-generator-installers",
+  "name": "Whole-Home Generator Installers",
+  "term": "whole-home generator installer",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Electrician"
+  ],
+  "words": "whole|generator"
+ },
+ {
+  "id": "insulation-contractors",
+  "name": "Insulation Contractors",
+  "term": "insulation contractor",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "General Contractor"
+  ],
+  "words": "insulation"
+ },
+ {
+  "id": "siding-contractors",
+  "name": "Siding Contractors",
+  "term": "siding contractor",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "General Contractor"
+  ],
+  "words": "siding"
+ },
+ {
+  "id": "stucco-and-exterior-plaster-contractors",
+  "name": "Stucco & Exterior Plaster Contractors",
+  "term": "stucco",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "General Contractor",
+   "Painter"
+  ],
+  "words": "stucco|exterior|plaster"
+ },
+ {
+  "id": "brick-and-stone-masons",
+  "name": "Brick & Stone Masons",
+  "term": "brick",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "brick|stone|mason"
+ },
+ {
+  "id": "concrete-flatwork-contractors",
+  "name": "Concrete Flatwork Contractors",
+  "term": "concrete flatwork contractor",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "concrete|flatwork"
+ },
+ {
+  "id": "stamped-and-decorative-concrete-installers",
+  "name": "Stamped & Decorative Concrete Installers",
+  "term": "stamped",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "stamped|decorative|concrete"
+ },
+ {
+  "id": "countertop-fabricators-and-installers",
+  "name": "Countertop Fabricators & Installers",
+  "term": "countertop fabricator",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service"
+  ],
+  "words": "countertop|fabricator"
+ },
+ {
+  "id": "finish-carpenters-and-trim-installers",
+  "name": "Finish Carpenters & Trim Installers",
+  "term": "finish carpenter",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter"
+  ],
+  "words": "finish|carpent|trim"
+ },
+ {
+  "id": "staircase-and-railing-builders",
+  "name": "Staircase & Railing Builders",
+  "term": "staircase",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter",
+   "General Contractor"
+  ],
+  "words": "staircase|rail"
+ },
+ {
+  "id": "skylight-and-solar-tube-installers",
+  "name": "Skylight & Solar Tube Installers",
+  "term": "skylight",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Renewable Energy Service",
+   "Electrician",
+   "Roofer"
+  ],
+  "words": "skylight|solar|tube"
+ },
+ {
+  "id": "accessibility-and-aging-in-place-home-modifiers",
+  "name": "Accessibility & Aging-in-Place Home Modifiers",
+  "term": "accessibility",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "Home Service"
+  ],
+  "words": "accessibility|aging|place|modifi"
+ },
+ {
+  "id": "tub-to-shower-conversion-specialists",
+  "name": "Tub-to-Shower Conversion Specialists",
+  "term": "tub-to-shower conversion",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Plumber",
+   "Bathroom Contractor"
+  ],
+  "words": "shower|conversion"
+ },
+ {
+  "id": "water-softener-and-filtration-installers",
+  "name": "Water Softener & Filtration Installers",
+  "term": "water softener",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Plumber"
+  ],
+  "words": "water|softener|filtration"
+ },
+ {
+  "id": "tankless-water-heater-installers",
+  "name": "Tankless Water Heater Installers",
+  "term": "tankless water heater installer",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Plumber"
+  ],
+  "words": "tankles|water|heater"
+ },
+ {
+  "id": "water-heater-repair-and-replacement",
+  "name": "Water Heater Repair & Replacement",
+  "term": "water heater repair",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Plumber"
+  ],
+  "words": "water|heater"
+ },
+ {
+  "id": "ceiling-fan-and-lighting-installers",
+  "name": "Ceiling Fan & Lighting Installers",
+  "term": "ceiling fan",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Electrician"
+  ],
+  "words": "ceil|light"
+ },
+ {
+  "id": "electrical-panel-upgrade-specialists",
+  "name": "Electrical Panel Upgrade Specialists",
+  "term": "electrical panel upgrade",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Electrician"
+  ],
+  "words": "electrical|panel|upgrade"
+ },
+ {
+  "id": "sewer-line-repair-and-trenchless-replacement",
+  "name": "Sewer Line Repair & Trenchless Replacement",
+  "term": "sewer line repair",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Sewer Contractor",
+   "Plumber"
+  ],
+  "words": "sewer|line|trenchles"
+ },
+ {
+  "id": "ductless-mini-split-installers",
+  "name": "Ductless Mini-Split Installers",
+  "term": "ductless mini-split installer",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Heating, Ventilating and Air Conditioning Contractor"
+  ],
+  "words": "ductles|mini|split"
+ },
+ {
+  "id": "geothermal-heating-and-cooling-installers",
+  "name": "Geothermal Heating & Cooling Installers",
+  "term": "geothermal heating",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Heating, Ventilating and Air Conditioning Contractor"
+  ],
+  "words": "geothermal|heat|cool"
+ },
+ {
+  "id": "gas-fireplace-and-wood-stove-installers",
+  "name": "Gas Fireplace & Wood Stove Installers",
+  "term": "gas fireplace",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "General Contractor"
+  ],
+  "words": "fireplace|wood|stove"
+ },
+ {
+  "id": "wallpaper-and-decorative-finish-installers",
+  "name": "Wallpaper & Decorative Finish Installers",
+  "term": "wallpaper",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Painter"
+  ],
+  "words": "wallpaper|decorative|finish"
+ },
+ {
+  "id": "popcorn-ceiling-removal-and-texture-pros",
+  "name": "Popcorn Ceiling Removal & Texture Pros",
+  "term": "popcorn ceiling removal",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Painter"
+  ],
+  "words": "popcorn|ceil|removal|texture"
+ },
+ {
+  "id": "grout-and-tile-repair-specialists",
+  "name": "Grout & Tile Repair Specialists",
+  "term": "grout",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Carpet and Flooring Contractor"
+  ],
+  "words": "grout|tile"
+ },
+ {
+  "id": "bathtub-refinishing-and-reglazing",
+  "name": "Bathtub Refinishing & Reglazing",
+  "term": "bathtub refinishing",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Plumber",
+   "Bathroom Contractor"
+  ],
+  "words": "bathtub|refinish|reglaz"
+ },
+ {
+  "id": "tv-mounting-and-home-installation-services",
+  "name": "TV Mounting & Home Installation Services",
+  "term": "tv mounting",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Home Improvement Service",
+   "Home Service"
+  ],
+  "words": "mount"
+ },
+ {
+  "id": "furniture-assembly-services",
+  "name": "Furniture Assembly Services",
+  "term": "furniture assembly service",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Home Improvement Service",
+   "Home Service"
+  ],
+  "words": "furniture|assembly"
+ },
+ {
+  "id": "home-energy-auditors-and-weatherization-pros",
+  "name": "Home Energy Auditors & Weatherization Pros",
+  "term": "home energy auditor",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "General Contractor"
+  ],
+  "words": "energy|auditor|weatherization"
+ },
+ {
+  "id": "soundproofing-contractors",
+  "name": "Soundproofing Contractors",
+  "term": "soundproofing contractor",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "General Contractor"
+  ],
+  "words": "soundproof"
+ },
+ {
+  "id": "custom-doors-millwork-and-barn-door-makers",
+  "name": "Custom Doors, Millwork & Barn Door Makers",
+  "term": "custom door",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter",
+   "Doors and Windows Contractor",
+   "General Contractor"
+  ],
+  "words": "doors|millwork|barn|door"
+ },
+ {
+  "id": "mobile-welders-and-metal-fabricators",
+  "name": "Mobile Welders & Metal Fabricators",
+  "term": "mobile welder",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Welding Service",
+   "Machine Shop"
+  ],
+  "words": "mobile|weld|metal|fabricator"
+ },
+ {
+  "id": "glass-mirror-and-window-pane-repair",
+  "name": "Glass, Mirror & Window Pane Repair",
+  "term": "glass",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "glass|mirror|window|pane"
+ },
+ {
+  "id": "frameless-shower-door-installers",
+  "name": "Frameless Shower Door Installers",
+  "term": "frameless shower door installer",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Bathroom Contractor",
+   "Doors and Windows Contractor"
+  ],
+  "words": "frameles|shower|door"
+ },
+ {
+  "id": "wine-cellar-and-custom-storage-builders",
+  "name": "Wine Cellar & Custom Storage Builders",
+  "term": "wine cellar",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "wine|cellar|storage"
+ },
+ {
+  "id": "home-sauna-and-steam-room-builders",
+  "name": "Home Sauna & Steam Room Builders",
+  "term": "home sauna",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "sauna|steam|room"
+ },
+ {
+  "id": "polished-concrete-and-floor-coating-contractors",
+  "name": "Polished Concrete & Floor Coating Contractors",
+  "term": "polished concrete",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor",
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "polished|concrete|floor|coat"
+ },
+ {
+  "id": "asbestos-and-lead-abatement-contractors",
+  "name": "Asbestos & Lead Abatement Contractors",
+  "term": "asbesto",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "asbesto|lead|abatement"
+ },
+ {
+  "id": "demolition-and-teardown-contractors",
+  "name": "Demolition & Teardown Contractors",
+  "term": "demolition",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "demolition|teardown"
+ },
+ {
+  "id": "storm-damage-repair-and-board-up-services",
+  "name": "Storm Damage Repair & Board-Up Services",
+  "term": "storm damage repair",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "storm|damage|board"
+ },
+ {
+  "id": "tiny-home-and-modular-home-builders",
+  "name": "Tiny Home & Modular Home Builders",
+  "term": "tiny home",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "tiny|modular"
+ },
+ {
+  "id": "adu-and-backyard-cottage-builders",
+  "name": "ADU & Backyard Cottage Builders",
+  "term": "adu and backyard cottage builder",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "backyard|cottage"
+ },
+ {
+  "id": "log-home-and-timber-frame-builders",
+  "name": "Log Home & Timber Frame Builders",
+  "term": "log home",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "timber|frame"
+ },
+ {
+  "id": "historic-home-restoration-contractors",
+  "name": "Historic Home Restoration Contractors",
+  "term": "historic home restoration contractor",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "historic|restoration"
+ },
+ {
+  "id": "blinds-shutters-and-drapery-installers",
+  "name": "Blinds, Shutters & Drapery Installers",
+  "term": "blind",
+  "category": "Home trades",
+  "door": "inquiry",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "blind|shutt|drapery"
+ },
+ {
+  "id": "residential-window-tinting-and-film-installers",
+  "name": "Residential Window Tinting & Film Installers",
+  "term": "residential window tinting",
+  "category": "Home trades",
+  "door": "review",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "window|tint|film"
+ },
+ {
+  "id": "landscape-designers-and-architects",
+  "name": "Landscape Designers & Architects",
+  "term": "landscape designer",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Architecture Firm"
+  ],
+  "words": "landscape|architect"
+ },
+ {
+  "id": "deck-builders",
+  "name": "Deck Builders",
+  "term": "deck builder",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor",
+   "General Contractor"
+  ],
+  "words": "deck"
+ },
+ {
+  "id": "patio-and-pergola-builders",
+  "name": "Patio & Pergola Builders",
+  "term": "patio",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor",
+   "General Contractor"
+  ],
+  "words": "patio|pergola"
+ },
+ {
+  "id": "swimming-pool-builders",
+  "name": "Swimming Pool Builders",
+  "term": "swimming pool builder",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Swimming Pool Maintenance and Service",
+   "Swimming Pool Supply Store",
+   "General Contractor"
+  ],
+  "words": "swimm|pool"
+ },
+ {
+  "id": "pool-service-and-cleaning",
+  "name": "Pool Service & Cleaning",
+  "term": "pool service",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Swimming Pool Maintenance and Service",
+   "Swimming Pool Supply Store",
+   "Professional Cleaning Service"
+  ],
+  "words": "pool|clean"
+ },
+ {
+  "id": "pool-equipment-repair-and-resurfacing",
+  "name": "Pool Equipment Repair & Resurfacing",
+  "term": "pool equipment repair",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Swimming Pool Maintenance and Service",
+   "Swimming Pool Supply Store"
+  ],
+  "words": "pool|equipment|resurfac"
+ },
+ {
+  "id": "pool-renovation-and-remodel-contractors",
+  "name": "Pool Renovation & Remodel Contractors",
+  "term": "pool renovation",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Swimming Pool Maintenance and Service",
+   "Swimming Pool Supply Store",
+   "General Contractor"
+  ],
+  "words": "pool|renovation|remodel"
+ },
+ {
+  "id": "outdoor-kitchen-and-bbq-island-builders",
+  "name": "Outdoor Kitchen & BBQ Island Builders",
+  "term": "outdoor kitchen",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor",
+   "General Contractor"
+  ],
+  "words": "outdoor|kitchen|island"
+ },
+ {
+  "id": "paver-patio-and-hardscape-contractors",
+  "name": "Paver Patio & Hardscape Contractors",
+  "term": "paver patio",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor",
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "paver|patio|hardscape"
+ },
+ {
+  "id": "retaining-wall-builders",
+  "name": "Retaining Wall Builders",
+  "term": "retaining wall builder",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "retain|wall"
+ },
+ {
+  "id": "irrigation-system-installers",
+  "name": "Irrigation System Installers",
+  "term": "irrigation system installer",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener"
+  ],
+  "words": "irrigation|system"
+ },
+ {
+  "id": "sprinkler-repair-and-winterization",
+  "name": "Sprinkler Repair & Winterization",
+  "term": "sprinkler repair",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Landscaper and Gardener"
+  ],
+  "words": "sprinkler|winterization"
+ },
+ {
+  "id": "fence-installers",
+  "name": "Fence Installers",
+  "term": "fence installer",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Fence Contractor"
+  ],
+  "words": "fence"
+ },
+ {
+  "id": "fence-and-gate-repair",
+  "name": "Fence & Gate Repair",
+  "term": "fence",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Fence Contractor"
+  ],
+  "words": "fence|gate"
+ },
+ {
+  "id": "automatic-gate-and-entry-system-installers",
+  "name": "Automatic Gate & Entry System Installers",
+  "term": "automatic gate",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Fence Contractor"
+  ],
+  "words": "automatic|gate|entry|system"
+ },
+ {
+  "id": "landscape-and-outdoor-lighting-installers",
+  "name": "Landscape & Outdoor Lighting Installers",
+  "term": "landscape",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Electrician",
+   "Landscaper and Gardener"
+  ],
+  "words": "landscape|outdoor|light"
+ },
+ {
+  "id": "artificial-turf-installers",
+  "name": "Artificial Turf Installers",
+  "term": "artificial turf installer",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener"
+  ],
+  "words": "artificial|turf"
+ },
+ {
+  "id": "pond-and-water-feature-builders",
+  "name": "Pond & Water Feature Builders",
+  "term": "pond",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "General Contractor"
+  ],
+  "words": "pond|water|feature"
+ },
+ {
+  "id": "playground-and-swing-set-installers",
+  "name": "Playground & Swing Set Installers",
+  "term": "playground",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Home Service"
+  ],
+  "words": "playground|swing"
+ },
+ {
+  "id": "sport-courts-and-backyard-putting-greens",
+  "name": "Sport Courts & Backyard Putting Greens",
+  "term": "sport court",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Home Service"
+  ],
+  "words": "sport|court|backyard|putt|green"
+ },
+ {
+  "id": "greenhouse-and-garden-structure-builders",
+  "name": "Greenhouse & Garden Structure Builders",
+  "term": "greenhouse",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "General Contractor"
+  ],
+  "words": "greenhouse|garden|structure"
+ },
+ {
+  "id": "shed-barn-and-backyard-building-builders",
+  "name": "Shed, Barn & Backyard Building Builders",
+  "term": "shed",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "shed|barn|backyard|build"
+ },
+ {
+  "id": "detached-garage-and-carport-builders",
+  "name": "Detached Garage & Carport Builders",
+  "term": "detached garage",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "detached|garage|carport"
+ },
+ {
+  "id": "excavation-and-grading-contractors",
+  "name": "Excavation & Grading Contractors",
+  "term": "excavation",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "excavation|grad"
+ },
+ {
+  "id": "snow-plowing-and-ice-management",
+  "name": "Snow Plowing & Ice Management",
+  "term": "snow plowing",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Home Service"
+  ],
+  "words": "snow|plow|management"
+ },
+ {
+  "id": "lawn-aeration-and-overseeding",
+  "name": "Lawn Aeration & Overseeding",
+  "term": "lawn aeration",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Landscaper and Gardener"
+  ],
+  "words": "lawn|aeration|overseed"
+ },
+ {
+  "id": "lawn-fertilization-and-weed-treatment",
+  "name": "Lawn Fertilization & Weed Treatment",
+  "term": "lawn fertilization",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Landscaper and Gardener"
+  ],
+  "words": "lawn|fertilization|weed|treatment"
+ },
+ {
+  "id": "mosquito-control-services",
+  "name": "Mosquito Control Services",
+  "term": "mosquito control service",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Pest Control Service"
+  ],
+  "words": "mosquito|control"
+ },
+ {
+  "id": "garden-centers-and-plant-nurseries",
+  "name": "Garden Centers & Plant Nurseries",
+  "term": "garden center",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Garden Center"
+  ],
+  "words": "garden|plant|nurser"
+ },
+ {
+  "id": "raised-bed-and-edible-garden-installers",
+  "name": "Raised Bed & Edible Garden Installers",
+  "term": "raised bed",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener"
+  ],
+  "words": "raised|edible|garden"
+ },
+ {
+  "id": "yard-drainage-and-french-drain-specialists",
+  "name": "Yard Drainage & French Drain Specialists",
+  "term": "yard drainage",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Plumber",
+   "Landscaper and Gardener"
+  ],
+  "words": "yard|drainage|french|drain"
+ },
+ {
+  "id": "mulch-topsoil-and-landscape-supply-delivery",
+  "name": "Mulch, Topsoil & Landscape Supply Delivery",
+  "term": "mulch",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Shipping, Freight, and Material Transportation Service",
+   "Landscaper and Gardener"
+  ],
+  "words": "mulch|topsoil|landscape|supply|delivery"
+ },
+ {
+  "id": "dock-and-seawall-builders",
+  "name": "Dock & Seawall Builders",
+  "term": "dock",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "dock|seawall"
+ },
+ {
+  "id": "hot-tub-and-swim-spa-installers",
+  "name": "Hot Tub & Swim Spa Installers",
+  "term": "hot tub",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Swimming Pool Maintenance and Service",
+   "Swimming Pool Supply Store"
+  ],
+  "words": "swim"
+ },
+ {
+  "id": "residential-property-managers",
+  "name": "Residential Property Managers",
+  "term": "residential property manager",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Property Management Office"
+  ],
+  "words": "property|manag"
+ },
+ {
+  "id": "vacation-rental-property-managers",
+  "name": "Vacation Rental Property Managers",
+  "term": "vacation rental property manager",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Property Management Office",
+   "Equipment Rental Service",
+   "Rental Service",
+   "Vacation Rental"
+  ],
+  "words": "vacation|rental|property|manag"
+ },
+ {
+  "id": "land-surveyors",
+  "name": "Land Surveyors",
+  "term": "land surveyor",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Building and Land Surveyor"
+  ],
+  "words": "land|surveyor"
+ },
+ {
+  "id": "estate-and-seasonal-home-caretakers",
+  "name": "Estate & Seasonal Home Caretakers",
+  "term": "estate",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Home Improvement Service",
+   "Home Service"
+  ],
+  "words": "estate|seasonal|caretak"
+ },
+ {
+  "id": "rainwater-harvesting-and-cistern-installers",
+  "name": "Rainwater Harvesting & Cistern Installers",
+  "term": "rainwater harvesting",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Home Service"
+  ],
+  "words": "rainwater|harvest|cistern"
+ },
+ {
+  "id": "septic-system-installation-and-repair",
+  "name": "Septic System Installation & Repair",
+  "term": "septic system installation",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Sewer Contractor",
+   "Plumber"
+  ],
+  "words": "septic|system"
+ },
+ {
+  "id": "deck-staining-and-restoration",
+  "name": "Deck Staining & Restoration",
+  "term": "deck staining",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Deck and Patio Contractor"
+  ],
+  "words": "deck|stain|restoration"
+ },
+ {
+  "id": "fire-pit-and-outdoor-fireplace-builders",
+  "name": "Fire Pit & Outdoor Fireplace Builders",
+  "term": "fire pit",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor",
+   "General Contractor"
+  ],
+  "words": "fire|outdoor|fireplace"
+ },
+ {
+  "id": "bee-removal-and-hive-services",
+  "name": "Bee Removal & Hive Services",
+  "term": "bee removal",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Pest Control Service"
+  ],
+  "words": "removal|hive"
+ },
+ {
+  "id": "firewood-delivery",
+  "name": "Firewood Delivery",
+  "term": "firewood delivery",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Shipping, Freight, and Material Transportation Service",
+   "Tree Service"
+  ],
+  "words": "firewood|delivery"
+ },
+ {
+  "id": "horse-barn-and-equestrian-facility-builders",
+  "name": "Horse Barn & Equestrian Facility Builders",
+  "term": "horse barn",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor",
+   "Equestrian Facility",
+   "Stable"
+  ],
+  "words": "horse|barn|equestrian|facility"
+ },
+ {
+  "id": "screened-porch-and-sunroom-builders",
+  "name": "Screened Porch & Sunroom Builders",
+  "term": "screened porch",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor",
+   "General Contractor"
+  ],
+  "words": "screened|porch|sunroom"
+ },
+ {
+  "id": "xeriscape-and-native-plant-landscapers",
+  "name": "Xeriscape & Native Plant Landscapers",
+  "term": "xeriscape",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener"
+  ],
+  "words": "xeriscape|native|plant|landscap"
+ },
+ {
+  "id": "brush-clearing-and-forestry-mulching",
+  "name": "Brush Clearing & Forestry Mulching",
+  "term": "brush clearing",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Tree Service",
+   "Landscaper and Gardener"
+  ],
+  "words": "brush|clear|forestry|mulch"
+ },
+ {
+  "id": "sod-installation-and-lawn-renovation",
+  "name": "Sod Installation & Lawn Renovation",
+  "term": "sod installation",
+  "category": "Outdoor and property",
+  "door": "review",
+  "fsq": [
+   "Landscaper and Gardener",
+   "General Contractor"
+  ],
+  "words": "lawn|renovation"
+ },
+ {
+  "id": "pool-cover-and-safety-fence-installers",
+  "name": "Pool Cover & Safety Fence Installers",
+  "term": "pool cover",
+  "category": "Outdoor and property",
+  "door": "inquiry",
+  "fsq": [
+   "Fence Contractor",
+   "Swimming Pool Maintenance and Service",
+   "Swimming Pool Supply Store"
+  ],
+  "words": "pool|cover|safety|fence"
+ },
+ {
+  "id": "interior-designers",
+  "name": "Interior Designers",
+  "term": "interior designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "same_as": "interior-design"
+ },
+ {
+  "id": "interior-design-and-design-build-studios",
+  "name": "Interior Design and Design-Build Studios",
+  "term": "interior design and design-build studio",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Interior Designer"
+  ],
+  "words": "interior|design|build"
+ },
+ {
+  "id": "home-stagers",
+  "name": "Home Stagers",
+  "term": "home stager",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Interior Designer"
+  ],
+  "words": "stag"
+ },
+ {
+  "id": "kitchen-and-bath-designers",
+  "name": "Kitchen and Bath Designers",
+  "term": "kitchen and bath designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Kitchen Remodeler",
+   "Bathroom Contractor"
+  ],
+  "words": "kitchen|bath"
+ },
+ {
+  "id": "architects-and-residential-designers",
+  "name": "Architects and Residential Designers",
+  "term": "architects and residential designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Architecture Firm"
+  ],
+  "words": "architect"
+ },
+ {
+  "id": "luxury-remodelers",
+  "name": "Luxury Remodelers",
+  "term": "luxury remodeler",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "remodel"
+ },
+ {
+  "id": "landscape-architects-and-garden-designers",
+  "name": "Landscape Architects and Garden Designers",
+  "term": "landscape architects and garden designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Architecture Firm"
+  ],
+  "words": "landscape|architect|garden"
+ },
+ {
+  "id": "furniture-makers-and-custom-millwork",
+  "name": "Furniture Makers and Custom Millwork",
+  "term": "furniture makers and custom millwork",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter"
+  ],
+  "words": "furniture|millwork"
+ },
+ {
+  "id": "lighting-and-showroom-designers",
+  "name": "Lighting and Showroom Designers",
+  "term": "lighting and showroom designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Lighting Store"
+  ],
+  "words": "light|showroom"
+ },
+ {
+  "id": "architectural-model-and-3d-visualisation",
+  "name": "Architectural Model and 3D Visualisation",
+  "term": "architectural model and 3d visualisation",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Architecture Firm",
+   "Design Studio"
+  ],
+  "words": "architectural|model|visualisation"
+ },
+ {
+  "id": "acoustic-and-home-theater-designers",
+  "name": "Acoustic and Home Theater Designers",
+  "term": "acoustic and home theater designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Audiovisual Service",
+   "Electrician"
+  ],
+  "words": "acoustic|theater"
+ },
+ {
+  "id": "closet-designers",
+  "name": "Closet Designers",
+  "term": "closet designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter"
+  ],
+  "words": "closet"
+ },
+ {
+  "id": "kitchen-cabinet-makers",
+  "name": "Kitchen Cabinet Makers",
+  "term": "kitchen cabinet maker",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Kitchen Remodeler",
+   "Carpenter"
+  ],
+  "words": "kitchen|cabinet"
+ },
+ {
+  "id": "sunroom-and-conservatory-builders",
+  "name": "Sunroom and Conservatory Builders",
+  "term": "sunroom and conservatory builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Doors and Windows Contractor",
+   "Deck and Patio Contractor",
+   "General Contractor"
+  ],
+  "words": "sunroom|conservatory"
+ },
+ {
+  "id": "tiny-home-builders",
+  "name": "Tiny Home Builders",
+  "term": "tiny home builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "tiny"
+ },
+ {
+  "id": "timber-frame-builders",
+  "name": "Timber Frame Builders",
+  "term": "timber frame builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "timber|frame"
+ },
+ {
+  "id": "swimming-pool-designers-and-builders",
+  "name": "Swimming Pool Designers and Builders",
+  "term": "swimming pool designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Swimming Pool Maintenance and Service",
+   "Swimming Pool Supply Store",
+   "General Contractor"
+  ],
+  "words": "swimm|pool"
+ },
+ {
+  "id": "outdoor-living-and-patio-designers",
+  "name": "Outdoor Living and Patio Designers",
+  "term": "outdoor living and patio designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor"
+  ],
+  "words": "outdoor|living|patio"
+ },
+ {
+  "id": "home-addition-and-extension-builders",
+  "name": "Home Addition and Extension Builders",
+  "term": "home addition and extension builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "addition|extension"
+ },
+ {
+  "id": "loft-and-attic-conversion-specialists",
+  "name": "Loft and Attic Conversion Specialists",
+  "term": "loft and attic conversion",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "loft|attic|conversion"
+ },
+ {
+  "id": "historic-home-restoration-specialists",
+  "name": "Historic Home Restoration Specialists",
+  "term": "historic home restoration",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "historic|restoration"
+ },
+ {
+  "id": "custom-staircase-makers",
+  "name": "Custom Staircase Makers",
+  "term": "custom staircase maker",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Carpenter"
+  ],
+  "words": "staircase"
+ },
+ {
+  "id": "stone-and-countertop-fabricators",
+  "name": "Stone and Countertop Fabricators",
+  "term": "stone and countertop fabricator",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service"
+  ],
+  "words": "stone|countertop|fabricator"
+ },
+ {
+  "id": "tile-and-mosaic-artisans",
+  "name": "Tile and Mosaic Artisans",
+  "term": "tile and mosaic artisan",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor"
+  ],
+  "words": "tile|mosaic|artisan"
+ },
+ {
+  "id": "wallpaper-and-mural-installers",
+  "name": "Wallpaper and Mural Installers",
+  "term": "wallpaper and mural installer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Painter"
+  ],
+  "words": "wallpaper|mural"
+ },
+ {
+  "id": "window-treatment-and-custom-drapery",
+  "name": "Window Treatment and Custom Drapery",
+  "term": "window treatment and custom drapery",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "window|treatment|drapery"
+ },
+ {
+  "id": "smart-home-designers-and-integrators",
+  "name": "Smart Home Designers and Integrators",
+  "term": "smart home designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Audiovisual Service",
+   "Electrician"
+  ],
+  "words": "smart|integrator"
+ },
+ {
+  "id": "architectural-glass-and-stained-glass-studios",
+  "name": "Architectural Glass and Stained Glass Studios",
+  "term": "architectural glass and stained glass studio",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Doors and Windows Contractor",
+   "Architecture Firm"
+  ],
+  "words": "architectural|glass|stained"
+ },
+ {
+  "id": "custom-door-and-window-makers",
+  "name": "Custom Door and Window Makers",
+  "term": "custom door and window maker",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "door|window"
+ },
+ {
+  "id": "wine-cellar-designers-and-builders",
+  "name": "Wine Cellar Designers and Builders",
+  "term": "wine cellar designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "wine|cellar"
+ },
+ {
+  "id": "fireplace-and-hearth-designers",
+  "name": "Fireplace and Hearth Designers",
+  "term": "fireplace and hearth designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Design Studio",
+   "General Contractor"
+  ],
+  "words": "fireplace|hearth"
+ },
+ {
+  "id": "garden-room-and-backyard-studio-builders",
+  "name": "Garden Room and Backyard Studio Builders",
+  "term": "garden room and backyard studio builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "General Contractor"
+  ],
+  "words": "garden|room|backyard"
+ },
+ {
+  "id": "pergola-and-outdoor-structure-builders",
+  "name": "Pergola and Outdoor Structure Builders",
+  "term": "pergola and outdoor structure builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Deck and Patio Contractor",
+   "General Contractor"
+  ],
+  "words": "pergola|outdoor|structure"
+ },
+ {
+  "id": "landscape-lighting-designers",
+  "name": "Landscape Lighting Designers",
+  "term": "landscape lighting designer",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "Lighting Store"
+  ],
+  "words": "landscape|light"
+ },
+ {
+  "id": "water-feature-and-pond-builders",
+  "name": "Water Feature and Pond Builders",
+  "term": "water feature and pond builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Landscaper and Gardener",
+   "General Contractor"
+  ],
+  "words": "water|feature|pond"
+ },
+ {
+  "id": "modular-and-prefab-home-builders",
+  "name": "Modular and Prefab Home Builders",
+  "term": "modular and prefab home builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "modular|prefab"
+ },
+ {
+  "id": "barn-and-post-frame-builders",
+  "name": "Barn and Post-Frame Builders",
+  "term": "barn and post-frame builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "barn|post|frame"
+ },
+ {
+  "id": "drafting-and-home-plan-services",
+  "name": "Drafting and Home Plan Services",
+  "term": "drafting and home plan service",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Architecture Firm"
+  ],
+  "words": "draft|plan"
+ },
+ {
+  "id": "home-renovation-project-managers",
+  "name": "Home Renovation Project Managers",
+  "term": "home renovation project manager",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "renovation|project|manag"
+ },
+ {
+  "id": "custom-rug-and-flooring-showrooms",
+  "name": "Custom Rug and Flooring Showrooms",
+  "term": "custom rug and flooring showroom",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor",
+   "Carpet Store"
+  ],
+  "words": "floor|showroom"
+ },
+ {
+  "id": "garage-conversion-and-adu-builders",
+  "name": "Garage Conversion and ADU Builders",
+  "term": "garage conversion and adu builder",
+  "category": "Design and build",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "garage|conversion"
+ },
+ {
+  "id": "furniture-upholstery-and-restoration",
+  "name": "Furniture Upholstery and Restoration",
+  "term": "furniture upholstery",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Upholstery Service"
+  ],
+  "words": "furniture|upholstery|restoration"
+ },
+ {
+  "id": "antique-restorers-and-refinishers",
+  "name": "Antique Restorers and Refinishers",
+  "term": "antique restorer",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Art Restoration Service"
+  ],
+  "words": "antique|restor|refinish"
+ },
+ {
+  "id": "interior-painters-and-decorative-finishers",
+  "name": "Interior Painters and Decorative Finishers",
+  "term": "interior painters and decorative finisher",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Painter"
+  ],
+  "words": "interior|paint|decorative|finish"
+ },
+ {
+  "id": "bathroom-remodeling-contractors",
+  "name": "Bathroom Remodeling Contractors",
+  "term": "bathroom remodeling contractor",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Bathroom Contractor",
+   "General Contractor"
+  ],
+  "words": "bathroom|remodel"
+ },
+ {
+  "id": "kitchen-remodeling-contractors",
+  "name": "Kitchen Remodeling Contractors",
+  "term": "kitchen remodeling contractor",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Kitchen Remodeler",
+   "General Contractor"
+  ],
+  "words": "kitchen|remodel"
+ },
+ {
+  "id": "fence-and-gate-installers",
+  "name": "Fence and Gate Installers",
+  "term": "fence and gate installer",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Fence Contractor"
+  ],
+  "words": "fence|gate"
+ },
+ {
+  "id": "window-and-door-installers",
+  "name": "Window and Door Installers",
+  "term": "window and door installer",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Doors and Windows Contractor"
+  ],
+  "words": "window|door"
+ },
+ {
+  "id": "metal-fabricators-and-ornamental-ironwork",
+  "name": "Metal Fabricators and Ornamental Ironwork",
+  "term": "metal fabricators and ornamental ironwork",
+  "category": "Design and build",
+  "door": "review",
+  "fsq": [
+   "Welding Service",
+   "Machine Shop"
+  ],
+  "words": "metal|fabricator|ornamental|ironwork"
+ },
+ {
+  "id": "wedding-planners",
+  "name": "Wedding Planners",
+  "term": "wedding planner",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "wedd|plann"
+ },
+ {
+  "id": "wedding-venues",
+  "name": "Wedding Venues",
+  "term": "wedding venue",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Wedding Hall",
+   "Event Space"
+  ],
+  "words": "wedd|venu"
+ },
+ {
+  "id": "event-planners",
+  "name": "Event Planners",
+  "term": "event planner",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "event|plann"
+ },
+ {
+  "id": "wedding-photographers",
+  "name": "Wedding Photographers",
+  "term": "wedding photographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "wedd|photograph"
+ },
+ {
+  "id": "portrait-photographers",
+  "name": "Portrait Photographers",
+  "term": "portrait photographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "portrait|photograph"
+ },
+ {
+  "id": "commercial-photographers",
+  "name": "Commercial Photographers",
+  "term": "commercial photographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "photograph"
+ },
+ {
+  "id": "real-estate-photographers",
+  "name": "Real Estate Photographers",
+  "term": "real estate photographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "real|estate|photograph"
+ },
+ {
+  "id": "videographers",
+  "name": "Videographers",
+  "term": "videographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Film Studio",
+   "Media Agency",
+   "Recording Studio"
+  ],
+  "words": "videograph"
+ },
+ {
+  "id": "wedding-videographers",
+  "name": "Wedding Videographers",
+  "term": "wedding videographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Film Studio",
+   "Media Agency",
+   "Recording Studio"
+  ],
+  "words": "wedd|videograph"
+ },
+ {
+  "id": "corporate-video-production-companies",
+  "name": "Corporate Video Production Companies",
+  "term": "corporate video production company",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Film Studio",
+   "Media Agency",
+   "Recording Studio"
+  ],
+  "words": "corporate|video|production"
+ },
+ {
+  "id": "drone-photography-and-aerial-video",
+  "name": "Drone Photography and Aerial Video",
+  "term": "drone photography and aerial video",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service",
+   "Film Studio"
+  ],
+  "words": "drone|photography|aerial|video"
+ },
+ {
+  "id": "florists-event-and-wedding",
+  "name": "Florists (Event and Wedding)",
+  "term": "florist",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Flower Store"
+  ],
+  "words": "florist"
+ },
+ {
+  "id": "caterers",
+  "name": "Caterers",
+  "term": "caterer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Caterer"
+  ],
+  "words": "cater"
+ },
+ {
+  "id": "bridal-boutiques",
+  "name": "Bridal Boutiques",
+  "term": "bridal boutique",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Bridal Store"
+  ],
+  "words": "bridal|boutiqu"
+ },
+ {
+  "id": "tailors-and-bespoke-clothing",
+  "name": "Tailors and Bespoke Clothing",
+  "term": "tailors and bespoke clothing",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Tailor"
+  ],
+  "words": "tailor|bespoke|cloth"
+ },
+ {
+  "id": "jewellers-custom",
+  "name": "Jewellers (Custom)",
+  "term": "jeweller",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Jewelry Store"
+  ],
+  "words": "jewell"
+ },
+ {
+  "id": "art-galleries",
+  "name": "Art Galleries",
+  "term": "art gallery",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Art Gallery"
+  ],
+  "words": "galler"
+ },
+ {
+  "id": "tattoo-studios",
+  "name": "Tattoo Studios",
+  "term": "tattoo studio",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Tattoo Parlor"
+  ],
+  "words": "tattoo"
+ },
+ {
+  "id": "music-teachers-and-studios",
+  "name": "Music Teachers and Studios",
+  "term": "music teacher",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Music School"
+  ],
+  "words": "music|teach"
+ },
+ {
+  "id": "photo-booth-and-party-rentals",
+  "name": "Photo Booth and Party Rentals",
+  "term": "photo booth and party rental",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "photo|booth|party|rental"
+ },
+ {
+  "id": "djs-and-live-bands",
+  "name": "DJs and Live Bands",
+  "term": "djs and live band",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Entertainment Service",
+   "Audiovisual Service"
+  ],
+  "words": "live|bands"
+ },
+ {
+  "id": "party-and-event-rentals",
+  "name": "Party and Event Rentals",
+  "term": "party and event rental",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service",
+   "Party Supply Store",
+   "Party Center"
+  ],
+  "words": "party|event|rental"
+ },
+ {
+  "id": "makeup-artists",
+  "name": "Makeup Artists",
+  "term": "makeup artist",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Health and Beauty Service"
+  ],
+  "words": "makeup|artist"
+ },
+ {
+  "id": "branding-and-graphic-design-studios",
+  "name": "Branding and Graphic Design Studios",
+  "term": "branding and graphic design studio",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Creative Service",
+   "Website Designer",
+   "Design Studio",
+   "Advertising Agency"
+  ],
+  "words": "brand|graphic|design"
+ },
+ {
+  "id": "web-design-studios",
+  "name": "Web Design Studios",
+  "term": "web design studio",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Creative Service",
+   "Website Designer",
+   "Design Studio",
+   "Advertising Agency"
+  ],
+  "words": "design"
+ },
+ {
+  "id": "print-and-signage-shops",
+  "name": "Print and Signage Shops",
+  "term": "print and signage shop",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Print Store"
+  ],
+  "words": "print|signage"
+ },
+ {
+  "id": "cake-designers-and-custom-bakers",
+  "name": "Cake Designers and Custom Bakers",
+  "term": "cake designers and custom baker",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Bakery",
+   "Pastry Shop"
+  ],
+  "words": "cake|bakers"
+ },
+ {
+  "id": "corporate-event-planners",
+  "name": "Corporate Event Planners",
+  "term": "corporate event planner",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "corporate|event|plann"
+ },
+ {
+  "id": "destination-wedding-planners",
+  "name": "Destination Wedding Planners",
+  "term": "destination wedding planner",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "destination|wedd|plann"
+ },
+ {
+  "id": "event-decor-and-styling-studios",
+  "name": "Event Decor and Styling Studios",
+  "term": "event decor and styling studio",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "event|decor|styl"
+ },
+ {
+  "id": "tent-and-marquee-rental-companies",
+  "name": "Tent and Marquee Rental Companies",
+  "term": "tent and marquee rental company",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service",
+   "Party Supply Store",
+   "Party Center"
+  ],
+  "words": "tent|marquee|rental"
+ },
+ {
+  "id": "mobile-bar-and-bartending-services",
+  "name": "Mobile Bar and Bartending Services",
+  "term": "mobile bar and bartending service",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Bar",
+   "Pub",
+   "Caterer"
+  ],
+  "words": "mobile|bartend"
+ },
+ {
+  "id": "food-truck-catering",
+  "name": "Food Truck Catering",
+  "term": "food truck catering",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Food Truck",
+   "Caterer"
+  ],
+  "words": "food|truck|cater"
+ },
+ {
+  "id": "balloon-artists-and-decor",
+  "name": "Balloon Artists and Decor",
+  "term": "balloon artist",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "balloon|artist|decor"
+ },
+ {
+  "id": "sound-lighting-and-av-event-companies",
+  "name": "Sound, Lighting and AV Event Companies",
+  "term": "sound",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Entertainment Service",
+   "Audiovisual Service"
+  ],
+  "words": "sound|light|event"
+ },
+ {
+  "id": "banquet-halls-and-event-venues",
+  "name": "Banquet Halls and Event Venues",
+  "term": "banquet halls and event venue",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Wedding Hall",
+   "Event Space"
+  ],
+  "words": "banquet|halls|event|venu"
+ },
+ {
+  "id": "baby-shower-and-party-planners",
+  "name": "Baby Shower and Party Planners",
+  "term": "baby shower and party planner",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "baby|shower|party|plann"
+ },
+ {
+  "id": "luxury-picnic-and-experience-planners",
+  "name": "Luxury Picnic and Experience Planners",
+  "term": "luxury picnic and experience planner",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "picnic|experience|plann"
+ },
+ {
+  "id": "newborn-and-family-photographers",
+  "name": "Newborn and Family Photographers",
+  "term": "newborn and family photographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "newborn|family|photograph"
+ },
+ {
+  "id": "headshot-and-branding-photographers",
+  "name": "Headshot and Branding Photographers",
+  "term": "headshot and branding photographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service",
+   "Creative Service"
+  ],
+  "words": "headshot|brand|photograph"
+ },
+ {
+  "id": "product-photographers",
+  "name": "Product Photographers",
+  "term": "product photographer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "product|photograph"
+ },
+ {
+  "id": "podcast-and-recording-studios",
+  "name": "Podcast and Recording Studios",
+  "term": "podcast and recording studio",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Film Studio",
+   "Media Agency",
+   "Recording Studio"
+  ],
+  "words": "podcast|record"
+ },
+ {
+  "id": "animation-and-motion-graphics-studios",
+  "name": "Animation and Motion Graphics Studios",
+  "term": "animation and motion graphics studio",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Film Studio",
+   "Media Agency",
+   "Recording Studio"
+  ],
+  "words": "animation|motion|graphic"
+ },
+ {
+  "id": "illustrators-and-portrait-artists",
+  "name": "Illustrators and Portrait Artists",
+  "term": "illustrators and portrait artist",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Art Studio",
+   "Art School"
+  ],
+  "words": "illustrator|portrait|artist"
+ },
+ {
+  "id": "sculptors-and-custom-art-studios",
+  "name": "Sculptors and Custom Art Studios",
+  "term": "sculptors and custom art studio",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Art Studio",
+   "Art School"
+  ],
+  "words": "sculptor"
+ },
+ {
+  "id": "custom-framing-shops",
+  "name": "Custom Framing Shops",
+  "term": "custom framing shop",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Framing Store"
+  ],
+  "words": "fram"
+ },
+ {
+  "id": "custom-embroidery-and-screen-printing",
+  "name": "Custom Embroidery and Screen Printing",
+  "term": "custom embroidery and screen printing",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Print Store"
+  ],
+  "words": "embroidery|screen|print"
+ },
+ {
+  "id": "trophy-and-engraving-shops",
+  "name": "Trophy and Engraving Shops",
+  "term": "trophy and engraving shop",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Print Store"
+  ],
+  "words": "trophy|engrav"
+ },
+ {
+  "id": "wedding-celebrants-and-officiants",
+  "name": "Wedding Celebrants and Officiants",
+  "term": "wedding celebrant",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "wedd|celebrant|officiant"
+ },
+ {
+  "id": "henna-and-bridal-beauty-artists",
+  "name": "Henna and Bridal Beauty Artists",
+  "term": "henna and bridal beauty artist",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Health and Beauty Service",
+   "Art Studio",
+   "Art School"
+  ],
+  "words": "henna|bridal|beauty|artist"
+ },
+ {
+  "id": "dance-studios",
+  "name": "Dance Studios",
+  "term": "dance studio",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Dance Studio"
+  ],
+  "words": "dance"
+ },
+ {
+  "id": "pottery-and-art-class-studios",
+  "name": "Pottery and Art Class Studios",
+  "term": "pottery and art class studio",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Art Studio",
+   "Art School"
+  ],
+  "words": "pottery|class"
+ },
+ {
+  "id": "costume-and-formalwear-rentals",
+  "name": "Costume and Formalwear Rentals",
+  "term": "costume and formalwear rental",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service",
+   "Party Supply Store",
+   "Party Center"
+  ],
+  "words": "costume|formalwear|rental"
+ },
+ {
+  "id": "invitation-and-stationery-designers",
+  "name": "Invitation and Stationery Designers",
+  "term": "invitation and stationery designer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Print Store"
+  ],
+  "words": "invitation|stationery"
+ },
+ {
+  "id": "fashion-designers-and-dressmakers",
+  "name": "Fashion Designers and Dressmakers",
+  "term": "fashion designer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Tailor"
+  ],
+  "words": "fashion|dressmak"
+ },
+ {
+  "id": "custom-shoemakers-and-leather-goods",
+  "name": "Custom Shoemakers and Leather Goods",
+  "term": "custom shoemakers and leather good",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Leather Goods Store",
+   "Shoe Repair Service"
+  ],
+  "words": "shoemak|leather|goods"
+ },
+ {
+  "id": "kids-party-entertainers",
+  "name": "Kids Party Entertainers",
+  "term": "kids party entertainer",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Party Supply Store",
+   "Rental Service",
+   "Party Center",
+   "Entertainment Service"
+  ],
+  "words": "kids|party|entertain"
+ },
+ {
+  "id": "bounce-house-and-inflatable-rentals",
+  "name": "Bounce House and Inflatable Rentals",
+  "term": "bounce house and inflatable rental",
+  "category": "Creative and events",
+  "door": "review",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service",
+   "Party Supply Store",
+   "Party Center"
+  ],
+  "words": "bounce|house|inflatable|rental"
+ },
+ {
+  "id": "film-and-commercial-production-companies",
+  "name": "Film and Commercial Production Companies",
+  "term": "film and commercial production company",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Film Studio",
+   "Media Agency",
+   "Recording Studio"
+  ],
+  "words": "film|production"
+ },
+ {
+  "id": "360-virtual-tour-and-matterport-providers",
+  "name": "360 Virtual Tour and Matterport Providers",
+  "term": "360 virtual tour and matterport provider",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "virtual|tour|matterport"
+ },
+ {
+  "id": "wedding-album-and-photo-book-designers",
+  "name": "Wedding Album and Photo Book Designers",
+  "term": "wedding album and photo book designer",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Photographer",
+   "Photography Studio",
+   "Photography Service"
+  ],
+  "words": "wedd|album|photo|book"
+ },
+ {
+  "id": "cultural-and-traditional-wedding-planners",
+  "name": "Cultural and Traditional Wedding Planners",
+  "term": "cultural and traditional wedding planner",
+  "category": "Creative and events",
+  "door": "inquiry",
+  "fsq": [
+   "Event Service",
+   "Entertainment Service"
+  ],
+  "words": "cultural|traditional|wedd|plann"
+ },
+ {
+  "id": "auto-glass-repair-and-replacement",
+  "name": "Auto Glass Repair & Replacement",
+  "term": "auto glass repair",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "auto|glass"
+ },
+ {
+  "id": "tire-shops-and-mobile-tire-service",
+  "name": "Tire Shops & Mobile Tire Service",
+  "term": "tire shop",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Tire Repair Shop"
+  ],
+  "words": "tire|mobile"
+ },
+ {
+  "id": "collision-and-auto-body-shops",
+  "name": "Collision & Auto Body Shops",
+  "term": "collision",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "collision|auto|body"
+ },
+ {
+  "id": "transmission-repair-shops",
+  "name": "Transmission Repair Shops",
+  "term": "transmission repair shop",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Transmissions Shop"
+  ],
+  "words": "transmission"
+ },
+ {
+  "id": "brake-and-muffler-shops",
+  "name": "Brake & Muffler Shops",
+  "term": "brake",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "brake|muffler"
+ },
+ {
+  "id": "oil-change-and-quick-lube",
+  "name": "Oil Change & Quick Lube",
+  "term": "oil change",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Oil Change Service"
+  ],
+  "words": "change|quick|lube"
+ },
+ {
+  "id": "mobile-mechanics",
+  "name": "Mobile Mechanics",
+  "term": "mobile mechanic",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "mobile|mechanic"
+ },
+ {
+  "id": "auto-electrical-and-starter-repair",
+  "name": "Auto Electrical & Starter Repair",
+  "term": "auto electrical",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service",
+   "Electrician"
+  ],
+  "words": "auto|electrical|starter"
+ },
+ {
+  "id": "car-ac-repair",
+  "name": "Car AC Repair",
+  "term": "car ac repair",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": ""
+ },
+ {
+  "id": "paintless-dent-repair",
+  "name": "Paintless Dent Repair",
+  "term": "paintless dent repair",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "paintles|dent"
+ },
+ {
+  "id": "auto-locksmith",
+  "name": "Auto Locksmith",
+  "term": "auto locksmith",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service",
+   "Locksmith"
+  ],
+  "words": "auto|locksmith"
+ },
+ {
+  "id": "window-tinting-shops",
+  "name": "Window Tinting Shops",
+  "term": "window tinting shop",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Car Wash and Detail",
+   "Doors and Windows Contractor"
+  ],
+  "words": "window|tint"
+ },
+ {
+  "id": "car-wash-and-hand-wash",
+  "name": "Car Wash & Hand Wash",
+  "term": "car wash",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Car Wash and Detail"
+  ],
+  "words": "wash|hand"
+ },
+ {
+  "id": "independent-used-car-dealers",
+  "name": "Independent Used Car Dealers",
+  "term": "independent used car dealer",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Used Car Dealership"
+  ],
+  "words": "used|deal"
+ },
+ {
+  "id": "motorcycle-repair-and-service",
+  "name": "Motorcycle Repair & Service",
+  "term": "motorcycle repair",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Motorcycle Repair Shop",
+   "Motorcycle Dealership"
+  ],
+  "words": "motorcycle"
+ },
+ {
+  "id": "rv-repair-and-service",
+  "name": "RV Repair & Service",
+  "term": "rv repair",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": ""
+ },
+ {
+  "id": "driving-schools",
+  "name": "Driving Schools",
+  "term": "driving school",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Driving School"
+  ],
+  "words": "driv|school"
+ },
+ {
+  "id": "courier-and-same-day-delivery",
+  "name": "Courier & Same-Day Delivery",
+  "term": "courier",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Shipping, Freight, and Material Transportation Service"
+  ],
+  "words": "courier|same|delivery"
+ },
+ {
+  "id": "independent-car-rental",
+  "name": "Independent Car Rental",
+  "term": "independent car rental",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Rental Car Location",
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "rental"
+ },
+ {
+  "id": "vehicle-inspection-and-emissions-testing",
+  "name": "Vehicle Inspection & Emissions Testing",
+  "term": "vehicle inspection",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Vehicle Inspection Station",
+   "Smog Check Shop"
+  ],
+  "words": "vehicle|inspection|emission|test"
+ },
+ {
+  "id": "junk-car-removal-and-cash-for-cars",
+  "name": "Junk Car Removal & Cash for Cars",
+  "term": "junk car removal",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Salvage Yard",
+   "Waste Management Service"
+  ],
+  "words": "junk|removal|cash|cars"
+ },
+ {
+  "id": "truck-and-trailer-repair",
+  "name": "Truck & Trailer Repair",
+  "term": "truck",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "truck|trailer"
+ },
+ {
+  "id": "taxi-and-airport-shuttle",
+  "name": "Taxi & Airport Shuttle",
+  "term": "taxi",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Taxi",
+   "Transportation Service"
+  ],
+  "words": "taxi|airport|shuttle"
+ },
+ {
+  "id": "mobile-car-battery-replacement",
+  "name": "Mobile Car Battery Replacement",
+  "term": "mobile car battery replacement",
+  "category": "Auto and transport",
+  "door": "review",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "mobile|battery"
+ },
+ {
+  "id": "custom-van-and-truck-upfitters",
+  "name": "Custom Van & Truck Upfitters",
+  "term": "custom van",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "truck|upfitt"
+ },
+ {
+  "id": "classic-car-restoration",
+  "name": "Classic Car Restoration",
+  "term": "classic car restoration",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Classic and Antique Car Dealership",
+   "Automotive Repair Shop"
+  ],
+  "words": "classic|restoration"
+ },
+ {
+  "id": "custom-motorcycle-shops",
+  "name": "Custom Motorcycle Shops",
+  "term": "custom motorcycle shop",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Motorcycle Repair Shop",
+   "Motorcycle Dealership"
+  ],
+  "words": "motorcycle"
+ },
+ {
+  "id": "limousine-and-event-transport",
+  "name": "Limousine & Event Transport",
+  "term": "limousine",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Limo Service"
+  ],
+  "words": "limousine|event|transport"
+ },
+ {
+  "id": "boat-builders",
+  "name": "Boat Builders",
+  "term": "boat builder",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Boat Dealership",
+   "Harbor or Marina",
+   "General Contractor"
+  ],
+  "words": "boat"
+ },
+ {
+  "id": "fleet-management-and-dispatch-services",
+  "name": "Fleet Management & Dispatch Services",
+  "term": "fleet management",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Shipping, Freight, and Material Transportation Service"
+  ],
+  "words": "fleet|management|dispatch"
+ },
+ {
+  "id": "car-audio-and-custom-electronics",
+  "name": "Car Audio & Custom Electronics",
+  "term": "car audio",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "audio|electronic"
+ },
+ {
+  "id": "ceramic-coating-and-paint-protection-film",
+  "name": "Ceramic Coating & Paint Protection Film",
+  "term": "ceramic coating",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Car Wash and Detail"
+  ],
+  "words": "ceramic|coat|paint|protection|film"
+ },
+ {
+  "id": "vehicle-wraps-and-graphics",
+  "name": "Vehicle Wraps & Graphics",
+  "term": "vehicle wrap",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Car Wash and Detail"
+  ],
+  "words": "vehicle|wraps|graphic"
+ },
+ {
+  "id": "freight-brokers-and-trucking-dispatch",
+  "name": "Freight Brokers & Trucking Dispatch",
+  "term": "freight broker",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Shipping, Freight, and Material Transportation Service"
+  ],
+  "words": "freight|brok|truck|dispatch"
+ },
+ {
+  "id": "wheelchair-accessible-vehicle-conversion",
+  "name": "Wheelchair Accessible Vehicle Conversion",
+  "term": "wheelchair accessible vehicle conversion",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "wheelchair|accessible|vehicle|conversion"
+ },
+ {
+  "id": "food-truck-builders",
+  "name": "Food Truck Builders",
+  "term": "food truck builder",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service",
+   "General Contractor",
+   "Food Truck"
+  ],
+  "words": "food|truck"
+ },
+ {
+  "id": "charter-bus-and-coach-rental",
+  "name": "Charter Bus & Coach Rental",
+  "term": "charter bus",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Charter Bus",
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "charter|coach|rental"
+ },
+ {
+  "id": "off-road-and-lift-kit-customizers",
+  "name": "Off-Road & Lift Kit Customizers",
+  "term": "off-road",
+  "category": "Auto and transport",
+  "door": "inquiry",
+  "fsq": [
+   "Automotive Repair Shop",
+   "Automotive Service"
+  ],
+  "words": "road|lift|customiz"
+ },
+ {
+  "id": "carpet-cleaning",
+  "name": "Carpet Cleaning",
+  "term": "carpet cleaning",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service"
+  ],
+  "words": "carpet|clean"
+ },
+ {
+  "id": "upholstery-and-furniture-cleaning",
+  "name": "Upholstery & Furniture Cleaning",
+  "term": "upholstery",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Upholstery Service"
+  ],
+  "words": "upholstery|furniture|clean"
+ },
+ {
+  "id": "tile-and-grout-cleaning",
+  "name": "Tile & Grout Cleaning",
+  "term": "tile",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Carpet and Flooring Contractor",
+   "Professional Cleaning Service"
+  ],
+  "words": "tile|grout|clean"
+ },
+ {
+  "id": "air-duct-and-dryer-vent-cleaning",
+  "name": "Air Duct & Dryer Vent Cleaning",
+  "term": "air duct",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Heating, Ventilating and Air Conditioning Contractor",
+   "Professional Cleaning Service"
+  ],
+  "words": "duct|dryer|vent|clean"
+ },
+ {
+  "id": "biohazard-and-crime-scene-cleanup",
+  "name": "Biohazard & Crime Scene Cleanup",
+  "term": "biohazard",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "biohazard|crime|scene|cleanup"
+ },
+ {
+  "id": "fire-and-smoke-damage-restoration",
+  "name": "Fire & Smoke Damage Restoration",
+  "term": "fire",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "fire|smoke|damage|restoration"
+ },
+ {
+  "id": "mold-inspection-and-testing",
+  "name": "Mold Inspection & Testing",
+  "term": "mold inspection",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "mold|inspection|test"
+ },
+ {
+  "id": "hoarding-cleanup",
+  "name": "Hoarding Cleanup",
+  "term": "hoarding cleanup",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "hoard|cleanup"
+ },
+ {
+  "id": "chimney-sweep-and-cleaning",
+  "name": "Chimney Sweep & Cleaning",
+  "term": "chimney sweep",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Chimney Sweep",
+   "Professional Cleaning Service"
+  ],
+  "words": "chimney|sweep|clean"
+ },
+ {
+  "id": "move-out-and-deep-cleaning",
+  "name": "Move-Out & Deep Cleaning",
+  "term": "move-out",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service"
+  ],
+  "words": "move|deep|clean"
+ },
+ {
+  "id": "sewage-backup-cleanup",
+  "name": "Sewage Backup Cleanup",
+  "term": "sewage backup cleanup",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Sewer Contractor",
+   "Plumber",
+   "Professional Cleaning Service"
+  ],
+  "words": "sewage|backup|cleanup"
+ },
+ {
+  "id": "oriental-rug-cleaning",
+  "name": "Oriental Rug Cleaning",
+  "term": "oriental rug cleaning",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Carpet Store"
+  ],
+  "words": "oriental|clean"
+ },
+ {
+  "id": "solar-panel-cleaning",
+  "name": "Solar Panel Cleaning",
+  "term": "solar panel cleaning",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Renewable Energy Service",
+   "Electrician",
+   "Professional Cleaning Service"
+  ],
+  "words": "solar|panel|clean"
+ },
+ {
+  "id": "graffiti-removal",
+  "name": "Graffiti Removal",
+  "term": "graffiti removal",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Professional Cleaning Service"
+  ],
+  "words": "graffiti|removal"
+ },
+ {
+  "id": "portable-toilet-rental",
+  "name": "Portable Toilet Rental",
+  "term": "portable toilet rental",
+  "category": "Cleaning and restoration",
+  "door": "review",
+  "fsq": [
+   "Waste Management Service",
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "portable|toilet|rental"
+ },
+ {
+  "id": "janitorial-contract-services",
+  "name": "Janitorial Contract Services",
+  "term": "janitorial contract service",
+  "category": "Cleaning and restoration",
+  "door": "inquiry",
+  "fsq": [
+   "Professional Cleaning Service"
+  ],
+  "words": "janitorial|contract"
+ },
+ {
+  "id": "post-construction-cleaning",
+  "name": "Post-Construction Cleaning",
+  "term": "post-construction cleaning",
+  "category": "Cleaning and restoration",
+  "door": "inquiry",
+  "fsq": [
+   "Professional Cleaning Service"
+  ],
+  "words": "post|construction|clean"
+ },
+ {
+  "id": "epoxy-and-concrete-floor-coating",
+  "name": "Epoxy & Concrete Floor Coating",
+  "term": "epoxy",
+  "category": "Cleaning and restoration",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor",
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "epoxy|concrete|floor|coat"
+ },
+ {
+  "id": "commercial-laundry-and-linen-service",
+  "name": "Commercial Laundry & Linen Service",
+  "term": "commercial laundry",
+  "category": "Cleaning and restoration",
+  "door": "inquiry",
+  "fsq": [
+   "Laundry Service"
+  ],
+  "words": "laundry|linen"
+ },
+ {
+  "id": "medical-office-and-clinic-cleaning",
+  "name": "Medical Office & Clinic Cleaning",
+  "term": "medical office",
+  "category": "Cleaning and restoration",
+  "door": "inquiry",
+  "fsq": [
+   "Professional Cleaning Service"
+  ],
+  "words": "medical|office|clean"
+ },
+ {
+  "id": "disaster-contents-pack-out-and-restoration",
+  "name": "Disaster Contents Pack-Out & Restoration",
+  "term": "disaster contents pack-out",
+  "category": "Cleaning and restoration",
+  "door": "inquiry",
+  "fsq": [
+   "Professional Cleaning Service",
+   "Home Service"
+  ],
+  "words": "disaster|content|pack|restoration"
+ },
+ {
+  "id": "commercial-fit-out-contractors",
+  "name": "Commercial Fit-Out Contractors",
+  "term": "commercial fit-out contractor",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": ""
+ },
+ {
+  "id": "commercial-renovation-and-tenant-improvement",
+  "name": "Commercial Renovation & Tenant Improvement",
+  "term": "commercial renovation",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor"
+  ],
+  "words": "renovation|tenant|improvement"
+ },
+ {
+  "id": "it-support-and-managed-services-for-offices",
+  "name": "IT Support & Managed Services for Offices",
+  "term": "it support",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "IT Service",
+   "Telecommunication Service"
+  ],
+  "words": "support|managed|offic"
+ },
+ {
+  "id": "security-and-cctv-system-integrators",
+  "name": "Security & CCTV System Integrators",
+  "term": "security",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Security and Safety"
+  ],
+  "words": "security|cctv|system|integrator"
+ },
+ {
+  "id": "signage-and-wide-format-print-shops",
+  "name": "Signage & Wide-Format Print Shops",
+  "term": "signage",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Print Store"
+  ],
+  "words": "signage|wide|format|print"
+ },
+ {
+  "id": "trade-show-exhibit-builders",
+  "name": "Trade-Show Exhibit Builders",
+  "term": "trade-show exhibit builder",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "General Contractor",
+   "Event Service"
+  ],
+  "words": "trade|show|exhibit"
+ },
+ {
+  "id": "industrial-equipment-dealers",
+  "name": "Industrial Equipment Dealers",
+  "term": "industrial equipment dealer",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Industrial Equipment Supplier"
+  ],
+  "words": "industrial|equipment|deal"
+ },
+ {
+  "id": "bookkeeping-for-contractors-and-trades",
+  "name": "Bookkeeping for Contractors & Trades",
+  "term": "bookkeeping for contractor",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Accounting and Bookkeeping Service"
+  ],
+  "words": "bookkeep|trad"
+ },
+ {
+  "id": "office-furniture-dealers",
+  "name": "Office Furniture Dealers",
+  "term": "office furniture dealer",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Furniture and Home Store"
+  ],
+  "words": "office|furniture|deal"
+ },
+ {
+  "id": "av-and-conferencing-installers",
+  "name": "AV & Conferencing Installers",
+  "term": "av and conferencing installer",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Audiovisual Service",
+   "Electrician"
+  ],
+  "words": "conferenc"
+ },
+ {
+  "id": "network-cabling-contractors",
+  "name": "Network Cabling Contractors",
+  "term": "network cabling contractor",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "IT Service",
+   "Telecommunication Service"
+  ],
+  "words": "network|cabl"
+ },
+ {
+  "id": "commercial-solar-installers",
+  "name": "Commercial Solar Installers",
+  "term": "commercial solar installer",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Renewable Energy Service",
+   "Electrician"
+  ],
+  "words": "solar"
+ },
+ {
+  "id": "custom-metal-fabrication-and-welding",
+  "name": "Custom Metal Fabrication & Welding",
+  "term": "custom metal fabrication",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Welding Service",
+   "Machine Shop"
+  ],
+  "words": "metal|fabrication|weld"
+ },
+ {
+  "id": "cnc-machining-and-job-shops",
+  "name": "CNC Machining & Job Shops",
+  "term": "cnc machining",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Welding Service",
+   "Machine Shop"
+  ],
+  "words": "machin"
+ },
+ {
+  "id": "commercial-roofing-contractors",
+  "name": "Commercial Roofing Contractors",
+  "term": "commercial roofing contractor",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Roofer"
+  ],
+  "words": "roof"
+ },
+ {
+  "id": "commercial-hvac-contractors",
+  "name": "Commercial HVAC Contractors",
+  "term": "commercial hvac contractor",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Heating, Ventilating and Air Conditioning Contractor"
+  ],
+  "words": "hvac"
+ },
+ {
+  "id": "fire-sprinkler-and-alarm-contractors",
+  "name": "Fire Sprinkler & Alarm Contractors",
+  "term": "fire sprinkler",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Security and Safety"
+  ],
+  "words": "fire|sprinkler|alarm"
+ },
+ {
+  "id": "business-phone-and-voip-providers",
+  "name": "Business Phone & VoIP Providers",
+  "term": "business phone",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "IT Service",
+   "Telecommunication Service"
+  ],
+  "words": "busines|phone|voip"
+ },
+ {
+  "id": "warehouse-racking-and-shelving-installers",
+  "name": "Warehouse Racking & Shelving Installers",
+  "term": "warehouse racking",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Industrial Equipment Supplier"
+  ],
+  "words": "warehouse|rack|shelv"
+ },
+ {
+  "id": "commercial-flooring-installers",
+  "name": "Commercial Flooring Installers",
+  "term": "commercial flooring installer",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Carpet and Flooring Contractor"
+  ],
+  "words": "floor"
+ },
+ {
+  "id": "custom-packaging-and-labels",
+  "name": "Custom Packaging & Labels",
+  "term": "custom packaging",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Packaging Supply Store"
+  ],
+  "words": "packag|label"
+ },
+ {
+  "id": "commercial-kitchen-equipment-dealers",
+  "name": "Commercial Kitchen Equipment Dealers",
+  "term": "commercial kitchen equipment dealer",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Kitchen Supply Store"
+  ],
+  "words": "kitchen|equipment|deal"
+ },
+ {
+  "id": "laser-cutting-and-3d-printing-services",
+  "name": "Laser Cutting & 3D Printing Services",
+  "term": "laser cutting",
+  "category": "B2B local services",
+  "door": "inquiry",
+  "fsq": [
+   "Welding Service",
+   "Machine Shop",
+   "Print Store"
+  ],
+  "words": "laser|cutt|print"
+ },
+ {
+  "id": "commercial-locksmith",
+  "name": "Commercial Locksmith",
+  "term": "commercial locksmith",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Locksmith"
+  ],
+  "words": "locksmith"
+ },
+ {
+  "id": "commercial-pest-control",
+  "name": "Commercial Pest Control",
+  "term": "commercial pest control",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Pest Control Service"
+  ],
+  "words": "pest|control"
+ },
+ {
+  "id": "commercial-refrigeration-repair",
+  "name": "Commercial Refrigeration Repair",
+  "term": "commercial refrigeration repair",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Refrigeration and Ice Supplier",
+   "Heating, Ventilating and Air Conditioning Contractor"
+  ],
+  "words": "refrigeration"
+ },
+ {
+  "id": "copier-and-printer-service",
+  "name": "Copier & Printer Service",
+  "term": "copier",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Print Store",
+   "Business Service",
+   "Repair Service"
+  ],
+  "words": "copier|printer"
+ },
+ {
+  "id": "fire-extinguisher-inspection-and-service",
+  "name": "Fire Extinguisher Inspection & Service",
+  "term": "fire extinguisher inspection",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Security and Safety"
+  ],
+  "words": "fire|extinguisher|inspection"
+ },
+ {
+  "id": "mobile-notary",
+  "name": "Mobile Notary",
+  "term": "mobile notary",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Notary"
+  ],
+  "words": "mobile|notary"
+ },
+ {
+  "id": "shipping-and-packing-stores",
+  "name": "Shipping & Packing Stores",
+  "term": "shipping",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Shipping, Freight, and Material Transportation Service"
+  ],
+  "words": "shipp|pack|stor"
+ },
+ {
+  "id": "quick-print-shops",
+  "name": "Quick Print Shops",
+  "term": "quick print shop",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Print Store"
+  ],
+  "words": "quick|print"
+ },
+ {
+  "id": "overhead-door-and-gate-repair",
+  "name": "Overhead Door & Gate Repair",
+  "term": "overhead door",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Garage Door Supplier",
+   "Home Improvement Service",
+   "Doors and Windows Contractor",
+   "Fence Contractor"
+  ],
+  "words": "overhead|door|gate"
+ },
+ {
+  "id": "mobile-welding-repair",
+  "name": "Mobile Welding Repair",
+  "term": "mobile welding repair",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Welding Service",
+   "Machine Shop"
+  ],
+  "words": "mobile|weld"
+ },
+ {
+  "id": "hydraulic-hose-repair",
+  "name": "Hydraulic Hose Repair",
+  "term": "hydraulic hose repair",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Welding Service",
+   "Machine Shop"
+  ],
+  "words": "hydraulic|hose"
+ },
+ {
+  "id": "water-filtration-and-treatment-service",
+  "name": "Water Filtration & Treatment Service",
+  "term": "water filtration",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Plumber",
+   "Water Treatment Service"
+  ],
+  "words": "water|filtration|treatment"
+ },
+ {
+  "id": "vending-machine-operators",
+  "name": "Vending Machine Operators",
+  "term": "vending machine operator",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Vending Machine"
+  ],
+  "words": "vend|machine|operator"
+ },
+ {
+  "id": "tool-and-equipment-rental",
+  "name": "Tool & Equipment Rental",
+  "term": "tool",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "tool|equipment|rental"
+ },
+ {
+  "id": "temporary-fencing-and-portable-storage",
+  "name": "Temporary Fencing & Portable Storage",
+  "term": "temporary fencing",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service"
+  ],
+  "words": "temporary|fenc|portable|storage"
+ },
+ {
+  "id": "parking-lot-striping-and-sealcoating",
+  "name": "Parking Lot Striping & Sealcoating",
+  "term": "parking lot striping",
+  "category": "B2B local services",
+  "door": "review",
+  "fsq": [
+   "Construction",
+   "General Contractor"
+  ],
+  "words": "park|strip|sealcoat"
+ },
+ {
+  "id": "dental-implant-clinics",
+  "name": "Dental Implant Clinics",
+  "term": "dental implant clinic",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Dentist"
+  ],
+  "words": "dental|implant"
+ },
+ {
+  "id": "cosmetic-dentists",
+  "name": "Cosmetic Dentists",
+  "term": "cosmetic dentist",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Dentist"
+  ],
+  "words": "cosmetic|dentist"
+ },
+ {
+  "id": "clear-aligner-providers",
+  "name": "Clear Aligner Providers",
+  "term": "clear aligner provider",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Dentist"
+  ],
+  "words": "clear|aligner"
+ },
+ {
+  "id": "pediatric-dentists",
+  "name": "Pediatric Dentists",
+  "term": "pediatric dentist",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Dentist"
+  ],
+  "words": "pediatric|dentist"
+ },
+ {
+  "id": "emergency-dentists",
+  "name": "Emergency Dentists",
+  "term": "emergency dentist",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Dentist"
+  ],
+  "words": "emergency|dentist"
+ },
+ {
+  "id": "periodontists-and-oral-surgeons",
+  "name": "Periodontists and Oral Surgeons",
+  "term": "periodontists and oral surgeon",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Oral Surgeon",
+   "Dentist"
+  ],
+  "words": "periodontist|oral|surgeon"
+ },
+ {
+  "id": "physiotherapists",
+  "name": "Physiotherapists",
+  "term": "physiotherapist",
+  "category": "Health and wellness",
+  "door": "review",
+  "same_as": "physical-therapy"
+ },
+ {
+  "id": "optometrists",
+  "name": "Optometrists",
+  "term": "optometrist",
+  "category": "Health and wellness",
+  "door": "review",
+  "same_as": "optometrist"
+ },
+ {
+  "id": "hearing-aid-clinics",
+  "name": "Hearing Aid Clinics",
+  "term": "hearing aid clinic",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Other Healthcare Professional"
+  ],
+  "words": "hear"
+ },
+ {
+  "id": "podiatrists",
+  "name": "Podiatrists",
+  "term": "podiatrist",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Podiatrist"
+  ],
+  "words": "podiatrist"
+ },
+ {
+  "id": "acupuncturists",
+  "name": "Acupuncturists",
+  "term": "acupuncturist",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Acupuncture Clinic",
+   "Alternative Medicine Clinic"
+  ],
+  "words": "acupuncturist"
+ },
+ {
+  "id": "massage-therapists",
+  "name": "Massage Therapists",
+  "term": "massage therapist",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Massage Clinic"
+  ],
+  "words": "massage|therapist"
+ },
+ {
+  "id": "nutritionists-and-dietitians",
+  "name": "Nutritionists and Dietitians",
+  "term": "nutritionist",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Nutritionist"
+  ],
+  "words": "nutritionist|dietitian"
+ },
+ {
+  "id": "independent-pharmacies",
+  "name": "Independent Pharmacies",
+  "term": "independent pharmacy",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Pharmacy"
+  ],
+  "words": "pharmac"
+ },
+ {
+  "id": "urgent-care-clinics",
+  "name": "Urgent Care Clinics",
+  "term": "urgent care clinic",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Urgent Care Center"
+  ],
+  "words": "urgent|care"
+ },
+ {
+  "id": "fertility-and-ivf-clinics",
+  "name": "Fertility and IVF Clinics",
+  "term": "fertility and ivf clinic",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Women's Health Clinic",
+   "Healthcare Clinic"
+  ],
+  "words": "fertility"
+ },
+ {
+  "id": "plastic-and-cosmetic-surgeons",
+  "name": "Plastic and Cosmetic Surgeons",
+  "term": "plastic and cosmetic surgeon",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Plastic Surgeon",
+   "Skin Care Clinic"
+  ],
+  "words": "plastic|cosmetic|surgeon"
+ },
+ {
+  "id": "hair-transplant-clinics",
+  "name": "Hair Transplant Clinics",
+  "term": "hair transplant clinic",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Plastic Surgeon",
+   "Skin Care Clinic"
+  ],
+  "words": "hair|transplant"
+ },
+ {
+  "id": "laser-and-skin-clinics",
+  "name": "Laser and Skin Clinics",
+  "term": "laser and skin clinic",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Skin Care Clinic",
+   "Spa"
+  ],
+  "words": "laser|skin"
+ },
+ {
+  "id": "therapists-and-counsellors",
+  "name": "Therapists and Counsellors",
+  "term": "therapist",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Mental Health Clinic",
+   "Psychologist",
+   "Mental Health Service"
+  ],
+  "words": "therapist|counsellor"
+ },
+ {
+  "id": "mental-health-practices",
+  "name": "Mental Health Practices",
+  "term": "mental health practice",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Mental Health Clinic",
+   "Psychologist",
+   "Mental Health Service"
+  ],
+  "words": "mental|health|practic"
+ },
+ {
+  "id": "weight-loss-and-wellness-clinics",
+  "name": "Weight Loss and Wellness Clinics",
+  "term": "weight loss and wellness clinic",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Weight Loss Center"
+  ],
+  "words": "weight|loss|wellnes"
+ },
+ {
+  "id": "eye-surgery-centres",
+  "name": "Eye Surgery Centres",
+  "term": "eye surgery centre",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Optometrist",
+   "Eyecare Store",
+   "Ophthalmologist"
+  ],
+  "words": "surgery"
+ },
+ {
+  "id": "speech-therapists",
+  "name": "Speech Therapists",
+  "term": "speech therapist",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Physical Therapy Clinic",
+   "Rehabilitation Center"
+  ],
+  "words": "speech|therapist"
+ },
+ {
+  "id": "occupational-therapists",
+  "name": "Occupational Therapists",
+  "term": "occupational therapist",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Physical Therapy Clinic",
+   "Rehabilitation Center"
+  ],
+  "words": "occupational|therapist"
+ },
+ {
+  "id": "naturopaths-and-holistic-practitioners",
+  "name": "Naturopaths and Holistic Practitioners",
+  "term": "naturopaths and holistic practitioner",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Acupuncture Clinic",
+   "Alternative Medicine Clinic"
+  ],
+  "words": "naturopath|holistic|practition"
+ },
+ {
+  "id": "sports-medicine-clinics",
+  "name": "Sports Medicine Clinics",
+  "term": "sports medicine clinic",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Sports Medicine Clinic"
+  ],
+  "words": "sport|medicine"
+ },
+ {
+  "id": "dermatology-practices",
+  "name": "Dermatology Practices",
+  "term": "dermatology practice",
+  "category": "Health and wellness",
+  "door": "review",
+  "fsq": [
+   "Dermatologist"
+  ],
+  "words": "dermatology|practic"
+ },
+ {
+  "id": "sleep-and-snoring-clinics",
+  "name": "Sleep and Snoring Clinics",
+  "term": "sleep and snoring clinic",
+  "category": "Health and wellness",
+  "door": "inquiry",
+  "fsq": [
+   "Medical Center",
+   "Healthcare Clinic"
+  ],
+  "words": "sleep|snor"
+ },
+ {
+  "id": "nail-salons",
+  "name": "Nail Salons",
+  "term": "nail salon",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Nail Salon"
+  ],
+  "words": "nail|salon"
+ },
+ {
+  "id": "eyelash-extension-studios",
+  "name": "Eyelash Extension Studios",
+  "term": "eyelash extension studio",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Brow Bar",
+   "Skin Care Clinic"
+  ],
+  "words": "eyelash|extension"
+ },
+ {
+  "id": "tanning-salons",
+  "name": "Tanning Salons",
+  "term": "tanning salon",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Tanning Salon"
+  ],
+  "words": "tann|salon"
+ },
+ {
+  "id": "day-spas",
+  "name": "Day Spas",
+  "term": "day spa",
+  "category": "Beauty and personal",
+  "door": "review",
+  "same_as": "spa"
+ },
+ {
+  "id": "waxing-and-hair-removal-studios",
+  "name": "Waxing and Hair Removal Studios",
+  "term": "waxing and hair removal studio",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Hair Removal Service"
+  ],
+  "words": "waxing|hair|removal"
+ },
+ {
+  "id": "bridal-salons",
+  "name": "Bridal Salons",
+  "term": "bridal salon",
+  "category": "Beauty and personal",
+  "door": "inquiry",
+  "fsq": [
+   "Bridal Store"
+  ],
+  "words": "bridal|salon"
+ },
+ {
+  "id": "bridal-hair-stylists",
+  "name": "Bridal Hair Stylists",
+  "term": "bridal hair stylist",
+  "category": "Beauty and personal",
+  "door": "inquiry",
+  "fsq": [
+   "Hair Salon",
+   "Barbershop",
+   "Health and Beauty Service"
+  ],
+  "words": "bridal|hair|stylist"
+ },
+ {
+  "id": "microblading-and-permanent-makeup-studios",
+  "name": "Microblading and Permanent Makeup Studios",
+  "term": "microblading and permanent makeup studio",
+  "category": "Beauty and personal",
+  "door": "inquiry",
+  "fsq": [
+   "Brow Bar",
+   "Skin Care Clinic",
+   "Health and Beauty Service"
+  ],
+  "words": "microblad|permanent|makeup"
+ },
+ {
+  "id": "piercing-studios",
+  "name": "Piercing Studios",
+  "term": "piercing studio",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Body Piercing Shop"
+  ],
+  "words": "pierc"
+ },
+ {
+  "id": "wig-and-hair-extension-studios",
+  "name": "Wig and Hair Extension Studios",
+  "term": "wig and hair extension studio",
+  "category": "Beauty and personal",
+  "door": "inquiry",
+  "fsq": [
+   "Hair Salon",
+   "Barbershop"
+  ],
+  "words": "hair|extension"
+ },
+ {
+  "id": "esthetician-skin-studios",
+  "name": "Esthetician Skin Studios",
+  "term": "esthetician skin studio",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Skin Care Clinic",
+   "Spa"
+  ],
+  "words": "esthetician|skin"
+ },
+ {
+  "id": "tailors-and-alterations-shops",
+  "name": "Tailors and Alterations Shops",
+  "term": "tailors and alterations shop",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Tailor"
+  ],
+  "words": "tailor|alteration"
+ },
+ {
+  "id": "bespoke-tailors",
+  "name": "Bespoke Tailors",
+  "term": "bespoke tailor",
+  "category": "Beauty and personal",
+  "door": "inquiry",
+  "fsq": [
+   "Tailor"
+  ],
+  "words": "bespoke|tailor"
+ },
+ {
+  "id": "beard-and-grooming-lounges",
+  "name": "Beard and Grooming Lounges",
+  "term": "beard and grooming lounge",
+  "category": "Beauty and personal",
+  "door": "review",
+  "fsq": [
+   "Hair Salon",
+   "Barbershop"
+  ],
+  "words": "beard|groom|loung"
+ },
+ {
+  "id": "veterinary-clinics",
+  "name": "Veterinary Clinics",
+  "term": "veterinary clinic",
+  "category": "Pets",
+  "door": "review",
+  "same_as": "veterinarian"
+ },
+ {
+  "id": "emergency-vet-clinics",
+  "name": "Emergency Vet Clinics",
+  "term": "emergency vet clinic",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Veterinarian"
+  ],
+  "words": "emergency"
+ },
+ {
+  "id": "dog-groomers",
+  "name": "Dog Groomers",
+  "term": "dog groomer",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Pet Grooming Service"
+  ],
+  "words": "groom"
+ },
+ {
+  "id": "mobile-pet-groomers",
+  "name": "Mobile Pet Groomers",
+  "term": "mobile pet groomer",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Pet Grooming Service"
+  ],
+  "words": "mobile|groom"
+ },
+ {
+  "id": "dog-trainers",
+  "name": "Dog Trainers",
+  "term": "dog trainer",
+  "category": "Pets",
+  "door": "inquiry",
+  "fsq": [
+   "Pet Service",
+   "Pet Sitting and Boarding Service"
+  ],
+  "words": "train"
+ },
+ {
+  "id": "boarding-kennels-and-pet-hotels",
+  "name": "Boarding Kennels and Pet Hotels",
+  "term": "boarding kennels and pet hotel",
+  "category": "Pets",
+  "door": "inquiry",
+  "fsq": [
+   "Pet Service",
+   "Pet Sitting and Boarding Service"
+  ],
+  "words": "board|kennel|hotel"
+ },
+ {
+  "id": "dog-daycare-centres",
+  "name": "Dog Daycare Centres",
+  "term": "dog daycare centre",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Pet Service",
+   "Pet Sitting and Boarding Service"
+  ],
+  "words": "daycare"
+ },
+ {
+  "id": "horse-riding-schools-and-livery-yards",
+  "name": "Horse Riding Schools and Livery Yards",
+  "term": "horse riding schools and livery yard",
+  "category": "Pets",
+  "door": "inquiry",
+  "fsq": [
+   "Equestrian Facility",
+   "Stable"
+  ],
+  "words": "horse|riding|school|livery|yards"
+ },
+ {
+  "id": "equine-vets-and-farriers",
+  "name": "Equine Vets and Farriers",
+  "term": "equine vet",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Veterinarian",
+   "Equestrian Facility",
+   "Stable"
+  ],
+  "words": "equine|vets|farri"
+ },
+ {
+  "id": "pet-sitters-and-dog-walkers",
+  "name": "Pet Sitters and Dog Walkers",
+  "term": "pet sitters and dog walker",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Pet Service",
+   "Pet Sitting and Boarding Service"
+  ],
+  "words": "sitt|walk"
+ },
+ {
+  "id": "aquarium-and-exotic-pet-shops",
+  "name": "Aquarium and Exotic Pet Shops",
+  "term": "aquarium and exotic pet shop",
+  "category": "Pets",
+  "door": "review",
+  "fsq": [
+   "Pet Supplies Store"
+  ],
+  "words": "aquarium|exotic"
+ },
+ {
+  "id": "cat-boarding-and-cat-cafes",
+  "name": "Cat Boarding and Cat Cafes",
+  "term": "cat boarding and cat cafe",
+  "category": "Pets",
+  "door": "inquiry",
+  "fsq": [
+   "Pet Service",
+   "Pet Sitting and Boarding Service"
+  ],
+  "words": "board|cafes"
+ },
+ {
+  "id": "private-tutors",
+  "name": "Private Tutors",
+  "term": "private tutor",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Tutoring Service",
+   "Adult Education"
+  ],
+  "words": "private|tutor"
+ },
+ {
+  "id": "test-prep-centres",
+  "name": "Test Prep Centres",
+  "term": "test prep centre",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Tutoring Service",
+   "Adult Education"
+  ],
+  "words": "test|prep"
+ },
+ {
+  "id": "private-schools",
+  "name": "Private Schools",
+  "term": "private school",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Private School"
+  ],
+  "words": "private|school"
+ },
+ {
+  "id": "nurseries-and-preschools",
+  "name": "Nurseries and Preschools",
+  "term": "nursery",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Preschool",
+   "Nursery School"
+  ],
+  "words": "nurser|preschool"
+ },
+ {
+  "id": "daycare-centres",
+  "name": "Daycare Centres",
+  "term": "daycare centre",
+  "category": "Education and kids",
+  "door": "review",
+  "fsq": [
+   "Daycare",
+   "Child Care Service"
+  ],
+  "words": "daycare"
+ },
+ {
+  "id": "language-schools",
+  "name": "Language Schools",
+  "term": "language school",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Language School"
+  ],
+  "words": "language|school"
+ },
+ {
+  "id": "music-schools",
+  "name": "Music Schools",
+  "term": "music school",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Music School"
+  ],
+  "words": "music|school"
+ },
+ {
+  "id": "dance-academies",
+  "name": "Dance Academies",
+  "term": "dance academy",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Dance Studio"
+  ],
+  "words": "dance|academ"
+ },
+ {
+  "id": "kids-coding-schools",
+  "name": "Kids Coding Schools",
+  "term": "kids coding school",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Computer Training School",
+   "Tutoring Service"
+  ],
+  "words": "kids|coding|school"
+ },
+ {
+  "id": "kids-art-and-craft-classes",
+  "name": "Kids Art and Craft Classes",
+  "term": "kids art and craft class",
+  "category": "Education and kids",
+  "door": "review",
+  "fsq": [
+   "Art School",
+   "Art Studio"
+  ],
+  "words": "kids|craft|class"
+ },
+ {
+  "id": "summer-camps",
+  "name": "Summer Camps",
+  "term": "summer camp",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Summer Camp"
+  ],
+  "words": "summer|camps"
+ },
+ {
+  "id": "maths-learning-centres",
+  "name": "Maths Learning Centres",
+  "term": "maths learning centre",
+  "category": "Education and kids",
+  "door": "review",
+  "fsq": [
+   "Tutoring Service",
+   "Adult Education"
+  ],
+  "words": "maths|learn"
+ },
+ {
+  "id": "after-school-programs",
+  "name": "After-School Programs",
+  "term": "after-school program",
+  "category": "Education and kids",
+  "door": "review",
+  "fsq": [
+   "Daycare",
+   "Child Care Service"
+  ],
+  "words": "after|school|program"
+ },
+ {
+  "id": "college-admissions-consultants",
+  "name": "College Admissions Consultants",
+  "term": "college admissions consultant",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Management Consultant",
+   "Business and Strategy Consulting Office",
+   "Career Counselor",
+   "Tutoring Service"
+  ],
+  "words": "college|admission|consultant"
+ },
+ {
+  "id": "flight-schools",
+  "name": "Flight Schools",
+  "term": "flight school",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Flight School"
+  ],
+  "words": "flight|school"
+ },
+ {
+  "id": "beauty-and-barber-training-schools",
+  "name": "Beauty and Barber Training Schools",
+  "term": "beauty and barber training school",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Hair Salon",
+   "Barbershop",
+   "Trade School"
+  ],
+  "words": "beauty|barber|train|school"
+ },
+ {
+  "id": "nanny-and-babysitting-agencies",
+  "name": "Nanny and Babysitting Agencies",
+  "term": "nanny and babysitting agency",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Daycare",
+   "Child Care Service"
+  ],
+  "words": "nanny|babysitt"
+ },
+ {
+  "id": "special-needs-tutors-and-learning-support",
+  "name": "Special Needs Tutors and Learning Support",
+  "term": "special needs tutors and learning support",
+  "category": "Education and kids",
+  "door": "inquiry",
+  "fsq": [
+   "Tutoring Service",
+   "Adult Education"
+  ],
+  "words": "special|needs|tutor|learn|support"
+ },
+ {
+  "id": "personal-trainers",
+  "name": "Personal Trainers",
+  "term": "personal trainer",
+  "category": "Fitness and sport",
+  "door": "inquiry",
+  "fsq": [
+   "Personal Trainer"
+  ],
+  "words": "personal|train"
+ },
+ {
+  "id": "boutique-fitness-studios",
+  "name": "Boutique Fitness Studios",
+  "term": "boutique fitness studio",
+  "category": "Fitness and sport",
+  "door": "inquiry",
+  "fsq": [
+   "Gym",
+   "Gym and Studio"
+  ],
+  "words": "boutique|fitnes"
+ },
+ {
+  "id": "yoga-studios",
+  "name": "Yoga Studios",
+  "term": "yoga studio",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Yoga Studio"
+  ],
+  "words": "yoga"
+ },
+ {
+  "id": "yoga-and-wellness-retreats",
+  "name": "Yoga and Wellness Retreats",
+  "term": "yoga and wellness retreat",
+  "category": "Fitness and sport",
+  "door": "inquiry",
+  "fsq": [
+   "Yoga Studio"
+  ],
+  "words": "yoga|wellnes|retreat"
+ },
+ {
+  "id": "pilates-studios",
+  "name": "Pilates Studios",
+  "term": "pilates studio",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Pilates Studio"
+  ],
+  "words": "pilat"
+ },
+ {
+  "id": "martial-arts-schools",
+  "name": "Martial Arts Schools",
+  "term": "martial arts school",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Martial Arts Dojo"
+  ],
+  "words": "martial|arts|school"
+ },
+ {
+  "id": "boxing-gyms",
+  "name": "Boxing Gyms",
+  "term": "boxing gym",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Gym",
+   "Gym and Studio"
+  ],
+  "words": "boxing|gyms"
+ },
+ {
+  "id": "golf-coaches",
+  "name": "Golf Coaches",
+  "term": "golf coach",
+  "category": "Fitness and sport",
+  "door": "inquiry",
+  "fsq": [
+   "Golf Course",
+   "Golf Club",
+   "Golf Driving Range"
+  ],
+  "words": "golf|coach"
+ },
+ {
+  "id": "swim-schools",
+  "name": "Swim Schools",
+  "term": "swim school",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Swim School"
+  ],
+  "words": "swim|school"
+ },
+ {
+  "id": "tennis-coaches-and-clubs",
+  "name": "Tennis Coaches and Clubs",
+  "term": "tennis coach",
+  "category": "Fitness and sport",
+  "door": "inquiry",
+  "fsq": [
+   "Tennis Club"
+  ],
+  "words": "tenni|coach|clubs"
+ },
+ {
+  "id": "crossfit-boxes",
+  "name": "CrossFit Boxes",
+  "term": "crossfit box",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Gym",
+   "Gym and Studio"
+  ],
+  "words": "crossfit|boxes"
+ },
+ {
+  "id": "climbing-gyms",
+  "name": "Climbing Gyms",
+  "term": "climbing gym",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Climbing Gym",
+   "Gym",
+   "Gym and Studio"
+  ],
+  "words": "climb|gyms"
+ },
+ {
+  "id": "gymnastics-clubs",
+  "name": "Gymnastics Clubs",
+  "term": "gymnastics club",
+  "category": "Fitness and sport",
+  "door": "review",
+  "fsq": [
+   "Gymnastics Center",
+   "Gym",
+   "Gym and Studio"
+  ],
+  "words": "gymnastic|clubs"
+ },
+ {
+  "id": "ski-and-snowboard-instructors",
+  "name": "Ski and Snowboard Instructors",
+  "term": "ski and snowboard instructor",
+  "category": "Fitness and sport",
+  "door": "inquiry",
+  "fsq": [
+   "Snow Sports"
+  ],
+  "words": "snowboard|instructor"
+ },
+ {
+  "id": "sports-performance-coaches",
+  "name": "Sports Performance Coaches",
+  "term": "sports performance coach",
+  "category": "Fitness and sport",
+  "door": "inquiry",
+  "fsq": [
+   "Personal Trainer"
+  ],
+  "words": "sport|performance|coach"
+ },
+ {
+  "id": "immigration-lawyers",
+  "name": "Immigration Lawyers",
+  "term": "immigration lawyer",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Immigration Attorney",
+   "Law Office",
+   "Legal Service"
+  ],
+  "words": "immigration|lawy"
+ },
+ {
+  "id": "estate-planning-lawyers",
+  "name": "Estate Planning Lawyers",
+  "term": "estate planning lawyer",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Law Office",
+   "Legal Service"
+  ],
+  "words": "estate|plann|lawy"
+ },
+ {
+  "id": "family-law-attorneys",
+  "name": "Family Law Attorneys",
+  "term": "family law attorney",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Law Office",
+   "Legal Service"
+  ],
+  "words": "family|attorney"
+ },
+ {
+  "id": "criminal-defense-lawyers",
+  "name": "Criminal Defense Lawyers",
+  "term": "criminal defense lawyer",
+  "category": "Professional services",
+  "door": "review",
+  "fsq": [
+   "Law Office",
+   "Legal Service"
+  ],
+  "words": "criminal|defense|lawy"
+ },
+ {
+  "id": "business-accountants",
+  "name": "Business Accountants",
+  "term": "business accountant",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Accounting and Bookkeeping Service"
+  ],
+  "words": "busines|accountant"
+ },
+ {
+  "id": "tax-preparers",
+  "name": "Tax Preparers",
+  "term": "tax preparer",
+  "category": "Professional services",
+  "door": "review",
+  "fsq": [
+   "Accounting and Bookkeeping Service"
+  ],
+  "words": "prepar"
+ },
+ {
+  "id": "financial-planners",
+  "name": "Financial Planners",
+  "term": "financial planner",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Financial Planner"
+  ],
+  "words": "financial|plann"
+ },
+ {
+  "id": "mortgage-brokers",
+  "name": "Mortgage Brokers",
+  "term": "mortgage broker",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Loans Agency",
+   "Financial Service"
+  ],
+  "words": "mortgage|brok"
+ },
+ {
+  "id": "insurance-agencies",
+  "name": "Insurance Agencies",
+  "term": "insurance agency",
+  "category": "Professional services",
+  "door": "inquiry",
+  "same_as": "insurance"
+ },
+ {
+  "id": "recruiters-and-staffing-agencies",
+  "name": "Recruiters and Staffing Agencies",
+  "term": "recruiters and staffing agency",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Employment Agency",
+   "Human Resources Agency"
+  ],
+  "words": "recruit|staff"
+ },
+ {
+  "id": "notary-publics",
+  "name": "Notary Publics",
+  "term": "notary public",
+  "category": "Professional services",
+  "door": "review",
+  "fsq": [
+   "Notary"
+  ],
+  "words": "notary|public"
+ },
+ {
+  "id": "translation-services",
+  "name": "Translation Services",
+  "term": "translation service",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Translation Service"
+  ],
+  "words": "translation"
+ },
+ {
+  "id": "bookkeepers",
+  "name": "Bookkeepers",
+  "term": "bookkeeper",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Accounting and Bookkeeping Service"
+  ],
+  "words": "bookkeep"
+ },
+ {
+  "id": "architects",
+  "name": "Architects",
+  "term": "architect",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Architecture Firm"
+  ],
+  "words": "architect"
+ },
+ {
+  "id": "employment-lawyers",
+  "name": "Employment Lawyers",
+  "term": "employment lawyer",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Law Office",
+   "Legal Service"
+  ],
+  "words": "employment|lawy"
+ },
+ {
+  "id": "conveyancing-and-property-solicitors",
+  "name": "Conveyancing and Property Solicitors",
+  "term": "conveyancing and property solicitor",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Law Office",
+   "Legal Service"
+  ],
+  "words": "conveyanc|property|solicitor"
+ },
+ {
+  "id": "private-investigators",
+  "name": "Private Investigators",
+  "term": "private investigator",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Business and Professional Services"
+  ],
+  "words": "private|investigator"
+ },
+ {
+  "id": "hr-consultants",
+  "name": "HR Consultants",
+  "term": "hr consultant",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Management Consultant",
+   "Business and Strategy Consulting Office",
+   "Employment Agency",
+   "Human Resources Agency"
+  ],
+  "words": "consultant"
+ },
+ {
+  "id": "patent-and-trademark-attorneys",
+  "name": "Patent and Trademark Attorneys",
+  "term": "patent and trademark attorney",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Law Office",
+   "Legal Service"
+  ],
+  "words": "patent|trademark|attorney"
+ },
+ {
+  "id": "business-brokers",
+  "name": "Business Brokers",
+  "term": "business broker",
+  "category": "Professional services",
+  "door": "inquiry",
+  "fsq": [
+   "Business Broker"
+  ],
+  "words": "busines|brok"
+ },
+ {
+  "id": "bail-bond-agencies",
+  "name": "Bail Bond Agencies",
+  "term": "bail bond agency",
+  "category": "Professional services",
+  "door": "review",
+  "fsq": [
+   "Legal Service",
+   "Financial Service"
+  ],
+  "words": "bail|bond"
+ },
+ {
+  "id": "bakeries",
+  "name": "Bakeries",
+  "term": "bakery",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Bakery",
+   "Pastry Shop"
+  ],
+  "words": "baker"
+ },
+ {
+  "id": "food-trucks",
+  "name": "Food Trucks",
+  "term": "food truck",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Food Truck"
+  ],
+  "words": "food|truck"
+ },
+ {
+  "id": "wedding-caterers",
+  "name": "Wedding Caterers",
+  "term": "wedding caterer",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Caterer"
+  ],
+  "words": "wedd|cater"
+ },
+ {
+  "id": "private-chefs",
+  "name": "Private Chefs",
+  "term": "private chef",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Caterer"
+  ],
+  "words": "private|chefs"
+ },
+ {
+  "id": "boutique-hotels-and-b-and-bs",
+  "name": "Boutique Hotels and B&Bs",
+  "term": "boutique hotel",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Hotel",
+   "Bed and Breakfast"
+  ],
+  "words": "boutique|hotel"
+ },
+ {
+  "id": "wedding-and-events-venues",
+  "name": "Wedding and Events Venues",
+  "term": "wedding and events venue",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Wedding Hall",
+   "Event Space"
+  ],
+  "words": "wedd|event|venu"
+ },
+ {
+  "id": "corporate-caterers",
+  "name": "Corporate Caterers",
+  "term": "corporate caterer",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Caterer"
+  ],
+  "words": "corporate|cater"
+ },
+ {
+  "id": "custom-cake-designers",
+  "name": "Custom Cake Designers",
+  "term": "custom cake designer",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Bakery",
+   "Pastry Shop"
+  ],
+  "words": "cake"
+ },
+ {
+  "id": "coffee-roasters",
+  "name": "Coffee Roasters",
+  "term": "coffee roaster",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Coffee Roaster"
+  ],
+  "words": "coffee|roast"
+ },
+ {
+  "id": "juice-and-smoothie-bars",
+  "name": "Juice and Smoothie Bars",
+  "term": "juice and smoothie bar",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Juice Bar",
+   "Smoothie Shop"
+  ],
+  "words": "juice|smoothie|bars"
+ },
+ {
+  "id": "ice-cream-shops",
+  "name": "Ice Cream Shops",
+  "term": "ice cream shop",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Ice Cream Parlor"
+  ],
+  "words": "cream"
+ },
+ {
+  "id": "pizzerias",
+  "name": "Pizzerias",
+  "term": "pizzeria",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Pizzeria"
+  ],
+  "words": "pizzeria"
+ },
+ {
+  "id": "bars-and-pubs",
+  "name": "Bars and Pubs",
+  "term": "bar",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Bar",
+   "Pub",
+   "Caterer"
+  ],
+  "words": "bars|pubs"
+ },
+ {
+  "id": "breweries-and-taprooms",
+  "name": "Breweries and Taprooms",
+  "term": "brewery",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Brewery"
+  ],
+  "words": "brewer|taproom"
+ },
+ {
+  "id": "event-bartenders-and-mobile-bars",
+  "name": "Event Bartenders and Mobile Bars",
+  "term": "event bartenders and mobile bar",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Bar",
+   "Pub",
+   "Caterer"
+  ],
+  "words": "event|bartend|mobile|bars"
+ },
+ {
+  "id": "meal-prep-services",
+  "name": "Meal Prep Services",
+  "term": "meal prep service",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Caterer"
+  ],
+  "words": "meal|prep"
+ },
+ {
+  "id": "vineyards-and-wineries",
+  "name": "Vineyards and Wineries",
+  "term": "vineyard",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Winery",
+   "Vineyard"
+  ],
+  "words": "vineyard|winer"
+ },
+ {
+  "id": "vacation-rental-hosts",
+  "name": "Vacation Rental Hosts",
+  "term": "vacation rental host",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Equipment Rental Service",
+   "Rental Service",
+   "Vacation Rental"
+  ],
+  "words": "vacation|rental|hosts"
+ },
+ {
+  "id": "banquet-and-function-halls",
+  "name": "Banquet and Function Halls",
+  "term": "banquet and function hall",
+  "category": "Food and hospitality",
+  "door": "inquiry",
+  "fsq": [
+   "Wedding Hall",
+   "Event Space"
+  ],
+  "words": "banquet|function|halls"
+ },
+ {
+  "id": "butcher-shops",
+  "name": "Butcher Shops",
+  "term": "butcher shop",
+  "category": "Food and hospitality",
+  "door": "review",
+  "fsq": [
+   "Butcher",
+   "Meat and Seafood Store"
+  ],
+  "words": "butcher"
+ },
+ {
+  "id": "home-care-agencies",
+  "name": "Home Care Agencies",
+  "term": "home care agency",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "same_as": "home-care"
+ },
+ {
+  "id": "assisted-living-facilities",
+  "name": "Assisted Living Facilities",
+  "term": "assisted living facility",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "same_as": "assisted-living"
+ },
+ {
+  "id": "memory-care-facilities",
+  "name": "Memory Care Facilities",
+  "term": "memory care facility",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "fsq": [
+   "Assisted Living Service",
+   "Assisted Living"
+  ],
+  "words": "memory|care|facilit"
+ },
+ {
+  "id": "companion-care-services",
+  "name": "Companion Care Services",
+  "term": "companion care service",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "fsq": [
+   "Home Health Care Service",
+   "Senior Citizen Service"
+  ],
+  "words": "companion|care"
+ },
+ {
+  "id": "senior-move-managers",
+  "name": "Senior Move Managers",
+  "term": "senior move manager",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "fsq": [
+   "Mover"
+  ],
+  "words": "senior|move|manag"
+ },
+ {
+  "id": "palliative-and-hospice-care-providers",
+  "name": "Palliative and Hospice Care Providers",
+  "term": "palliative and hospice care provider",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "fsq": [
+   "Hospice"
+  ],
+  "words": "palliative|hospice|care"
+ },
+ {
+  "id": "geriatric-care-managers",
+  "name": "Geriatric Care Managers",
+  "term": "geriatric care manager",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "fsq": [
+   "Senior Citizen Service",
+   "Geriatric Doctor"
+  ],
+  "words": "geriatric|care|manag"
+ },
+ {
+  "id": "mobility-equipment-stores",
+  "name": "Mobility Equipment Stores",
+  "term": "mobility equipment store",
+  "category": "Senior and home care",
+  "door": "review",
+  "fsq": [
+   "Mobility Store",
+   "Medical Supply Store"
+  ],
+  "words": "mobility|equipment|stor"
+ },
+ {
+  "id": "stairlift-and-accessibility-installers",
+  "name": "Stairlift and Accessibility Installers",
+  "term": "stairlift and accessibility installer",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "fsq": [
+   "Home Improvement Service",
+   "Home Service",
+   "Mobility Store",
+   "Medical Supply Store"
+  ],
+  "words": "stairlift|accessibility"
+ },
+ {
+  "id": "funeral-homes",
+  "name": "Funeral Homes",
+  "term": "funeral home",
+  "category": "Senior and home care",
+  "door": "review",
+  "fsq": [
+   "Funeral Home"
+  ],
+  "words": "funeral|homes"
+ },
+ {
+  "id": "nursing-homes-and-care-homes",
+  "name": "Nursing Homes and Care Homes",
+  "term": "nursing homes and care home",
+  "category": "Senior and home care",
+  "door": "inquiry",
+  "same_as": "nursing-home"
+ },
+ {
+  "id": "adult-day-care-centres",
+  "name": "Adult Day Care Centres",
+  "term": "adult day care centre",
+  "category": "Senior and home care",
+  "door": "review",
+  "fsq": [
+   "Senior Citizen Service",
+   "Disabled Persons Service"
+  ],
+  "words": "adult|care"
+ }
+]

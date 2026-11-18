@@ -253,6 +253,11 @@ The lead finder uses **Foursquare's free open business data**. It doesn't scrape
    ```
    `python dse.py kinds` lists all the types for each path.
 
+### All 512 niches of the app are built in
+Every niche in the app (Citadel's niche list, 15 groups from Home trades to Creative and events) is a built-in business type: type it by name (`python dse.py find "stump grinding" "Tampa FL"`) or let the app pass its finder term. No lookup and no Foursquare token is needed to find the type; the token is only for downloading the data. `python dse.py kinds --all` lists them.
+- Foursquare has only about 1,300 business categories, far coarser than 512 niches, so each niche is matched to its 1 to 4 nearest Foursquare categories and to words from its own name. A business is kept only if its website uses one of those words, which is what narrows "Tree Service" down to "Stump Grinding". A few niches (Dentists, Plumbers, Law Firms and others) are the same as the 26 hand-made types and use them.
+- Anything that is not in the list is still a business type of your own: type it, and it is matched to a Foursquare category and saved for you.
+- The list is `dse/niche_catalog.json`, made by `tools/build_niche_catalog.py` from the app's niche list (see that file to change how a niche is mapped, then re-run it).
 ### Other countries (not only the US)
 The same free Foursquare data covers the world. Rich markets first, fast-developing ones after (`python dse.py countries` lists every group):
 - **Tier 1:** `uk`, `eu` (27 countries), `gulf` (UAE, Saudi, Qatar, Kuwait, Bahrain, Oman), `israel`, `japan`, `korea`, `australasia`, `singapore`.
@@ -269,7 +274,7 @@ Leads outside the US get a `country` column. The "does the site talk about this 
 python dse.py build dentist,plumber,hair-salon --country gulf --source overture
 python dse.py find dentist "Dubai" --country AE --source both
 ```
-Only the built-in business types have Overture categories for now; a type you typed yourself stays Foursquare-only. Overture keeps places with a confidence of 0.5 or more and drops closed ones.
+The 26 hand-made types are mapped to Overture categories by hand. A niche or a type you typed is matched to Overture's category list by the words of its name on the first build (the list is read once and cached); one that fits nothing, or too many categories, is skipped with a message. Overture keeps places with a confidence of 0.5 or more and drops closed ones.
 
 ### Which towns to search: city tiers
 Pick towns by the size of the real pool, not by guessing. After building a country's lists:
@@ -282,6 +287,17 @@ python dse.py find dentist --country GB --cities-file data/cities-gb-dentist.csv
 - A suburb within 10 miles (`--cover`) of a bigger town is folded into it, because that town's search radius already reaches it. Towns with fewer than 3 prospects (`--min-pool`) are left out.
 - The CSV is yours to edit: change `include` (Y or N), change a tier, delete a row, or add a town by name (leave `lat` and `lon` blank and it is looked up). Running `cities` again never overwrites your file; `--refresh` rebuilds it.
 - `find --max` is shared across the towns, so raise it when you search many (for example `--max 400`).
+
+### Company registers and the list of sources
+`python dse.py directories` lists every lead source, what it gives, how we may use it, and whether it is built. Directory sites such as Yelp, Yellow Pages and Clutch forbid scraping, so they are listed as "look by hand"; the sources that allow reuse are built in.
+
+**UK company register (Companies House):** official open data, no key. It has no website, phone or email, so it finds registered businesses to look up, which suits "you have no website yet" offers.
+```bash
+python dse.py registry build dentist,plumber           # downloads the free monthly file once (about 470 MB), saves every ACTIVE company of those types
+python dse.py registry build dentist --file BasicCompanyDataAsOneFile-2026-11-01.zip    # or use a copy you already downloaded
+python dse.py registry find dentist "Leeds; Bradford" --min-age 2    # companies at least 2 years old (a real business, not a shell)
+```
+Each lead links to its register entry. Next, find a website for it with the enrich step.
 
 ## Connect it to DBI Citadel (so you can run it from your phone)
 1. In Citadel, open **More → HQ Tools → Connect a PC**. The panel shows each command with a **Copy** button.

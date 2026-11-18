@@ -53,7 +53,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -83,12 +83,20 @@ def main():
     ap = argparse.ArgumentParser(prog="dse.py", description=f"DSE Toolkit {VERSION}", formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=__doc__.split("\n", 2)[2])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("kinds")
+    kd = sub.add_parser("kinds", help="the business types you can search for"); kd.add_argument("--all", action="store_true", help="also list every one of the app's 512 niches")
     sub.add_parser("packs")
     b = sub.add_parser("build"); b.add_argument("kinds", help="comma-separated business types, e.g. dentist,plumber")
     b.add_argument("--country", default="US", help="a country code (GB) or a group (eu, gulf, ...): python dse.py countries")
     b.add_argument("--source", default="foursquare", help="foursquare (needs the free HF_TOKEN), overture (open data, no token) or both")
     sub.add_parser("countries", help="the countries and groups the lead finder covers")
+    sub.add_parser("directories", help="every lead source, how we may use it, and whether it is built")
+    rg = sub.add_parser("registry", help="UK company register (Companies House): build, then find companies by town")
+    rg.add_argument("action", choices=["build", "find"]); rg.add_argument("kind", help="build: types separated by commas. find: one type")
+    rg.add_argument("towns", nargs="?", default="", help="find: towns separated by ;")
+    rg.add_argument("--file", default="", help="build: a Companies House zip you already downloaded")
+    rg.add_argument("--sic", default="", help="build: trade codes of your own, like 74100,43320 (added for every type named)")
+    rg.add_argument("--min-age", type=float, default=1.0, dest="min_age", help="find: only companies at least this many years old")
+    rg.add_argument("--max", type=int, default=100); rg.add_argument("--all", action="store_true", help="keep national chains"); rg.add_argument("--out", default="")
     ct = sub.add_parser("cities", help="rate the towns of a country in 7 to 10 tiers by how many prospects of one business type they hold, and save an editable list")
     ct.add_argument("kind"); ct.add_argument("--country", required=True, help="one country code, like GB")
     ct.add_argument("--source", default="foursquare", help="foursquare, overture or both")
@@ -464,6 +472,15 @@ def main():
                 for k in kinds:
                     have = "ready" if places.extract_path(k).exists() else "run: python dse.py build " + k
                     print(f"  {k:<20} {places.KINDS[k][0]:<28} {have}")
+        by_cat = niches.by_category()
+        total = sum(len(v) for v in by_cat.values())
+        print(f"the app's {total} niches are built in too, in {len(by_cat)} groups (type any of them by name, like 'stump grinding'; python dse.py kinds --all lists them):")
+        for cat, items in by_cat.items():
+            print(f"  {cat:<28} {len(items):>3}")
+            if a.all:
+                for e in items:
+                    k = e.get("same_as") or e["id"]
+                    print(f"      {e['name']:<52} {k}" + ("" if places.extract_path(k).exists() else "   (built on first use)"))
         mine = places.custom_kinds()
         if mine:
             print("your own:")
@@ -494,6 +511,13 @@ def main():
         places.build([k.strip() for k in a.kinds.split(",") if k.strip()], a.country, a.source)
     elif a.cmd == "cities":
         cities.suggest(a.kind, a.country, a.source, a.levels, a.refresh, a.cover, a.min_pool)
+    elif a.cmd == "directories":
+        print(chr(10).join(registers.catalog_lines()))
+    elif a.cmd == "registry":
+        if a.action == "build":
+            registers.build([places.resolve_kind(k.strip()) for k in a.kind.split(",") if k.strip()], a.file, a.sic)
+        else:
+            registers.find(places.resolve_kind(a.kind), a.towns, a.min_age, a.max, a.out, a.all)
     elif a.cmd == "countries":
         print(chr(10).join(countries.listing()))
     elif a.cmd == "find":

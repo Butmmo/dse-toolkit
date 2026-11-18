@@ -67,14 +67,14 @@ check("the long dash is never written into a pack", C.DASH not in (C.PACK_DIR / 
       and C.DASH in (raises(C.make_pack, "Dog trainers", "puppy classes you can book online", ["booking => there is no booking " + C.DASH + " at all"]) and "" or C.DASH))
 
 # ---------------------------------------------------------------- your own business type
-CATS = [("1", "Wedding Photographer"), ("2", "Photographer"), ("3", "Photography Lab"), ("4", "Dog Trainer"), ("5", "Dentist"), ("6", "Cosmetic Dentist"), ("7", "Yoga Studio")]
+CATS = [("1", "Wedding Photographer"), ("2", "Photographer"), ("3", "Photography Lab"), ("4", "Archery Range"), ("5", "Dentist"), ("6", "Cosmetic Dentist"), ("7", "Yoga Studio"), ("8", "Sailing Club")]
 P.categories = lambda: CATS
 check("a built-in type is used as it is", P.resolve_kind("dentist") == "dentist" and P.kind_info("dentist")[0] == "Dentists")
-check("a typed type that fits one category is found and saved", P.resolve_kind("dog trainers") == "dog-trainers" and P.kind_info("dog-trainers")[1] == ["Dog Trainer"])
+check("a typed type that fits one category is found and saved", P.resolve_kind("archery ranges") == "archery-ranges" and P.kind_info("archery-ranges")[1] == ["Archery Range"])
 saved = json.loads(P.CUSTOM_KINDS.read_text(encoding="utf-8"))
-check("what is saved says what you typed and which category it became", saved["dog-trainers"]["typed"] == "dog trainers" and saved["dog-trainers"]["names"] == ["Dog Trainer"])
-check("the website words come from your own words", "dog" in saved["dog-trainers"]["words"] and "trainer" in saved["dog-trainers"]["words"], saved["dog-trainers"]["words"])
-check("a saved type is reused without looking anything up", (setattr(P, "categories", lambda: (_ for _ in ()).throw(RuntimeError("no lookup"))) or True) and P.resolve_kind("dog-trainers") == "dog-trainers")
+check("what is saved says what you typed and which category it became", saved["archery-ranges"]["typed"] == "archery ranges" and saved["archery-ranges"]["names"] == ["Archery Range"])
+check("the website words come from your own words", "archery" in saved["archery-ranges"]["words"] and "range" in saved["archery-ranges"]["words"], saved["archery-ranges"]["words"])
+check("a saved type is reused without looking anything up", (setattr(P, "categories", lambda: (_ for _ in ()).throw(RuntimeError("no lookup"))) or True) and P.resolve_kind("archery-ranges") == "archery-ranges")
 P.categories = lambda: CATS
 k = P.resolve_kind("photography")
 check("a word that fits several categories uses all of them, so you are never asked to choose", sorted(P.kind_info(k)[1]) == ["Photographer", "Photography Lab", "Wedding Photographer"], str(P.kind_info(k)))
@@ -84,10 +84,12 @@ m = raises(P.resolve_kind, "service")
 check("a word that fits too many categories asks for one more word", m and "too broad" in m and "wedding photographers" in m, str(m))
 P.categories = lambda: CATS
 check("a built-in type is found from what you would naturally type", P.builtin_match("Interior Designers") == "interior-design" and P.builtin_match("dentists") == "dentist" and P.builtin_match("Hair Salons") == "hair-salon" and P.builtin_match("law offices") == "law-office" and P.builtin_match("real estate") == "real-estate")
-check("a word that is not a built-in is not matched to one", P.builtin_match("wedding photographers") is None and P.builtin_match("") is None)
+check("a word that is not a built-in is not matched to one", P.builtin_match("zorbing") is None and P.builtin_match("") is None)
+check("the app's 512 niches are built in: a niche typed in words needs no lookup", P.builtin_match("wedding photographers") == "wedding-photographers" and P.builtin_match("stump grinding") == "stump-grinding")
 check("a built-in typed in words needs no lookup at all", (setattr(P, "categories", lambda: (_ for _ in ()).throw(RuntimeError("no lookup"))) or True) and P.resolve_kind("Interior Designers") == "interior-design")
 P.categories = lambda: CATS
-check("the exact name settles it", P.resolve_kind("Wedding Photographer") == "wedding-photographer" and P.kind_info("wedding-photographer")[0] == "Wedding Photographer")
+check("a niche from the app typed in singular is found as the built-in niche", P.resolve_kind("Wedding Photographer") == "wedding-photographers" and P.kind_info("wedding-photographers")[0] == "Wedding Photographers")
+check("the exact name settles it", P.resolve_kind("Sailing Club") == "sailing-club" and P.kind_info("sailing-club")[0] == "Sailing Club")
 check("a plural fits the singular category", P.resolve_kind("yoga studios") == "yoga-studios" and P.kind_info("yoga-studios")[1] == ["Yoga Studio"])
 check("nothing like it says so and how to browse", "categories" in (raises(P.resolve_kind, "space tourism") or ""))
 check("an option-looking or empty type is refused", raises(P.resolve_kind, "--all") is not None and raises(P.resolve_kind, "  ") is not None)
