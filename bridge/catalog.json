@@ -8996,6 +8996,23 @@
       "timeout_min": 240,
       "outputs": []
     },
+    "dse.presence_blender_setup": {
+      "label": "Presence: install Blender for solid 3D videos",
+      "group": "Grow",
+      "help": "One-time setup of Blender, the free open-source 3D program, for Presence's faceless videos. It downloads the official portable Blender zip (about 400 MB) from download.blender.org, checks it against the checksum Blender publishes next to it, and unpacks it into the toolkit's blender folder. Then, in a Studio video project, choose 'Draw the scenes in 3D with Blender': each scene becomes real 3D text in your colours with a slowly moving camera, joined with your voice and captions. A 3D video takes a few minutes longer to make than a normal one. If Blender is missing or a scene fails, that scene uses the normal card, so a video is never lost. Safe to run again. Nothing is sent anywhere.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "presence"
+        },
+        {
+          "lit": "blender-setup"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 30,
+      "outputs": []
+    },
     "dse.presence_voice_setup": {
       "label": "Presence: install the free Kokoro voice",
       "group": "Grow",

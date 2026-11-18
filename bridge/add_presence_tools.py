@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends", "dse.presence_context"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_blender_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends", "dse.presence_context"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -62,6 +62,14 @@ T["dse.presence_carousel"] = {
     "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "carousel"}, {"field": "project"}],
     "fields": [{"name": "project", "label": "Carousel project", "type": "file", "required": True, "glob": "my-carousel/*.json"}],
     "timeout_min": 3, "outputs": [{"glob": "my-graphics/*.png", "upload": True}]}
+
+T["dse.presence_blender_setup"] = {
+    "label": "Presence: install Blender for solid 3D videos", "group": "Grow",
+    "help": ("One-time setup of Blender, the free open-source 3D program, for Presence's faceless videos. It downloads the official portable Blender zip (about 400 MB) from download.blender.org, "
+             "checks it against the checksum Blender publishes next to it, and unpacks it into the toolkit's blender folder. Then, in a Studio video project, choose 'Draw the scenes in 3D with Blender': "
+             "each scene becomes real 3D text in your colours with a slowly moving camera, joined with your voice and captions. A 3D video takes a few minutes longer to make than a normal one. If Blender is "
+             "missing or a scene fails, that scene uses the normal card, so a video is never lost. Safe to run again. Nothing is sent anywhere."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "blender-setup"}], "fields": [], "timeout_min": 30, "outputs": []}
 
 T["dse.presence_voice_setup"] = {
     "label": "Presence: install the free Kokoro voice", "group": "Grow",

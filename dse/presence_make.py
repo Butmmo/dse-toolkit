@@ -385,6 +385,21 @@ def _burn_caption(card: Path, text: str, W: int, H: int) -> None:
     img.save(card, "PNG")
 
 
+def _caption_overlay(text: str, W: int, H: int, out: Path) -> None:
+    """The caption band on a see-through picture the size of the video (for scenes drawn by Blender, where the card is not a single picture)."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img, "RGBA")
+    pad = int(W * 0.06)
+    f, lines, lh = _fit(d, text, True, W - 2 * pad, int(H * 0.2), int(W * 0.05), 26)
+    top = H - int(H * 0.08) - len(lines) * lh - 24
+    d.rectangle((0, top - 24, W, H), fill=(15, 17, 21, 190))
+    for i, line in enumerate(lines):
+        tw = d.textlength(line, font=f)
+        d.text(((W - tw) / 2, top + i * lh), line, font=f, fill="#f6f0e4")
+    img.save(out, "PNG")
+
+
 def _own_audio(title: str, n: int) -> Path | None:
     """The student's own recording for scene n: my-audio/<video title>-scene-<n>.wav (or mp3, m4a, aac, ogg)."""
     base = slug(title)
@@ -422,6 +437,7 @@ def parse_project(raw: object) -> dict:
     if not scenes:
         raise ValueError("Every scene is empty.")
     return {"title": str(raw.get("title") or "video")[:80], "size": size, "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink", "kit": raw.get("kit") if isinstance(raw.get("kit"), dict) else None,
+            "engine": "blender" if raw.get("engine") == "blender" else "cards", "quality": "high" if raw.get("quality") == "high" else "draft", "move": raw.get("move") if raw.get("move") in ("dolly", "drift", "still") else "dolly",
             "voice": raw.get("voice") if raw.get("voice") in ("windows", "own", "kokoro") else "none", "kokoro_voice": raw.get("kokoro_voice") if KOKORO_VOICE.match(str(raw.get("kokoro_voice") or "")) else DEFAULT_KOKORO_VOICE, "captions": raw.get("captions") is not False, "footer": str(raw.get("footer") or "")[:60], "scenes": scenes}
 
 
@@ -554,17 +570,47 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                     s["seconds"] = max(s["seconds"], round(length + 0.4, 2))
                 else:
                     say("The Windows voice did not work for this scene: it will be silent.")
-            if P["captions"] and s["voice"]:
+            bl_clip = None
+            if P["engine"] == "blender" and not s["image"]:
+                try:
+                    from . import presence_blender as B
+                    kit = parse_kit(P["kit"], P["theme"])
+                    q = (W, H) if P["quality"] == "high" else (W // 2 - (W // 2) % 2, H // 2 - (H // 2) % 2)
+                    fps_in = B.FPS if P["quality"] == "high" else 12
+                    st = stat_of(s["text"] or "") if auto_layout(s["text"] or "", "", "cover") == "stat" else None
+                    spec = B.scene_spec(s["text"] or P["title"], kit, q, min(120, int(s["seconds"] * fps_in)), P["move"], 24 if P["quality"] == "high" else 16, st, fps_in)
+                    frames = B.render_scene(spec, td / f"bl{i}")
+                    bl_clip = B.frames_to_clip(ff, frames, s["seconds"], (W, H), td / f"bl{i}.mp4", fps_in)
+                    say(f"Scene {i}: drawn in 3D with Blender ({len(frames)} frames).")
+                except Exception as e:                                          # Blender missing or a scene failed: this scene uses the normal card, and the video carries on
+                    say(f"Scene {i}: Blender was not used ({e}). Using the normal card for this scene.")
+                    bl_clip = None
+            if P["captions"] and s["voice"] and not bl_clip:
                 _burn_caption(card, s["voice"], W, H)
             clip = td / f"clip{i}.mp4"
             frames = int(s["seconds"] * 30)
             zoom = f"zoompan=z='min(zoom+0.0006,1.12)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps=30"
-            cmd = [ff, "-y", "-loglevel", "error", "-loop", "1", "-t", str(s["seconds"]), "-i", str(card)]
-            if wav.exists():
-                cmd += ["-i", str(wav)]
+            if bl_clip:
+                cmd = [ff, "-y", "-loglevel", "error", "-i", str(bl_clip)]
+                cap = None
+                if P["captions"] and s["voice"]:
+                    cap = td / f"cap{i}.png"
+                    _caption_overlay(s["voice"], W, H, cap)
+                    cmd += ["-i", str(cap)]
+                if wav.exists():
+                    cmd += ["-i", str(wav)]
+                else:
+                    cmd += ["-f", "lavfi", "-t", str(s["seconds"]), "-i", "anullsrc=r=44100:cl=mono"]
+                a_in = 2 if cap else 1
+                vf = ["-filter_complex", f"[0:v][1:v]overlay=0:0,format=yuv420p[v]", "-map", "[v]", "-map", f"{a_in}:a"] if cap else ["-map", "0:v", "-map", f"{a_in}:a", "-pix_fmt", "yuv420p"]
+                cmd += vf + ["-c:v", "libx264", "-preset", "veryfast", "-af", "apad", "-c:a", "aac", "-ar", "44100", "-ac", "1", "-t", str(s["seconds"]), str(clip)]
             else:
-                cmd += ["-f", "lavfi", "-t", str(s["seconds"]), "-i", "anullsrc=r=44100:cl=mono"]
-            cmd += ["-vf", f"scale={W * 2}:{H * 2},{zoom},format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-af", "apad", "-c:a", "aac", "-ar", "44100", "-ac", "1", "-t", str(s["seconds"]), str(clip)]
+                cmd = [ff, "-y", "-loglevel", "error", "-loop", "1", "-t", str(s["seconds"]), "-i", str(card)]
+                if wav.exists():
+                    cmd += ["-i", str(wav)]
+                else:
+                    cmd += ["-f", "lavfi", "-t", str(s["seconds"]), "-i", "anullsrc=r=44100:cl=mono"]
+                cmd += ["-vf", f"scale={W * 2}:{H * 2},{zoom},format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-af", "apad", "-c:a", "aac", "-ar", "44100", "-ac", "1", "-t", str(s["seconds"]), str(clip)]
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode != 0:
                 raise RuntimeError(f"ffmpeg stopped on scene {i}: {r.stderr.strip()[-300:]}")
@@ -637,6 +683,11 @@ def cli(args: list[str]) -> int:
             return 0
         if kind == "voice-setup":
             return install_kokoro()
+        if kind in ("blender-setup", "blender-check"):
+            from . import presence_blender as B
+            if kind == "blender-check":
+                return B.check()
+            return B.install_blender(rest[rest.index("--to") + 1] if "--to" in rest and rest.index("--to") + 1 < len(rest) else None)
         if kind == "carousel":
             if not rest:
                 print("Give the project file, for example: python dse.py presence carousel my-carousel/project.json")
