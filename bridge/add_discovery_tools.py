@@ -6,8 +6,8 @@
   * New: the UK company register lists (dse.registry_find; its 470 MB download stays a command: python dse.py registry build <type>)
   * New: what a website is built with and what it is missing (dse.tech_site, dse.tech)
 
-SIZE MATTERS: Citadel refuses a published catalog over 200,000 characters (hq_runner_beat), and it was already at 188,000 before these. Keep every
-new field and help text short; tests/test_discovery_tools.py fails if the published catalog gets within 1,500 characters of the limit (about 1,700 are left after these buttons: the real fix is raising the limit in Citadel).
+SIZE: Citadel refuses a published catalog over 600,000 characters (hq_runner_beat, raised from 200,000 on 18 Nov 2026 by migration 20261226090000 in the
+Citadel repo). The catalog is about 205,000 now. The new fields and help text are still kept short, and tests/test_discovery_tools.py fails when the published catalog passes 90% of the limit.
 The runner only runs these commands on your PC; nothing is sent anywhere.
 """
 import json
