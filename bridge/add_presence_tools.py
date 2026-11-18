@@ -110,9 +110,10 @@ T["dse.presence_context"] = {
     "help": ("A Presence Function linked to an engine inherits that engine's folders. This reads them (read-only, with the same safety rules as the engine context folders: never keys, the vault, .env or password files, "
              "never archives or encrypted files; anything that looks like a secret is hidden) and looks for what you may already have for social media: a content plan or calendar, posting schedule, brand voice notes, "
              "hashtags, post ideas and drafts, notes from an AI chat. It keeps short findings only (platforms, account handles, the rhythm, themes, voice, hashtags, goals, ideas with the file they came from) and writes "
-             "questions for you in Presence > Earlier plan: how to bring each finding in. It changes nothing and decides nothing."),
-    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "context"}, {"field": "engine"}],
-    "fields": [{"name": "engine", "label": "Engine", "type": "choice", "required": True, "choices_from": "engines", "choices": []}],
+             "questions for you in Presence > Earlier plan: how to bring each finding in. Rules cannot understand every kind of plan, so with the AI switch on (the default) this PC's own AI also reads the start of the strongest files and adds a short summary and up to three questions of its own; if Ollama is off you still get the reading by rules. It changes nothing and decides nothing."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "context"}, {"field": "engine"}, {"flag": "--ai", "field": "ai"}],
+    "fields": [{"name": "engine", "label": "Engine", "type": "choice", "required": True, "choices_from": "engines", "choices": []},
+               {"name": "ai", "label": "Also let my PC's own AI (Ollama, free, nothing leaves the PC) read it and ask its own questions", "type": "bool", "required": False, "default": True}],
     "timeout_min": 5, "outputs": [{"glob": "my-lists/*-presence-context.json", "upload": True}]}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

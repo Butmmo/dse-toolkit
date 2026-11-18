@@ -1,6 +1,6 @@
 """Presence: find the social media plan you already have inside an engine's folder, understand it, and ask you how to use it, so Presence builds on your earlier work instead of replacing it.
 
-    python dse.py presence context <engine>
+    python dse.py presence context <engine> [--ai]
 
 A Function in Presence can be linked to an engine, and then it inherits that engine's folders: the folders attached to the engine (python dse.py context <engine> --add <folder>) and the engine's own
 folder. This reads them read-only, with the SAME safety rules as the engine context folders (never _private-keys, the encrypted vault, .ssh, .aws, .env files, key, token or password files,
@@ -8,7 +8,7 @@ archives or encrypted files; anything that looks like a key or password is hidde
 posting schedule, brand voice notes, hashtag lists, post drafts or ideas, notes from an AI chat about growing on social media. From them it keeps, in plain counts and short quotes:
   * which platforms the plan is about and how much,   * account handles,   * the posting rhythm it wanted,   * content themes or pillars,   * the voice or tone it asked for,
   * hashtags,   * goals and the audience,   * post ideas and drafts (with the file each came from).
-Then it writes my-lists/<engine>-presence-context.json for Presence > Earlier plan, with QUESTIONS for you: how to bring each finding into Presence (keep, change or leave out). It decides nothing for you.
+With --ai, this PC's own AI (Ollama; the text never leaves the PC) also reads the start of the strongest files and adds a short summary and up to three open questions of its own, because rules cannot understand every kind of plan. Then it writes my-lists/<engine>-presence-context.json for Presence > Earlier plan, with QUESTIONS for you: how to bring each finding into Presence (keep, change or leave out). It decides nothing for you.
 The result stays on this PC until you press Add in Citadel, and then only these short findings go up (never a whole file). Standard library only: the engine context reader opens .docx and .pdf itself.
 """
 from __future__ import annotations
@@ -265,9 +265,82 @@ def questions_for(findings: dict) -> list[dict]:
     return q
 
 
+# ------------------------------------------------------------------ the optional local AI reading
+
+OLLAMA = "http://localhost:11434/api/chat"
+AI_BUDGET = 3200            # characters of the plan shown to the model, in all
+AI_PROMPT = ("You read a person's earlier social media plan and help them combine it with a new planning tool. Reply with JSON only, no other words: "
+             '{"summary": "two or three plain sentences saying what the plan is trying to do, who it is for and how it works", '
+             '"questions": ["up to three short questions that would help use this plan well, each about something the plan leaves unclear or in conflict"]}. '
+             "Use only what is in the text. Never invent facts. If something is unclear, ask about it instead of guessing.")
+
+
+def ai_digest(sources: list[tuple[str, str]], budget: int = AI_BUDGET) -> str:
+    """A short, redacted piece of the strongest files for the local model: the start of each file, in order of strength, up to the budget."""
+    parts, left = [], budget
+    for rel, text in sources:
+        if left < 200:
+            break
+        take = cf.redact(re.sub(r"\n{3,}", "\n\n", text.strip()))[: min(left, 1100)]
+        parts.append(f"--- {rel}\n{take}")
+        left -= len(take) + len(rel) + 6
+    return "\n".join(parts)
+
+
+def _ollama_chat(model: str, system: str, user: str, timeout: int = 150) -> str:
+    import urllib.request
+    body = json.dumps({"model": model, "stream": False, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "options": {"temperature": 0.2}}).encode("utf-8")
+    req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:        # always this PC's own Ollama: the plan never leaves this PC
+        return str(json.loads(r.read()).get("message", {}).get("content", ""))
+
+
+def parse_ai(raw: str) -> dict | None:
+    """The model's reply, made safe: a short plain summary and up to three plain questions that end in '?'. Anything else gives None."""
+    m = re.search(r"\{[\s\S]*\}", raw or "")
+    if not m:
+        return None
+    try:
+        j = json.loads(m.group(0))
+    except ValueError:
+        return None
+    if not isinstance(j, dict):
+        return None
+    def plain(x, n):
+        return re.sub(r"[\x00-\x1f<>]+", " ", re.sub(r"\s+", " ", str(x or ""))).strip()[:n]
+    summary = plain(j.get("summary"), 500)
+    qs = []
+    for q in (j.get("questions") if isinstance(j.get("questions"), list) else [])[:5]:
+        t = plain(q if not isinstance(q, dict) else q.get("text"), 220)
+        if len(t) >= 12 and t.endswith("?") and t.lower() not in (x.lower() for x in qs):
+            qs.append(t)
+    if len(summary) < 20 and not qs:
+        return None
+    return {"summary": summary, "questions": qs[:3]}
+
+
+def ai_read(sources: list[tuple[str, str]], model: str = "", chat=None, installed=None) -> dict | None:
+    """Optional: this PC's own AI (Ollama) reads the start of the strongest files and says what the plan is for, with a few questions. None when there is no model or the answer is not usable."""
+    chat = chat or _ollama_chat
+    if not model:
+        from chat import ollama_model as om
+        have = (installed or om.installed)()
+        if not have:
+            return None
+        model = om.pick(have=have)[0]
+    digest = ai_digest(sources)
+    if len(digest) < 80:
+        return None
+    try:
+        got = parse_ai(chat(model, AI_PROMPT, digest))
+    except Exception:
+        return None
+    return {**got, "model": model} if got else None
+
+
 # ------------------------------------------------------------------ the whole thing
 
-def run_context(engine: str, out=print, today: dt.date | None = None) -> int:
+def run_context(engine: str, out=print, today: dt.date | None = None, ai: bool = False, chat=None, installed=None) -> int:
     today = today or dt.date.today()
     try:
         folders = inherited_folders(engine)
@@ -275,6 +348,7 @@ def run_context(engine: str, out=print, today: dt.date | None = None) -> int:
         out(str(e))
         return 1
     scored: list[tuple[str, int, dict, str]] = []
+    texts: dict[str, str] = {}
     scanned = 0
     for root in folders:
         for rel, kind, text in walk_texts(root):
@@ -282,6 +356,7 @@ def run_context(engine: str, out=print, today: dt.date | None = None) -> int:
             sc = social_score(rel, text)
             if sc >= 3:
                 scored.append((f"{root.name}/{rel}", sc, read_file(rel, kind, text), kind))
+                texts[f"{root.name}/{rel}"] = text
     scored.sort(key=lambda x: -x[1])
     keep = scored[:MAX_SOURCES]
     if not keep:
@@ -289,12 +364,17 @@ def run_context(engine: str, out=print, today: dt.date | None = None) -> int:
         return 0
     findings = combine([(r, s, f) for r, s, f, _ in keep])
     questions = questions_for(findings)
+    reading = ai_read([(r, texts[r]) for r, _s, _f, _k in keep if r in texts][:6], chat=chat, installed=installed) if ai else None
+    if reading:
+        questions += [{"id": f"open:{i}", "kind": "open", "text": q, "options": []} for i, q in enumerate(reading["questions"], 1)]
     result = {"v": 1, "kind": "presence-context", "made": today.isoformat(), "engine": engine, "folders": [p.name for p in folders], "scanned": scanned,
-              "sources": [{"path": r, "kind": k, "score": s, "platforms": [p for p, _ in f["platforms"].most_common(3)]} for r, s, f, k in keep], "findings": findings, "questions": questions}
+              "sources": [{"path": r, "kind": k, "score": s, "platforms": [p for p, _ in f["platforms"].most_common(3)]} for r, s, f, k in keep], "findings": findings, "questions": questions, **({"ai": reading} if reading else {})}
     LISTS.mkdir(parents=True, exist_ok=True)
     p = LISTS / f"{engine}-presence-context.json"
     p.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     out(f"Looked through {scanned} files in {len(folders)} folder(s) of engine '{engine}'. {len(keep)} read like social media work. {len(questions)} question(s) for you in Presence > Earlier plan. Saved {p.name}.")
+    if ai:
+        out(f"My PC's AI ({reading['model']}) also read it: {reading['summary'][:200]}" if reading else "No local AI answered (Ollama may be off), so this is the reading by rules only.")
     for r, s, _f, _k in keep[:8]:
         out(f"  {s:3}  {r}")
     return 0
@@ -304,7 +384,7 @@ def cli(args: list[str]) -> int:
     if not args:
         print(__doc__)
         return 2
-    return run_context(args[0])
+    return run_context(args[0], ai="--ai" in args[1:])
 
 
 if __name__ == "__main__":
