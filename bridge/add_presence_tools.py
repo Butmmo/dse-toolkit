@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -67,6 +67,34 @@ T["dse.presence_voice_setup"] = {
              "and downloads the voice model (about 330 MB) from the project's official release page, so it takes a few minutes. Then choose 'Kokoro' as the voice in a Studio video project. Safe to run again: "
              "it skips what is already there."),
     "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "voice-setup"}], "fields": [], "timeout_min": 30, "outputs": []}
+
+ACC = r"[a-z0-9][a-z0-9-]{1,30}"
+T["dse.presence_connect"] = {
+    "label": "Presence: connect an account to post from", "group": "Grow",
+    "help": ("Connects ONE of your own accounts so Presence can post your finished content to it, only when you approve each post. A small window on this PC asks for the secret (hidden as you type): for LinkedIn, an access token "
+             "with the w_member_social permission from your own LinkedIn developer app (add the 'Share on LinkedIn' product; the token also needs openid and profile so your member id can be read); for Discord, the webhook "
+             "address of a channel in a server you manage (channel settings, Integrations, Webhooks). The secret stays on this PC: it is never typed into Citadel, never sent to Citadel, never shown or logged, and sent only to "
+             "LinkedIn or Discord. Name each account (for example orlando-linkedin) so each business (Function) can post to its own. Nothing is posted by connecting."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "publish"}, {"lit": "connect"}, {"field": "platform"}, {"field": "account"}],
+    "fields": [{"name": "platform", "label": "Platform", "type": "choice", "required": True, "choices": [{"value": "linkedin", "label": "LinkedIn (your own profile)"}, {"value": "discord", "label": "Discord (a channel webhook)"}]},
+               {"name": "account", "label": "A short name for this account (letters, digits, dashes)", "type": "text", "required": True, "max": 31, "pattern": ACC}],
+    "timeout_min": 10, "outputs": []}
+
+T["dse.presence_accounts"] = {
+    "label": "Presence: which accounts are connected", "group": "Grow",
+    "help": "Lists the accounts connected on this PC for posting (the platform and the name you gave each, never a token or a webhook address).",
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "publish"}, {"lit": "accounts"}], "fields": [], "timeout_min": 1, "outputs": []}
+
+T["dse.presence_post"] = {
+    "label": "Presence: preview or post a finished piece to your account", "group": "Grow",
+    "help": ("Takes a post file from Presence > Studio ('Post file (for your PC)', saved in the my-posts folder) and shows you EXACTLY what would be posted, to which account. Leave the approve box empty to preview. "
+             "To post it, type the word POST in the approve box and run it again: only then is ONE new post made on the account you connected, through LinkedIn's or Discord's official programme. At most 3 posts a day "
+             "per account, at least 30 minutes apart, never the same text twice, and never a piece with a [bracket] left in it. There is no code anywhere for messages, comments, follows or likes. A record "
+             "(no secrets) appears in Presence > Studio so you can mark the piece posted."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "publish"}, {"lit": "post"}, {"field": "project"}, {"opt": "--approve", "field": "approve"}],
+    "fields": [{"name": "project", "label": "Post file", "type": "file", "required": True, "glob": "my-posts/*.json", "exclude": r"\.posted\.json$"},
+               {"name": "approve", "label": "Type POST here to really post it (empty = preview only)", "type": "text", "required": False, "max": 4, "pattern": "POST"}],
+    "timeout_min": 3, "outputs": [{"glob": "my-posts/*.posted.json", "upload": True}]}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("presence tools:", sum(1 for k in T if k.startswith("dse.presence")), "tools:", len(T))
