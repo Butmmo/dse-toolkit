@@ -253,6 +253,16 @@ The lead finder uses **Foursquare's free open business data**. It doesn't scrape
    ```
    `python dse.py kinds` lists all the types for each path.
 
+### Other countries (not only the US)
+The same free Foursquare data covers the world. Rich markets first, fast-developing ones after (`python dse.py countries` lists every group):
+- **Tier 1:** `uk`, `eu` (27 countries), `gulf` (UAE, Saudi, Qatar, Kuwait, Bahrain, Oman), `israel`, `japan`, `korea`, `australasia`, `singapore`.
+- **Tier 2:** `north-africa`, `south-east-asia`, `southern-africa`, `eastern-africa`, `china`, `turkey-and-neighbours`.
+```bash
+python dse.py build dentist --country uk          # a group builds in one pass, one file per country (places-gb-dentist.parquet)
+python dse.py find dentist "Leeds" --country GB   # searching needs ONE country code, because a city name alone is ambiguous
+```
+Leads outside the US get a `country` column. The "does the site talk about this trade" check uses English words, so it only runs where sites are normally in English (UK, Ireland, Australia, New Zealand, Singapore, South Africa, Kenya and similar); elsewhere it is off unless you give your own `--words`. How complete the data is varies by country: check a first list by hand before you send anything. Iran and Syria are left out on purpose (sanctions).
+
 ## Connect it to DBI Citadel (so you can run it from your phone)
 1. In Citadel, open **More → HQ Tools → Connect a PC**. The panel shows each command with a **Copy** button.
 2. Run its `setup` line here. It prints your **PC code**.
