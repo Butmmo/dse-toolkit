@@ -30,8 +30,8 @@ TMP = Path(tempfile.mkdtemp(prefix="zz-cities-"))
 P.DATA = OV.DATA = CT.DATA = TMP
 
 # ---------------------------------------------------------------- the open-data source
-check("every built-in business type has Overture categories", set(P.KINDS) <= set(OV.KINDS) and all(OV.KINDS[k] for k in P.KINDS), str(set(P.KINDS) - set(OV.KINDS)))
-check("a type you typed yourself has none (Foursquare-only for now)", OV.category_names("wedding-photographers") == [])
+check("every hand-made business type has Overture categories", set(P.HAND_MADE) <= set(OV.KINDS) and all(OV.KINDS[k] for k in P.HAND_MADE), str(set(P.HAND_MADE) - set(OV.KINDS)))
+check("a niche or typed type is matched to Overture only when a build asks for it (nothing touches the network before that)", OV.category_names("wedding-photographers") == [])
 check("Overture files have their own names", P.extract_path("dentist", "GB", "overture").name == "overture-gb-dentist.parquet" and P.extract_path("dentist", "GB").name == "places-gb-dentist.parquet")
 check("the source choices are checked", P.sources_for("both") == ["foursquare", "overture"] and P.sources_for("OVERTURE") == ["overture"] and "Unknown data source" in (raises(P.sources_for, "yelp") or ""))
 

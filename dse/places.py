@@ -22,6 +22,7 @@ import time
 import requests
 
 from . import countries as C
+from . import niches as NI
 from . import overture as OV
 from .common import DATA, DEAD_TEXT, UA, log, out_path, write_csv
 
@@ -90,6 +91,13 @@ KIND_WORDS: dict[str, str] = {
     "nursing-home": r"nursing|skilled|rehab|long-term care",
     "senior-services": r"senior|aging|elder|older adult",
 }
+
+# The app's whole niche list (512 business types) is built in too, after the hand-made ones above (which win on any clash). See dse/niches.py.
+HAND_MADE = frozenset(KINDS)
+for _e in NI.entries():
+    if _e["id"] not in KINDS:
+        KINDS[_e["id"]] = (_e["name"], list(_e["fsq"]))
+        KIND_WORDS[_e["id"]] = _e.get("words", "")
 
 # National chains and franchises: not the independent owners DSE sells to (kept with --all).
 CHAINS = re.compile(r"u-?haul|penske|two men and a truck|allied van|mayflower|united van|atlas van|bekins|pods\b|"
@@ -181,6 +189,9 @@ def builtin_match(term: str) -> str | None:
     allk.update({k: v[0] for k, v in KINDS.items()})
     if slug_t in allk:
         return slug_t
+    exact = NI.lookup(t)                         # the app's own niche name or finder term ("stump grinding", "tree service")
+    if exact:
+        return exact
     want = re.findall(r"[a-z]{3,}", t)
     if not want:
         return None
@@ -190,7 +201,11 @@ def builtin_match(term: str) -> str | None:
         if all(any(_same(w, h) for h in have) for w in want):
             hits.append((len(have), k))
     hits.sort()
-    return hits[0][1] if len(hits) == 1 else None            # a word that fits several types (like "service") is not guessed
+    if len(hits) > 1:                                         # a word that fits several types is not guessed, unless exactly one is a hand-made type ("roofing")
+        hand = [h for h in hits if h[1] in HAND_MADE]
+        if len(hand) == 1:
+            return hand[0][1]
+    return hits[0][1] if len(hits) == 1 else None
 
 
 def match_categories(term: str, cats: list[tuple[str, str]]) -> list[str]:
@@ -261,7 +276,7 @@ def build(kinds: list[str], country: str = "US", source: str = "foursquare"):
     """Save the business lists for one source, or both. Foursquare needs the free HF_TOKEN; Overture needs nothing."""
     for s_ in sources_for(source):
         if s_ == "overture":
-            OV.build([k for k in kinds if kind_info(k) or OV.category_names(k)], country)
+            OV.build([k for k in kinds if kind_info(k)], country)
         else:
             _build_foursquare(kinds, country)
 
@@ -394,9 +409,9 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
         if src.exists():
             paths.append((s_, src))
     if not paths:
-        sys.exit(f"No business data for '{kind}' in {country} from {source}. Types you typed yourself are Foursquare-only for now.")
+        sys.exit(f"No business data for '{kind}' in {country} from {source}. Check the business type, or try --source foursquare.")
     con = _con()
-    names = [n.lower() for n in info[1]] + [n.lower() for n in OV.category_names(kind)]
+    names = [n.lower() for n in info[1]] + [n.lower() for n in (OV.category_names(kind) if "overture" in [s_ for s_, _ in paths] else [])]
     site_words = site_words_for(country, own_words(words), info[2])
     skip_re = re.compile(own_words(skip), re.I) if own_words(skip) else None
     per_city = max(1, cap // len(places))

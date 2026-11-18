@@ -10,6 +10,8 @@ It reads Overture's public files on Amazon S3 directly (nothing is scraped). Eve
 """
 from __future__ import annotations
 
+import csv
+import json
 import re
 import time
 from pathlib import Path
@@ -52,9 +54,63 @@ KINDS: dict[str, list[str]] = {
 }
 
 
-def category_names(kind: str) -> list[str]:
-    """Overture category names for a built-in business type, or [] when this source has none for it (a type you typed yourself)."""
-    return list(KINDS.get(kind, []))
+CATEGORY_CACHE = DATA / "overture-categories.csv"
+KIND_CACHE = DATA / "overture-kinds.json"
+MAX_CATEGORIES = 8
+
+
+def categories(con=None) -> list[str]:
+    """Every Overture place category name (about 2,000), read once from the data and cached on this PC."""
+    if not CATEGORY_CACHE.exists():
+        con = con or _con()
+        rel = latest_release(con)
+        log("Reading Overture's list of business categories (once, a few minutes)...")
+        rows = con.sql(f"SELECT DISTINCT taxonomy.\"primary\" FROM read_parquet('{S3}/{rel}/theme=places/type=place/*') WHERE taxonomy.\"primary\" IS NOT NULL").fetchall()
+        DATA.mkdir(exist_ok=True)
+        CATEGORY_CACHE.write_text(chr(10).join(["name"] + sorted(r[0] for r in rows)) + chr(10), encoding="utf-8")
+    with open(CATEGORY_CACHE, newline="", encoding="utf-8") as f:
+        return [r["name"] for r in csv.DictReader(f)]
+
+
+def match_categories(term: str, names: list[str]) -> list[str]:
+    """Category names that fit a typed business type: an exact name, else every word you typed appears in the name ('interior designer' fits interior_design)."""
+    from . import places as P
+    t = re.sub(r"\s+", " ", (term or "").lower()).strip()
+    slug = re.sub(r"[^a-z0-9]+", "_", t).strip("_")
+    if slug in names:
+        return [slug]
+    want = [w for w in re.findall(r"[a-z]{3,}", t)]
+    return [n for n in names if want and all(any(P._same(w, x) for x in re.findall(r"[a-z]{3,}", n)) for w in want)]
+
+
+def category_names(kind: str, fetch: bool = False) -> list[str]:
+    """Overture category names for a business type. Built-in types are mapped by hand; any type you typed (the app's whole niche list) is matched by its words to Overture's
+    category list. Without fetch=True a not-yet-matched custom type returns [] and nothing touches the network."""
+    if kind in KINDS:
+        return list(KINDS[kind])
+    try:
+        saved = json.loads(KIND_CACHE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    if kind in saved:
+        return saved[kind]
+    if not fetch:
+        return []
+    from . import niches as NI
+    from . import places as P
+    info = P.custom_kinds().get(kind)
+    term = (info.get("typed") or info["label"]) if info else NI.term_for(kind)
+    if not term:
+        return []
+    found = match_categories(term, categories())
+    if not found or len(found) > MAX_CATEGORIES:
+        log(f"  {kind}: {'no Overture category fits' if not found else f'too broad for Overture ({len(found)} categories like ' + ', '.join(found[:3]) + ')'}; add a word to say which kind. Skipped here.")
+        return []
+    saved[kind] = found
+    DATA.mkdir(exist_ok=True)
+    KIND_CACHE.write_text(json.dumps(saved, indent=1), encoding="utf-8")
+    log(f"  {kind}: matched to Overture categories {', '.join(found)}")
+    return found
 
 
 def extract_path(kind: str, country: str = "US") -> Path:
@@ -78,10 +134,10 @@ def latest_release(con) -> str:
 def build(kinds: list[str], country: str = "US"):
     """Save the Overture places of each business type for a country or a group (one scan per type, then one file per country)."""
     codes = C.resolve(country)
-    todo = [k for k in kinds if category_names(k)]
+    todo = [k for k in kinds if category_names(k, fetch=True)]
     for k in kinds:
         if k not in todo:
-            log(f"  {k}: this source has no category for it (types you typed yourself are Foursquare-only for now), skipped")
+            log(f"  {k}: no Overture category, skipped")
     if not todo:
         return
     DATA.mkdir(exist_ok=True)
@@ -91,7 +147,7 @@ def build(kinds: list[str], country: str = "US"):
     in_list = ", ".join(repr(c) for c in codes)
     t = time.time()
     tmp = (DATA / "_building-overture.parquet").as_posix()
-    cats = ", ".join(repr(n) for k in todo for n in category_names(k))
+    cats = ", ".join(repr(n) for k in todo for n in category_names(k, fetch=True))
     con.sql(f"""
         COPY (
           SELECT addresses[1].country AS country, taxonomy."primary" AS cat, id AS fsq_place_id, names."primary" AS name,
@@ -109,7 +165,7 @@ def build(kinds: list[str], country: str = "US"):
     log(f"  scanned Overture release {rel} once for {len(todo)} business type(s) in {int(time.time() - t)} s")
     cols = "fsq_place_id, name, latitude, longitude, address, locality, region, postcode, tel, website, email, facebook_id, instagram, fsq_category_labels, date_refreshed"
     for kind in todo:
-        names = ", ".join(repr(n) for n in category_names(kind))
+        names = ", ".join(repr(n) for n in category_names(kind, fetch=True))
         for cc in codes:
             dst = extract_path(kind, cc).as_posix()
             con.sql(f"COPY (SELECT {cols} FROM '{tmp}' WHERE country = '{cc}' AND cat IN ({names})) TO '{dst}' (FORMAT parquet)")
