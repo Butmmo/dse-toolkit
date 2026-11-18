@@ -39,6 +39,10 @@ LIMIT = 600_000
 size = len(json.dumps(R.public_catalog(R.load_catalog(base_only=True))))        # base_only = every tool: the largest case (Tool Studio on). CI measures about 300 more than a PC with no engines or providers.
 check(f"the published catalog stays under Citadel's {LIMIT} character limit with room to spare", size < LIMIT * 0.9, f"{size} characters, only {LIMIT - size} left (shorten text or raise the limit in Citadel again)")
 
+# ---------------------------------------------------------------- the business type hint says the 512 niches work
+for k in ("dse.find", "dse.list"):
+    kind_field = next(x for x in T[k]["fields"] if x["name"] == "kind")
+    check(f"{k}: the business type hint mentions the 512 niches and typing your own", "512 niches" in kind_field.get("hint", "") and "your own" in kind_field["hint"], kind_field.get("hint", "")[:80])
 # ---------------------------------------------------------------- country field
 for k in ("dse.find", "dse.list", "dse.cities"):
     f = next(x for x in T[k]["fields"] if x["name"] == "country")
