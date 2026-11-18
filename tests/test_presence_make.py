@@ -139,6 +139,23 @@ for k in ("kokoro_onnx", "soundfile"):
 M._KOKORO = None
 cat3 = json.loads((Path(M.__file__).resolve().parents[1] / "bridge" / "catalog.json").read_text(encoding="utf-8"))["tools"]
 ok("the install tool is in the catalog, takes no fields and runs the one-time setup", cat3["dse.presence_voice_setup"]["args"][-1] == {"lit": "voice-setup"} and cat3["dse.presence_voice_setup"]["fields"] == [])
+
+# ---- review fixes
+ok("review fix: a scene with only a voice line is kept, so scene numbers and recording names stay in step", len(M.parse_project({"scenes": [{"text": "a"}, {"voice": "only spoken words here"}, {"text": "c"}]})["scenes"]) == 3)
+if ff:
+    v6 = M.make_video({"title": "Sync test", "size": "square", "voice": "none", "scenes": [{"text": "One", "voice": "short", "seconds": 4}, {"text": "Two", "seconds": 2}]}, ffmpeg=ff, out_path=td / "sync.mp4", say=lambda *_: None)
+    d6 = M._duration(ff, v6) or 0
+    ok("review fix: the video is exactly as long as the scenes add up to, so the captions stay in step", abs(d6 - 6.0) < 0.3)
+    wavs = td / "short.wav"; subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", str(wavs)], check=True)
+    (M.AUDIO / "pad-test-scene-1.wav").write_bytes(wavs.read_bytes())
+    v7 = M.make_video({"title": "Pad test", "size": "square", "voice": "own", "scenes": [{"text": "One", "voice": "Hi", "seconds": 5}, {"text": "Two", "seconds": 2}]}, ffmpeg=ff, out_path=td / "pad.mp4", say=lambda *_: None)
+    ok("review fix: a recording shorter than its scene does not cut the scene short", abs((M._duration(ff, v7) or 0) - 7.0) < 0.5)
+    odd = td / "O'Neil temp"; odd.mkdir()
+    import shutil as _sh
+    clip = odd / "a.mp4"; subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=1", "-pix_fmt", "yuv420p", str(clip)], check=True)
+    lst = odd / "list.txt"; lst.write_text("file '" + clip.as_posix().replace("'", "'\\''") + "'\n", encoding="utf-8")
+    r8 = subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(odd / "o.mp4")], capture_output=True, text=True)
+    ok("review fix: a folder name with an apostrophe does not break the join list", r8.returncode == 0)
 src = Path(M.__file__).read_text(encoding="utf-8")
 ok("nothing here posts or sends anything: the only network use is the one-time voice download (a GET from the project's release page)", "urllib" not in src and "smtplib" not in src and ".post(" not in src and src.count("requests.get(") == 1 and src.index("requests.get(") > src.index("def install_kokoro") and "github.com/thewh1teagle/kokoro-onnx/releases/download" in src)
 ok("no em dash in the file", chr(0x2014) not in src)

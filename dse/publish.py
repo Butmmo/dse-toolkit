@@ -41,13 +41,15 @@ LIMITS = {"linkedin": 3000, "discord": 2000}
 LINKEDIN_VERSION = os.environ.get("PRESENCE_LINKEDIN_VERSION", "202610")   # LinkedIn's API versions are monthly (YYYYMM); change it here if LinkedIn retires this one
 WEBHOOK_RE = re.compile(r"^https://(?:discord|discordapp)\.com/api/webhooks/\d{5,25}/[A-Za-z0-9_-]{20,120}\Z")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._~+/=-]{20,2000}\Z")
+NO_ANSWER = "Could not reach"       # the platform did not answer: the post may or may not have gone out
 PERSON_RE = re.compile(r"^[A-Za-z0-9_-]{4,60}\Z")
 
 
 # ------------------------------------------------------------------ where secrets live (this PC only)
 
 def secret_name(platform: str, account: str) -> str:
-    return f"PRESENCE_{platform.upper()}_{account.upper().replace('-', '_')}"
+    """The Windows setting a secret is kept in. Its own prefix (PRESENCE_SECRET_) means no account name can ever land on a setting such as PRESENCE_LINKEDIN_VERSION."""
+    return f"PRESENCE_SECRET_{platform.upper()}_{account.upper().replace('-', '_')}"
 
 
 def get_secret(platform: str, account: str, store=None) -> str:
@@ -80,9 +82,10 @@ def check_post(p: object, platform: str | None = None) -> list[str]:
         return ["This is not a Presence post file."]
     out: list[str] = []
     pf = platform or p.get("platform")
+    pf = pf if isinstance(pf, str) else None
     text = str(p.get("text") or "")
     if pf not in PLATFORMS:
-        out.append(f"I can post to {' and '.join(PLATFORMS)} only, not {pf!r}.")
+        out.append(f"I can post to {' and '.join(PLATFORMS)} only, not {str(p.get('platform'))[:30]!r}.")
     if not ACCOUNT_RE.match(str(p.get("account") or "")):
         out.append("The post file has no account name (letters, digits and dashes, for example orlando-linkedin).")
     if not text.strip():
@@ -101,6 +104,7 @@ def text_sha(platform: str, account: str, text: str) -> str:
 
 
 def read_log() -> list[dict]:
+    """What went out, plus attempts whose answer is not known. A line that says it settles an attempt (of) removes that attempt, so one post is one entry."""
     out = []
     try:
         for line in LOG.read_text(encoding="utf-8").splitlines():
@@ -110,14 +114,24 @@ def read_log() -> list[dict]:
                 pass
     except OSError:
         pass
-    return out
+    settled = {(e.get("sha"), e.get("of")) for e in out if e.get("of")}
+    return [e for e in out if not (e.get("state") == "attempt" and (e.get("sha"), e.get("at")) in settled) and e.get("state") != "failed"]
 
 
 def rate_problem(platform: str, account: str, sha: str, now: dt.datetime, log: list[dict]) -> str:
     """The reason this post must wait or not go at all, or an empty string. Counts what really went out."""
     mine = [e for e in log if e.get("platform") == platform and e.get("account") == account]
-    if any(e.get("sha") == sha for e in mine):
-        return "This exact post was already posted from this account. Change it, or post something new."
+    for e in mine:
+        if e.get("sha") != sha:
+            continue
+        if e.get("state") != "attempt":
+            return "This exact post was already posted from this account. Change it, or post something new."
+        try:
+            young = (now - dt.datetime.fromisoformat(e["at"])).total_seconds() < 24 * 3600
+        except (KeyError, ValueError):
+            young = True
+        if young:
+            return "An attempt to post this exact text got no answer (the connection dropped) and it may have gone out. Look at your account first. If it is not there, you can try again tomorrow, or change the text."
     times = []
     for e in mine:
         try:
@@ -164,7 +178,7 @@ def post_linkedin(text: str, token: str, person: str, http=_http) -> tuple[bool,
     if code == 201:
         urn = hdr.get("x-restli-id", "")
         return True, urn, f"https://www.linkedin.com/feed/update/{urn}/" if urn else ""
-    why = {0: "Could not reach LinkedIn: check your internet.", 401: "LinkedIn did not accept the token (it may have expired): connect the account again.",
+    why = {0: NO_ANSWER + " LinkedIn: check your internet.", 401: "LinkedIn did not accept the token (it may have expired): connect the account again.",
            403: "LinkedIn refused: the token needs the w_member_social permission (add the 'Share on LinkedIn' product to your LinkedIn app, then get a new token).",
            429: "LinkedIn says too many requests: wait and try later."}.get(code, f"LinkedIn answered {code}.")
     return False, f"{why} {resp[:200]}".strip(), ""
@@ -178,7 +192,7 @@ def post_discord(text: str, webhook: str, http=_http) -> tuple[bool, str, str]:
             return True, str(json.loads(resp).get("id", "")), ""
         except ValueError:
             return True, "", ""
-    why = {0: "Could not reach Discord: check your internet.", 401: "Discord did not accept this webhook (it may have been deleted): connect it again.", 404: "That webhook no longer exists: make a new one in the channel's settings.",
+    why = {0: NO_ANSWER + " Discord: check your internet.", 401: "Discord did not accept this webhook (it may have been deleted): connect it again.", 404: "That webhook no longer exists: make a new one in the channel's settings.",
            429: "Discord says too many requests: wait and try later."}.get(code, f"Discord answered {code}.")
     return False, why, ""
 
@@ -222,25 +236,36 @@ def post_file(path: str | Path, approve: str = "", now: dt.datetime | None = Non
     if why:
         out("Not posted. " + why)
         return 1
+    person = ""
     if pf == "linkedin":
         person = next((a.get("person", "") for a in read_accounts() if a["platform"] == pf and a["account"] == acc), "")
         if not PERSON_RE.match(person or ""):
             out("This LinkedIn account has no member id saved: connect it again.")
             return 1
+    # The attempt is written BEFORE anything is sent. If the answer never comes back (a timeout, the window closed, the job stopped) the post may have gone out, and the same text cannot be sent again by accident.
+    at = now.isoformat(timespec="seconds")
+    STATE.mkdir(parents=True, exist_ok=True)
+    _log({"at": at, "platform": pf, "account": acc, "sha": sha, "state": "attempt"})
+    if pf == "linkedin":
         ok, ident, url = post_linkedin(text, secret, person, http)
     else:
         ok, ident, url = post_discord(text, secret, http)
     if not ok:
-        out("Not posted. " + ident)
+        if not ident.startswith(NO_ANSWER):                 # the platform answered with a refusal: nothing went out, so the attempt is cancelled
+            _log({"at": at, "platform": pf, "account": acc, "sha": sha, "state": "failed", "of": at})
+        out("Not posted. " + ident + (" It may still have gone out: look at your account before you try again." if ident.startswith(NO_ANSWER) else ""))
         return 1
-    STATE.mkdir(parents=True, exist_ok=True)
-    with LOG.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"at": now.isoformat(timespec="seconds"), "platform": pf, "account": acc, "sha": sha, "id": ident}) + "\n")
+    _log({"at": at, "platform": pf, "account": acc, "sha": sha, "id": ident, "state": "posted", "of": at})
     POSTS.mkdir(exist_ok=True)
     rec = POSTS / f"{slug(f.stem)}.posted.json"
     rec.write_text(json.dumps({"v": 1, "platform": pf, "account": acc, "at": now.isoformat(timespec="seconds"), "id": ident, "url": url, "title": str(p.get("title") or "")[:120], "sha": sha}, indent=2), encoding="utf-8")
     out(f"Posted to {pf} ({acc})." + (f" {url}" if url else "") + f" Record: {rec.name}")
     return 0
+
+
+def _log(entry: dict) -> None:
+    with LOG.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry) + "\n")
 
 
 def ask_secret(prompt: str, window: bool = True) -> str:
@@ -291,11 +316,13 @@ def connect(platform: str, account: str, secret: str, person: str = "", store=No
     accts = [a for a in read_accounts() if not (a["platform"] == platform and a["account"] == account)]
     accts.append({"platform": platform, "account": account, **({"person": person} if platform == "linkedin" else {}), "added": dt.date.today().isoformat()})
     write_accounts(accts)
-    return f"Connected {platform} account {account} ({mask(secret)}). It stays on this PC and is sent only to {platform}. Nothing was posted.\n"
+    return f"Connected {platform} account {account}. It stays on this PC and is sent only to {platform}. Nothing was posted.\n"
 
 
 def remove(platform: str, account: str, store=None) -> str:
     account = (account or "").strip().lower()
+    if platform not in PLATFORMS or not ACCOUNT_RE.match(account):
+        return f"Choose {' or '.join(PLATFORMS)} and the account name you gave it.\n"
     (store or WindowsStore()).delete(secret_name(platform, account))
     os.environ.pop(secret_name(platform, account), None)
     write_accounts([a for a in read_accounts() if not (a["platform"] == platform and a["account"] == account)])
