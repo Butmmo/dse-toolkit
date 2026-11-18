@@ -64,6 +64,13 @@ KINDS: dict[str, tuple[str, list[str]]] = {
 }
 # Words a real business of that type uses on its own website. Foursquare sometimes stores the wrong website for
 # a place (a dentist listing pointing at an insurance site), so a lead is kept only if its site says one of these.
+# Built-in words that matched too much on a real audit (18 Nov 2026): 'photograph' made every photo shop and photo-booth firm a wedding photographer, 'driv' and 'school'
+# made a forklift school a driving school, and 'train' matched every kind of training. For these niches the site must name the trade itself.
+WORD_FIXES = {
+    "wedding-photographers": r"wedding|bridal|\bbride",
+    "driving-schools": r"driving (?:lesson|school|instructor|test|course|tuition)|learn to drive|school of motoring|motoring school|driving instruction",
+    "personal-trainers": r"personal train|fitness|\bgym\b|workout|exercise|strength",
+}
 KIND_WORDS: dict[str, str] = {
     "dentist": r"dent|teeth|tooth|smile|orthodont|implant|hygien",
     "chiropractor": r"chiropract|spine|spinal|adjustment|back pain",
@@ -111,7 +118,9 @@ CHAINS = re.compile(r"u-?haul|penske|two men and a truck|allied van|mayflower|un
                     r"homewatch caregivers|always best care|home helpers|firstlight|caring senior service|bayada|maxim health|"
                     r"accentcare|kindred at home|encompass health|lhc group|bright horizons|seniors helping seniors|nurse next door|"
                     r"assisting hands|care ?patrol|amada senior|homecare ?assistance|banfield|vca animal|petsmart|pearle vision|"
-                    r"lenscrafters|walmart|target optical|costco|jiffy|midas|meineke|firestone", re.I)
+                    r"lenscrafters|walmart|target optical|costco|jiffy|midas|meineke|firestone|"
+                    r"\bargos\b|specsavers|vision express|boots opticians|mydentist|bupa dental|portman dental|oasis dental|pure ?gym|the gym group|david lloyd|nuffield health|virgin active|"
+                    r"jd gyms|snap fitness|travis perkins|jewson|wickes|screwfix|toolstation|rac driving|aa driving school|red driving school", re.I)
 # Directories, marketplaces and social profiles: a listing there is not the business's own website. The second half was found by a real audit (UK tree
 # surgeons whose "website" was a yell.com, thomsonlocal.com or ratedpeople.com page). Hosts are matched whole, so a business called Bark & Bite is not bark.com.
 NOT_A_SITE = re.compile(r"yelp\.com|google\.com|mapquest|yellowpages|facebook\.com|instagram\.com|bbb\.org|nextdoor|"
@@ -120,7 +129,8 @@ NOT_A_SITE = re.compile(r"yelp\.com|google\.com|mapquest|yellowpages|facebook\.c
                         r"cylex[a-z.-]*|scoot\.co\.uk|hotfrog[a-z.]*|misterwhat\.[a-z.]+|europages\.[a-z.]+|gelbeseiten\.de|11880\.com|pagesjaunes\.fr|paginasamarillas\.es|"
                         r"paginegialle\.it|goudengids\.nl|tripadvisor\.[a-z.]+|trustpilot\.com|linkedin\.com|twitter\.com|x\.com|youtube\.com|tiktok\.com|pinterest\.[a-z.]+|"
                         r"gumtree\.com|houzz\.[a-z.]+|angi\.com|homeadvisor\.com|thumbtack\.com|porch\.com|buildzoom\.com|networx\.com|ebay\.[a-z.]+|amazon\.[a-z.]+|"
-                        r"businessmagnet\.co\.uk|local\.yahoo\.com|bing\.com|wikipedia\.org)(?:/|$)", re.I)
+                        r"businessmagnet\.co\.uk|local\.yahoo\.com|bing\.com|wikipedia\.org|"
+                        r"zumba\.com|argos\.co\.uk|colgate\.[a-z.]+|curvesinternational\.com|siggroup\.com|mydentist\.co\.uk|bupa\.co\.uk)(?:/|$)", re.I)
 
 
 # ---- business types you define yourself (any Foursquare category), saved on this PC
@@ -150,7 +160,7 @@ def custom_kinds() -> dict:
 def kind_info(kind: str) -> tuple[str, list[str], str] | None:
     """(label, Foursquare category names, words a real site of that type uses) for a built-in or a saved custom business type."""
     if kind in KINDS:
-        return KINDS[kind][0], KINDS[kind][1], KIND_WORDS.get(kind, "")
+        return KINDS[kind][0], KINDS[kind][1], WORD_FIXES.get(kind) or KIND_WORDS.get(kind, "")
     c = custom_kinds().get(kind)
     return (c["label"], c["names"], c.get("words", "")) if c else None
 
@@ -368,6 +378,8 @@ def _miles(a, b, c, d):
 
 
 SITE_TITLES: dict[str, str] = {}               # url -> the page's title, filled by site_live (the audit sheet shows it)
+BAD_TITLE = re.compile(r"domain parking|parking page|\bparked\b|default web ?site|welcome to nginx|apache2 (?:ubuntu )?default|iis windows server|index of /|account suspended|"
+                       r"\bcasino|\bcrypto(?:currenc\w*|s)?\b|\bbetting\b|\bpayday\b|\bviagra\b|\bcialis\b|\bporn\b|\bescorts?\b|\bslot (?:gacor|online)|\btogel\b|\{\{?[a-z_ ]+\}\}?|%[a-z_]+%|\[(?:company|city|county)\]", re.I)
 EVIDENCE_STRONG = ("title", "body")            # the site says the trade in its title or headings, or repeats it in the page
 EVIDENCE_WEAK = ("weak", "thin", "blocked")    # mentioned once or twice, page too short to tell, or the site blocks scripts: kept, but not confirmed
 
@@ -393,6 +405,8 @@ def site_live(url: str, words: str = "") -> str:
     title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1))).strip() if m else ""
     if re.search(r"\bfor sale\b", title.lower()) and re.search(r"\.[a-z]{2,}\b", title.lower()):
         return ""                                # "TheAirportHotel.com for sale": a parked domain whose page text our list of phrases did not catch
+    if BAD_TITLE.search(title) or "lorem ipsum" in t[:30000]:
+        return ""                                # a parked page, a hijacked site selling something else, or a website template nobody filled in
     SITE_TITLES[url] = title[:120]
     visible = re.sub(r"<[^>]+>", " ", t)
     if not words:
