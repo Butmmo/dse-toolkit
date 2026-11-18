@@ -32,6 +32,13 @@ ok("a scene of 8 or more frames builds itself: the pieces arrive over about 0.7 
 alone = B.scene_spec("4 of 6", kit, (540, 960), 24, stat=("4 of 6", ""))
 ok("a figure with no words under it sits in the middle of the frame (not the top third) with its bar just under it", len(alone["blocks"]) == 1 and abs(alone["blocks"][0]["y"]) < 0.06 * (9 * 960 / 540) and alone["bar"]["y"] < alone["blocks"][0]["y"] and alone["bar"]["y"] > -2.5)
 
+ok("draft quality uses 8 samples and high 24 (the draft was measured to look the same once compressed, a third faster)", B.SAMPLES == {"draft": 8, "high": 24})
+seen = {}
+_orig = B.scene_spec
+def _spy(*a, **k):
+    seen["samples"] = a[5] if len(a) > 5 else k.get("samples")
+    return _orig(*a, **k)
+
 # ---- finding Blender
 old = os.environ.get("BLENDER")
 fake = td / "myblender.exe"; fake.write_text("x")
@@ -105,8 +112,10 @@ if exe:
     if ff:
         clip = B.frames_to_clip(ff, frames, 1.0, (270, 480), td / "c.mp4", 12)
         ok("the frames become a one-second clip", clip.exists() and clip.stat().st_size > 500)
-        M.VIDEOS = td / "v2"; lines = []
+        M.VIDEOS = td / "v2"; lines = []; B.scene_spec = _spy
         out = M.make_video({"title": "real3d", "engine": "blender", "quality": "draft", "theme": "midnight", "captions": True, "scenes": [{"text": "4 of 6 dentists cannot be texted", "voice": "Four of six.", "seconds": 1.5}]}, out_path=td / "r3.mp4", say=lines.append)
+        B.scene_spec = _orig
+        ok("the video tool asked for the draft sample count", seen.get("samples") == 8)
         ok("a whole video is made with a Blender scene, a caption band and a silent track, and the student is told the scene was drawn in 3D", out.exists() and out.stat().st_size > 1000 and any("drawn in 3D with Blender" in l for l in lines))
 else:
     skip("Blender is not installed on this PC: the real render was not run (python dse.py presence blender-setup)")

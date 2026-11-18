@@ -580,9 +580,9 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                     fps_in = B.FPS if P["quality"] == "high" else 12
                     st = stat_of(s["text"] or "") if auto_layout(s["text"] or "", "", "cover") == "stat" else None
                     if not any_3d:
-                        say(f"Blender draws every scene in 3D: about {max(20, int(min(120, int(s['seconds'] * (B.FPS if P['quality'] == 'high' else 12))) * (6 if P['quality'] == 'high' else 1.2)))} seconds a scene on a typical PC. Please wait.")
+                        say(f"Blender draws every scene in 3D: about {max(20, int(min(120, int(s['seconds'] * (B.FPS if P['quality'] == 'high' else 12))) * (6 if P['quality'] == 'high' else 0.8)))} seconds a scene on a typical PC. Please wait.")
                         any_3d = True
-                    spec = B.scene_spec(s["text"] or P["title"], kit, q, min(120, int(s["seconds"] * fps_in)), P["move"], 24 if P["quality"] == "high" else 16, st, fps_in)
+                    spec = B.scene_spec(s["text"] or P["title"], kit, q, min(120, int(s["seconds"] * fps_in)), P["move"], B.SAMPLES[P["quality"]], st, fps_in)
                     frames = B.render_scene(spec, td / f"bl{i}")
                     bl_clip = B.frames_to_clip(ff, frames, s["seconds"], (W, H), td / f"bl{i}.mp4", fps_in)
                     say(f"Scene {i}: drawn in 3D with Blender ({len(frames)} frames).")

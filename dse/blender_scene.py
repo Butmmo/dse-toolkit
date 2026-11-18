@@ -35,7 +35,9 @@ except TypeError:
 if sc.render.engine == "CYCLES":
     sc.cycles.device = "CPU"
     sc.cycles.samples = int(spec.get("samples", 24))
-    sc.cycles.use_denoising = False
+    sc.cycles.use_denoising = bool(spec.get("denoise", False))
+    if sc.cycles.use_denoising:
+        sc.cycles.denoiser = "OPENIMAGEDENOISE"                                                           # a few samples cleaned up by the denoiser look like many samples, in a fraction of the time
 
 # the background is the world colour itself, so the page is exactly the kit's colour with no hot spots
 world = bpy.data.worlds.new("w")

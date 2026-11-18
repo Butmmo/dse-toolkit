@@ -32,6 +32,7 @@ FRAME_W = 9.0                                                                  #
 FONT_DIR = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
 HEAD_FONTS = {"serif": ("georgiab.ttf", "georgia.ttf"), "sans": ("segoeuib.ttf", "arialbd.ttf"), "display": ("ariblk.ttf", "arialbd.ttf")}
 MOVES = ("dolly", "drift", "still")
+SAMPLES = {"draft": 8, "high": 24}                                            # Cycles samples per pixel: 8 looks clean once the video is compressed (16 took a third longer for no visible gain)
 FPS = 24
 
 
