@@ -34,10 +34,10 @@ check("every field has a type the runner knows", all(f["type"] in ("text", "int"
 check("the new buttons are in groups the page shows", all(T[k]["group"] in ("Find clients", "Check websites") for k in NEW))
 check("nothing in the new text uses an em dash", chr(0x2014) not in json.dumps({k: T[k] for k in ALL}, ensure_ascii=False))
 
-# ---------------------------------------------------------------- the size limit (Citadel refuses a published catalog over 200,000 characters)
-LIMIT = 200_000
+# ---------------------------------------------------------------- the size limit (Citadel refuses a published catalog over 600,000 characters: migration 20261226090000_hq_catalog_limit.sql in the Citadel repo, raised from 200,000 on 18 Nov 2026)
+LIMIT = 600_000
 size = len(json.dumps(R.public_catalog(R.load_catalog(base_only=True))))        # base_only = every tool: the largest case (Tool Studio on). CI measures about 300 more than a PC with no engines or providers.
-check(f"the published catalog stays under Citadel's {LIMIT} character limit with room to spare", size < LIMIT - 1_500, f"{size} characters, only {LIMIT - size} left (shorten text or raise the limit in Citadel)")
+check(f"the published catalog stays under Citadel's {LIMIT} character limit with room to spare", size < LIMIT * 0.9, f"{size} characters, only {LIMIT - size} left (shorten text or raise the limit in Citadel again)")
 
 # ---------------------------------------------------------------- country field
 for k in ("dse.find", "dse.list", "dse.cities"):
