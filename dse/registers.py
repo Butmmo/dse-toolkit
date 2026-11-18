@@ -49,7 +49,8 @@ CATALOG: list[tuple[str, str, str, str, str]] = [
     ("Clutch, Sortlist and other agency directories", "agencies, with reviews", "world", "terms forbid scraping", "not used: look by hand or ask the agency"),
     ("Professional registers (lawyers, doctors, contractors, brokers)", "licensed people and firms", "by state and country", "each register has its own terms; many allow lookups, few allow bulk copies", "not built: needs a decision per register, say which path"),
     ("OpenCorporates", "company registers of many countries", "world", "free for lookups; bulk and commercial use is paid", "not used: $0 mode"),
-    ("BuiltWith and similar technology lookups", "what a website runs on (booking, CRM, chat)", "world", "paid API; the free tier is lookups only", "next: enrichment column, only if a free route holds up"),
+    ("Our own technology detector (a free BuiltWith)", "what a website is built with and what it is missing (booking, chat, CRM, analytics, ...)", "world", "reads one public page, after robots.txt; no account, no key", "built: python dse.py tech"),
+    ("BuiltWith and Wappalyzer APIs", "the same, for whole lists and the history of a site", "world", "paid API (the free tier is lookups only)", "not used: $0 mode; our detector covers one page per site"),
 ]
 
 

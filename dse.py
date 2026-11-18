@@ -53,7 +53,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -89,6 +89,9 @@ def main():
     b.add_argument("--country", default="US", help="a country code (GB) or a group (eu, gulf, ...): python dse.py countries")
     b.add_argument("--source", default="foursquare", help="foursquare (needs the free HF_TOKEN), overture (open data, no token) or both")
     sub.add_parser("countries", help="the countries and groups the lead finder covers")
+    th = sub.add_parser("tech", help="what a website is built with and what it is missing (our own free BuiltWith)")
+    th.add_argument("target", help="one web address, or a CSV with a website column")
+    th.add_argument("--max", type=int, default=100); th.add_argument("--fast", action="store_true", help="skip the hidden browser (quicker, misses JavaScript-built sites)"); th.add_argument("--out", default="")
     sub.add_parser("directories", help="every lead source, how we may use it, and whether it is built")
     rg = sub.add_parser("registry", help="UK company register (Companies House): build, then find companies by town")
     rg.add_argument("action", choices=["build", "find"]); rg.add_argument("kind", help="build: types separated by commas. find: one type")
@@ -511,6 +514,11 @@ def main():
         places.build([k.strip() for k in a.kinds.split(",") if k.strip()], a.country, a.source)
     elif a.cmd == "cities":
         cities.suggest(a.kind, a.country, a.source, a.levels, a.refresh, a.cover, a.min_pool)
+    elif a.cmd == "tech":
+        if a.target.lower().endswith(".csv"):
+            tech.tech_file(a.target, a.max, not a.fast, a.out)
+        else:
+            print(tech.card(a.target, not a.fast))
     elif a.cmd == "directories":
         print(chr(10).join(registers.catalog_lines()))
     elif a.cmd == "registry":
