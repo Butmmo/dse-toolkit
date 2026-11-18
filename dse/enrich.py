@@ -49,6 +49,14 @@ PHONE_RX = re.compile(r"(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b|\+
 NAME_RX = r"[A-Z][a-z'’-]+(?:\s+(?:[A-Z]\.|[A-Z][a-z'’-]+)){1,2}"
 STOP = {"our", "the", "team", "contact", "meet", "call", "us", "home", "about", "services", "free", "get", "book", "request", "learn", "read", "more", "view", "and", "of", "for", "with",
         "founder", "owner", "director", "manager", "president", "ceo", "partner", "principal", "head", "chief", "officer", "general", "managing", "office", "practice", "senior", "lead"}
+# Words that make two capitalised words a heading, a widget or a company, not a person ("Google Reviews", "Tree Services", "Meet Team"). Found on a real run (18 Nov 2026):
+# a site's review widget was taken as its owner because a "Meet the Owner" heading sat next to it.
+NOT_A_NAME = {"google", "reviews", "review", "facebook", "instagram", "twitter", "youtube", "linkedin", "yelp", "trustpilot", "checkatrade", "mybuilder", "ratedpeople", "testimonials",
+              "testimonial", "gallery", "services", "service", "tree", "trees", "surgery", "surgeons", "care", "ltd", "limited", "llc", "inc", "company", "group", "solutions", "contact",
+              "meet", "welcome", "latest", "recent", "featured", "customer", "customers", "client", "clients", "work", "projects", "project", "news", "blog", "quote", "quotes", "free",
+              "privacy", "cookie", "cookies", "terms", "policy", "rights", "reserved", "copyright", "powered", "website", "web", "design", "designed", "marketing", "digital", "media",
+              "find", "follow", "like", "share", "tweet", "call", "email", "phone", "address", "opening", "hours", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+HEADING_TITLE = re.compile(r"^(?:meet|our|about|the|why|welcome|get|contact|read|view|see)\b", re.I)
 TITLE_ANY = re.compile("|".join(f"(?:{t['rx']})" for t in RULES["titles"]), re.I)
 SOCIAL_ONLY = set(RULES["social_only_domains"])
 BOOKING = re.compile(RULES["booking_rx"], re.I)
@@ -174,7 +182,7 @@ def title_rank(title: str) -> int | None:
 
 def good_name(name: str) -> bool:
     words = re.split(r"\s+", name.strip())
-    return 2 <= len(words) <= 3 and not any(w.lower().strip(".,") in STOP for w in words) and not re.search(r"\d", name)
+    return 2 <= len(words) <= 3 and not any(w.lower().strip(".,") in STOP or w.lower().strip(".,") in NOT_A_NAME for w in words) and not re.search(r"\d", name)
 
 
 def json_ld(html: str) -> list[dict]:
@@ -202,7 +210,7 @@ def extract_people(html: str) -> list[dict]:
     def add(name, title):
         name, title = re.sub(r"\s+", " ", name or "").strip(" ,.-|:"), re.sub(r"\s+", " ", title or "").strip(" ,.-|:")
         r = title_rank(title)
-        if r and good_name(name) and len(title) <= 60:
+        if r and good_name(name) and len(title) <= 60 and not HEADING_TITLE.match(title):
             cur = people.get(name)
             if not cur or r < cur["rank"]:
                 people[name] = {"name": name, "title": title, "rank": r}
@@ -483,19 +491,38 @@ def score(site: dict, given_email: str = "") -> tuple[int, str]:
 
 # ------------------------------------------------------------------ one row, one file
 
-ADDED = ["found_email", "email_kind", "email_source", "other_emails", "email_guesses", "best_email", "best_email_source", "phone_found", "decision_maker", "decision_maker_title",
+ADDED = ["found_email", "email_kind", "email_source", "other_emails", "email_guesses", "best_email", "best_email_source", "email_check", "phone_found", "decision_maker", "decision_maker_title",
          "decision_maker_source", "contact_form_url", "contact_page_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found",
          "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "enrich_status", "steps", "lead_score", "lead_why", "enriched_on"]
+
+
+def email_belongs(email: str, site_domain: str) -> bool:
+    """True when an email is on the business's own domain, or a free mailbox (gmail, outlook: many small businesses use one). An address on another company's domain is
+    usually the web or SEO agency that built the listing (seo@agency.co.uk on a tree surgeon's site)."""
+    dom = (email or "").lower().rpartition("@")[2]
+    site = (site_domain or "").lower().removeprefix("www.")
+    if not dom or not site:
+        return True
+    return dom in FREEMAIL or dom.endswith(site) or site.endswith(dom)
 
 
 def row_columns(site: dict, row_email: str, row_name: str, today: dt.date) -> dict:
     top = site["emails"][0] if site["emails"] else None
     dm = site["people"][0] if site["people"] else None
-    best, best_src = (row_email, "your file") if row_email else ((top["email"], top["source"]) if top else ("", ""))
-    sc, why = score(site, row_email)
+    trusted = bool(row_email) and email_belongs(row_email, site.get("domain", ""))
+    note = ""
+    if row_email and not trusted:
+        note = f"{row_email} is on another domain than the website: probably an agency's address"
+        if top:
+            note += f"; using the address found on the site instead ({top['email']})"
+    if row_email and (trusted or not top):
+        best, best_src = row_email, "your file"
+    else:
+        best, best_src = (top["email"], top["source"]) if top else ("", "")
+    sc, why = score(site, row_email if trusted else "")
     return {"found_email": top["email"] if top else "", "email_kind": top["kind"] if top else "", "email_source": top["source"] if top else "",
             "other_emails": "; ".join(e["email"] for e in site["emails"][1:4]), "email_guesses": "; ".join(site["guesses"]) + (" (guesses: verify before sending)" if site["guesses"] else ""),
-            "best_email": best, "best_email_source": best_src, "phone_found": site["phones"][0] if site["phones"] else "",
+            "best_email": best, "best_email_source": best_src, "email_check": note, "phone_found": site["phones"][0] if site["phones"] else "",
             "decision_maker": dm["name"] if dm else "", "decision_maker_title": dm["title"] if dm else "", "decision_maker_source": dm["source"] if dm else "",
             "contact_form_url": site["contact_form"], "contact_page_url": site["contact_page"], "booking_tool": site["booking"],
             "linkedin_found": site["socials"].get("linkedin", ""), "instagram_found": site["socials"].get("instagram", ""), "facebook_found": site["socials"].get("facebook", ""),

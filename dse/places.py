@@ -378,7 +378,7 @@ def _miles(a, b, c, d):
 
 
 SITE_TITLES: dict[str, str] = {}               # url -> the page's title, filled by site_live (the audit sheet shows it)
-BAD_TITLE = re.compile(r"domain parking|parking page|\bparked\b|default web ?site|welcome to nginx|apache2 (?:ubuntu )?default|iis windows server|index of /|account suspended|"
+BAD_TITLE = re.compile(r"domain parking|parking page|web server'?s? default page|default page|test page for|it works!?$|\bparked\b|default web ?site|welcome to nginx|apache2 (?:ubuntu )?default|iis windows server|index of /|account suspended|"
                        r"\bcasino|\bcrypto(?:currenc\w*|s)?\b|\bbetting\b|\bpayday\b|\bviagra\b|\bcialis\b|\bporn\b|\bescorts?\b|\bslot (?:gacor|online)|\btogel\b|\{\{?[a-z_ ]+\}\}?|%[a-z_]+%|\[(?:company|city|county)\]", re.I)
 EVIDENCE_STRONG = ("title", "body")            # the site says the trade in its title or headings, or repeats it in the page
 EVIDENCE_WEAK = ("weak", "thin", "blocked")    # mentioned once or twice, page too short to tell, or the site blocks scripts: kept, but not confirmed
