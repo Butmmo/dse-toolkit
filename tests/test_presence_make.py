@@ -103,8 +103,44 @@ if ff:
     ok("a video with the student's own recording lasts as long as the recording and carries captions", d is not None and d >= 2.0)
 cat2 = json.loads((Path(M.__file__).resolve().parents[1] / "bridge" / "catalog.json").read_text(encoding="utf-8"))["tools"]
 ok("the carousel tool is in the catalog and uploads its slides", "dse.presence_carousel" in cat2 and any(o["glob"] == "my-graphics/*.png" and o["upload"] for o in cat2["dse.presence_carousel"]["outputs"]))
+
+# ---- the free Kokoro voice
+import types
+P1 = M.parse_project({"voice": "kokoro", "kokoro_voice": "bm_george", "scenes": [{"text": "a"}]})
+ok("a project can ask for the Kokoro voice and name one of its voices; a bad voice name falls back to the default", P1["voice"] == "kokoro" and P1["kokoro_voice"] == "bm_george" and M.parse_project({"voice": "kokoro", "kokoro_voice": "../x", "scenes": [{"text": "a"}]})["kokoro_voice"] == M.DEFAULT_KOKORO_VOICE and M.parse_project({"scenes": [{"text": "a"}]})["voice"] == "none")
+M.KOKORO_DIR = td / "kokoro"
+for k in ("kokoro_onnx", "soundfile"):
+    sys.modules.pop(k, None)
+ok("without the packages or the model files, Kokoro says in plain words what to run, and speaking returns nothing", (lambda r: (not r[0]) and "Presence: install the free Kokoro voice" in r[1])(M.kokoro_ready()) and M._speak_kokoro("Hello there", td / "k.wav") is None)
+M.KOKORO_DIR.mkdir()
+for f in M.KOKORO_FILES:
+    (M.KOKORO_DIR / f).write_bytes(b"x")
+calls = {}
+class FakeKokoro:
+    def __init__(self, model, voices): calls["init"] = (Path(model).name, Path(voices).name)
+    def create(self, text, voice, speed, lang): calls["create"] = (text, voice, speed, lang); return [0.0] * 24000, 24000
+fake_k = types.ModuleType("kokoro_onnx"); fake_k.Kokoro = FakeKokoro
+fake_sf = types.ModuleType("soundfile")
+def _write(path, samples, rate):
+    import wave, struct
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate); w.writeframes(b"".join(struct.pack("<h", 0) for _ in samples))
+fake_sf.write = _write
+sys.modules["kokoro_onnx"], sys.modules["soundfile"] = fake_k, fake_sf
+M._KOKORO = None
+length = M._speak_kokoro("Hello there", td / "k.wav", "af_sarah")
+ok("with the packages and files present, the voice is asked for the text in English at normal speed and a WAV is written (stubbed model)", M.kokoro_ready()[0] and abs(length - 1.0) < 0.01 and (td / "k.wav").exists() and calls["create"] == ("Hello there", "af_sarah", 1.0, "en-us") and calls["init"] == ("kokoro-v1.0.onnx", "voices-v1.0.bin"))
+ok("a voice name that is not plain letters is never passed to the model", M._speak_kokoro("Hello", td / "k2.wav", "x; rm -rf") is None and not (td / "k2.wav").exists())
+if ff:
+    kv = M.make_video({"title": "Kokoro test", "size": "square", "voice": "kokoro", "scenes": [{"text": "Hi", "voice": "A spoken line", "seconds": 1}]}, ffmpeg=ff, out_path=td / "kv.mp4", say=lambda *_: None)
+    ok("a video with the Kokoro voice is made and lasts as long as the voice (stubbed: one second plus the pause)", kv.exists() and (M._duration(ff, kv) or 0) >= 1.0)
+for k in ("kokoro_onnx", "soundfile"):
+    sys.modules.pop(k, None)
+M._KOKORO = None
+cat3 = json.loads((Path(M.__file__).resolve().parents[1] / "bridge" / "catalog.json").read_text(encoding="utf-8"))["tools"]
+ok("the install tool is in the catalog, takes no fields and runs the one-time setup", cat3["dse.presence_voice_setup"]["args"][-1] == {"lit": "voice-setup"} and cat3["dse.presence_voice_setup"]["fields"] == [])
 src = Path(M.__file__).read_text(encoding="utf-8")
-ok("nothing here posts or sends anything: no network library is used", "requests" not in src and "urllib" not in src and "smtplib" not in src)
+ok("nothing here posts or sends anything: the only network use is the one-time voice download (a GET from the project's release page)", "urllib" not in src and "smtplib" not in src and ".post(" not in src and src.count("requests.get(") == 1 and src.index("requests.get(") > src.index("def install_kokoro") and "github.com/thewh1teagle/kokoro-onnx/releases/download" in src)
 ok("no em dash in the file", chr(0x2014) not in src)
 print("\nALL PASS" if not fails else f"\n{fails} FAILED")
 sys.exit(1 if fails else 0)

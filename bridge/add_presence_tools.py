@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -60,6 +60,13 @@ T["dse.presence_carousel"] = {
     "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "carousel"}, {"field": "project"}],
     "fields": [{"name": "project", "label": "Carousel project", "type": "file", "required": True, "glob": "my-carousel/*.json"}],
     "timeout_min": 3, "outputs": [{"glob": "my-graphics/*.png", "upload": True}]}
+
+T["dse.presence_voice_setup"] = {
+    "label": "Presence: install the free Kokoro voice", "group": "Grow",
+    "help": ("One-time setup of Kokoro, a free, natural-sounding AI voice that runs on your own PC (no account, no per-use cost, and nothing is sent anywhere once it is installed). It installs two small packages "
+             "and downloads the voice model (about 330 MB) from the project's official release page, so it takes a few minutes. Then choose 'Kokoro' as the voice in a Studio video project. Safe to run again: "
+             "it skips what is already there."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "voice-setup"}], "fields": [], "timeout_min": 30, "outputs": []}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("presence tools:", sum(1 for k in T if k.startswith("dse.presence")), "tools:", len(T))

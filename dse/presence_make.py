@@ -3,11 +3,12 @@
   python dse.py presence graphic --layout quote --headline "..." [--body ...] [--kicker ...] [--footer @handle] [--size post] [--theme ink] [--picture my-pictures/x.jpg] [--logo my-pictures/logo.png]
   python dse.py presence video my-video/project.json
   python dse.py presence carousel my-carousel/project.json
+  python dse.py presence voice-setup               one-time: installs the free Kokoro voice (about 330 MB, runs on this PC)
 
 GRAPHIC. One finished PNG in my-graphics/: layouts quote, stat (a big number or phrase), tip, cover; sizes post (1080x1350), square, story (1080x1920), landscape (1920x1080), thumb (1280x720);
 themes ink, cream, gold (the Citadel colours). Your own picture can sit behind the text (darkened so the words stay readable) and a logo can sit top left. Text is fitted to the box: it never runs off.
 VIDEO. A project file (JSON, from the Studio's "video project" download or written by hand) lists scenes: each has on-screen text, optional picture, optional voiceover line and seconds. Each scene becomes
-a card (your picture or a text card made by the graphic tool), moves slowly (a gentle zoom), and a voiceover is spoken with the Windows voice if voice is "windows", or your own recordings are used if voice is "own" (my-audio/<title>-scene-<n>.wav or mp3, m4a, aac, ogg). The spoken words are burned onto the card as captions unless captions is false. CAROUSEL. A carousel project (from the Studio) becomes every slide as a PNG in one go. The scenes are joined into an MP4 with an
+a card (your picture or a text card made by the graphic tool), moves slowly (a gentle zoom), and a voiceover is spoken with the Windows voice if voice is "windows", the free Kokoro voice (a natural-sounding AI voice that runs on this PC) if voice is "kokoro", or your own recordings are used if voice is "own" (my-audio/<title>-scene-<n>.wav or mp3, m4a, aac, ogg). The spoken words are burned onto the card as captions unless captions is false. CAROUSEL. A carousel project (from the Studio) becomes every slide as a PNG in one go. The scenes are joined into an MP4 with an
 .srt captions file next to it. Nothing is posted anywhere: you upload the finished file yourself.
 """
 from __future__ import annotations
@@ -28,6 +29,13 @@ GRAPHICS = ROOT / "my-graphics"
 VIDEOS = ROOT / "my-video"
 AUDIO = ROOT / "my-audio"
 CAROUSELS = ROOT / "my-carousel"
+KOKORO_DIR = ROOT / "data" / "kokoro"
+KOKORO_FILES = {  # file -> official release (kokoro-onnx, MIT; the Kokoro model is Apache 2.0)
+    "kokoro-v1.0.onnx": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.onnx",
+    "voices-v1.0.bin": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin",
+}
+KOKORO_VOICE = re.compile(r"^[a-z]{2}_[a-z]{2,12}$")
+DEFAULT_KOKORO_VOICE = "af_sarah"
 
 SIZES = {"post": (1080, 1350), "square": (1080, 1080), "story": (1080, 1920), "landscape": (1920, 1080), "thumb": (1280, 720)}
 THEMES = {  # background, text, accent
@@ -238,7 +246,80 @@ def parse_project(raw: object) -> dict:
     if not scenes:
         raise ValueError("Every scene is empty.")
     return {"title": str(raw.get("title") or "video")[:80], "size": size, "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink",
-            "voice": raw.get("voice") if raw.get("voice") in ("windows", "own") else "none", "captions": raw.get("captions") is not False, "footer": str(raw.get("footer") or "")[:60], "scenes": scenes}
+            "voice": raw.get("voice") if raw.get("voice") in ("windows", "own", "kokoro") else "none", "kokoro_voice": raw.get("kokoro_voice") if KOKORO_VOICE.match(str(raw.get("kokoro_voice") or "")) else DEFAULT_KOKORO_VOICE, "captions": raw.get("captions") is not False, "footer": str(raw.get("footer") or "")[:60], "scenes": scenes}
+
+
+_KOKORO = None
+
+
+def kokoro_ready() -> tuple[bool, str]:
+    """Is the free Kokoro voice usable on this PC? (the kokoro-onnx package, soundfile and the two model files). Returns (ready, plain words about what is missing)."""
+    try:
+        import kokoro_onnx, soundfile  # noqa: F401
+    except ImportError:
+        return False, "the Kokoro voice is not installed yet: run the HQ tool 'Presence: install the free Kokoro voice' once"
+    missing = [f for f in KOKORO_FILES if not (KOKORO_DIR / f).exists()]
+    if missing:
+        return False, f"the Kokoro voice files are missing ({', '.join(missing)}): run the HQ tool 'Presence: install the free Kokoro voice'"
+    return True, ""
+
+
+def _speak_kokoro(text: str, wav: Path, voice: str = DEFAULT_KOKORO_VOICE) -> float | None:
+    """The free Kokoro voice (runs on this PC, no account, no internet needed after install) to a WAV. Returns its length in seconds, or None when it cannot."""
+    global _KOKORO
+    ok, _ = kokoro_ready()
+    if not ok or not KOKORO_VOICE.match(voice or ""):
+        return None
+    try:
+        import soundfile
+        if _KOKORO is None:
+            from kokoro_onnx import Kokoro
+            _KOKORO = Kokoro(str(KOKORO_DIR / "kokoro-v1.0.onnx"), str(KOKORO_DIR / "voices-v1.0.bin"))
+        samples, rate = _KOKORO.create(text, voice=voice, speed=1.0, lang="en-us")
+        soundfile.write(str(wav), samples, rate)
+        return len(samples) / float(rate)
+    except Exception:
+        return None
+
+
+def install_kokoro(say=print) -> int:
+    """One-time setup: installs the packages and downloads the two model files (about 330 MB) from the project's official release page. Safe to run again."""
+    import requests
+    if not kokoro_ready()[0]:
+        try:
+            import kokoro_onnx, soundfile  # noqa: F401
+        except ImportError:
+            say("Installing the Kokoro packages (kokoro-onnx, soundfile)...")
+            r = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "kokoro-onnx", "soundfile"], capture_output=True, text=True)
+            if r.returncode != 0:
+                say("The install did not work: " + r.stderr.strip()[-300:])
+                return 1
+    KOKORO_DIR.mkdir(parents=True, exist_ok=True)
+    for name, url in KOKORO_FILES.items():
+        dest = KOKORO_DIR / name
+        if dest.exists() and dest.stat().st_size > 1_000_000:
+            say(f"{name}: already there.")
+            continue
+        say(f"Downloading {name} (this is the big one, a few minutes)...")
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        try:
+            with requests.get(url, stream=True, timeout=60) as resp:
+                resp.raise_for_status()
+                with open(tmp, "wb") as fh:
+                    for chunk in resp.iter_content(1 << 20):
+                        fh.write(chunk)
+            if tmp.stat().st_size < 1_000_000:
+                tmp.unlink(missing_ok=True)
+                say(f"{name}: the download was too small to be right. Try again later.")
+                return 1
+            tmp.replace(dest)
+        except Exception as e:
+            tmp.unlink(missing_ok=True)
+            say(f"{name}: could not download ({e}).")
+            return 1
+    ok, why = kokoro_ready()
+    say("The Kokoro voice is ready. Choose 'Kokoro' as the voice in the Studio video project." if ok else f"Not ready yet: {why}")
+    return 0 if ok else 1
 
 
 def _speak(text: str, wav: Path) -> float | None:
@@ -284,6 +365,13 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                 length = _duration(ff, own)
                 if length:
                     s["seconds"] = max(s["seconds"], round(min(length, 30) + 0.3, 2))
+            elif P["voice"] == "kokoro" and s["voice"]:
+                length = _speak_kokoro(s["voice"], wav, P["kokoro_voice"])
+                if not length:
+                    say(f"Scene {i}: {kokoro_ready()[1] or 'the Kokoro voice could not speak this'}. Using the Windows voice for this scene.")
+                    length = _speak(s["voice"], wav)
+                if length:
+                    s["seconds"] = max(s["seconds"], round(length + 0.4, 2))
             elif P["voice"] == "windows" and s["voice"]:
                 length = _speak(s["voice"], wav)
                 if length:
@@ -371,6 +459,8 @@ def cli(args: list[str]) -> int:
             out = make_video(json.loads(p.read_text(encoding="utf-8")))
             print(f"Saved {out.name} and {out.with_suffix('.srt').name} in my-video. Upload it yourself.")
             return 0
+        if kind == "voice-setup":
+            return install_kokoro()
         if kind == "carousel":
             if not rest:
                 print("Give the project file, for example: python dse.py presence carousel my-carousel/project.json")
