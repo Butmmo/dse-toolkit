@@ -469,7 +469,7 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
                         kept.append(r)
         rows += kept
         log(f"  {place}: {found} independent {info[0].lower()} in range, kept {len(kept)} with a live website")
-    dst = out or str(out_path(kind, places[0] + (f"-plus{len(places) - 1}" if len(places) > 1 else "")))
+    dst = out or str(out_path(kind, places[0][0] + (f"-plus{len(places) - 1}" if len(places) > 1 else "")))
     write_csv(dst, rows)
     print(f"{len(rows)} {info[0].lower()} -> {dst}")
     return dst
