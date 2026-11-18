@@ -299,6 +299,13 @@ python dse.py registry find dentist "Leeds; Bradford" --min-age 2    # companies
 ```
 Each lead links to its register entry. Next, find a website for it with the enrich step.
 
+### What a website is built with, and what it is missing (a free BuiltWith)
+```bash
+python dse.py tech https://smile-dental.example          # one site: platform, booking, chat, forms and CRM, analytics, ad tracking, email tool, payments, reviews, hosting, and what is missing
+python dse.py tech my-leads.csv --max 200                # every row with a website: adds tech_* columns, keeps every row and its order
+```
+It opens ONE page per site (the homepage, after reading robots.txt) and matches its source and response headers against `dse/tech_rules.json`, our own fingerprint list (edit it to add a tool). A site drawn by JavaScript is also opened in hidden Edge unless you pass `--fast`. No account or key, and the paid BuiltWith API is not used. Everything is about the homepage, so the gap lines say "detected" or "found" ("no online booking tool detected on the homepage"): a booking page deeper in the site is not seen, so check before you quote a gap to a business. The `tech_gaps` column makes ready opening lines for an offer.
+
 ## Connect it to DBI Citadel (so you can run it from your phone)
 1. In Citadel, open **More → HQ Tools → Connect a PC**. The panel shows each command with a **Copy** button.
 2. Run its `setup` line here. It prints your **PC code**.
