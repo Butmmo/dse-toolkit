@@ -98,6 +98,13 @@ try:
 except G.SignInNeeded as e:
     needed = "Sign in with Microsoft" in str(e)
 check("when Citadel says the sign-in no longer works, the member is told to sign in again from Citadel", needed)
+fresh()
+said = ""
+try:
+    G.access_token(MB, http=Http(token_code=401, token_body={"error": "That PC is not connected."}))
+except ConnectionError as e:
+    said = str(e)
+check("any other refusal names Citadel's own reason, the code, and does not call a Google mailbox a Microsoft one", "401" in said and "That PC is not connected." in said and "Microsoft" not in said, said)
 
 # ---- sending
 fresh()

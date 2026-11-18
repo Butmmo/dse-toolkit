@@ -116,7 +116,8 @@ def access_token(mailbox_id: str, now: float | None = None, http=_http) -> str:
         return data["access_token"]
     if code in (404, 409) or data.get("error") == "signin_needed":
         raise SignInNeeded("The Microsoft sign-in for this mailbox needs doing again: open Herald > Mailboxes in Citadel and press Sign in with Microsoft.")
-    raise ConnectionError(f"Citadel could not give a Microsoft token ({code}).")
+    why = str(data.get("error") or "").strip()[:160]
+    raise ConnectionError(f"Citadel could not give a sign-in token for this mailbox ({code})" + (f": {why}" if why else "") + ".")
 
 
 def provider_of(mailbox_id: str) -> str:
