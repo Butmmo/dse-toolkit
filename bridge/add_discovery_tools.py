@@ -21,7 +21,7 @@ from dse import countries as C  # noqa: E402
 p = HERE / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-NEW = ("dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech")
+NEW = ("dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech", "dse.audit_make", "dse.audit_score")
 for k in [k for k in T if k in NEW + ("dse.registry_build", "dse.directories", "dse.countries")]:
     del T[k]
 
@@ -34,6 +34,8 @@ WORDS = {"name": "words", "label": "Words the website must use (optional)", "typ
 SKIP = {"name": "skip", "label": "Leave out names with these words (optional)", "type": "text", "required": False, "max": 120, "pattern": r"[A-Za-z0-9][A-Za-z0-9 ,'&/-]{1,119}"}
 MILES = {"name": "miles", "label": "Miles around each town", "type": "int", "min": 5, "max": 100, "default": 25}
 MAX = {"name": "max", "label": "How many leads", "type": "int", "min": 5, "max": 500, "default": 100}
+STRICT = {"name": "strict", "label": "Only sites that say the trade clearly", "type": "bool", "default": False,
+          "hint": "Keeps a lead only if its own site names the trade in its title or headings, or repeats it. Drops 'mentioned once' and 'too short to tell'."}
 FAST = {"name": "fast", "label": "Fast (skip the hidden browser)", "type": "bool", "default": False}
 LISTS = [{"glob": "my-lists/*.csv", "upload": True}]
 
@@ -61,6 +63,7 @@ NICHE_HINT = ("Any of the app's 512 niches by name (like stump grinding or weddi
 for tool in ("dse.find", "dse.list"):
     add_after(tool, "cities", [country(), dict(SOURCE)], [{"opt": "--country", "field": "country"}, {"opt": "--source", "field": "source"}])
     next(f for f in T[tool]["fields"] if f["name"] == "kind")["hint"] = NICHE_HINT
+    add_after(tool, "skip", [dict(STRICT)], [{"flag": "--strict", "field": "strict"}])
 T["dse.build"]["fields"] = [
     {"name": "kinds", "label": "Business types (comma-separated)", "type": "text", "required": True, "max": 300,
      "pattern": r"^[A-Za-z][A-Za-z0-9 &'/-]*(,[A-Za-z][A-Za-z0-9 &'/-]*)*$", "placeholder": "dentist,plumber,stump grinding"},
@@ -76,9 +79,9 @@ T["dse.cities"] = {
 T["dse.find_tiers"] = {
     "label": "Leads from my best towns (tiers)", "group": "Find clients",
     "help": "Searches the towns in a cities list marked Y, or the tiers you give.",
-    "script": "dse.py", "args": [{"lit": "find"}, {"opt": "--cities-file", "field": "cities_file"}, {"opt": "--source", "field": "source"}, {"opt": "--tiers", "field": "tiers"}],
+    "script": "dse.py", "args": [{"lit": "find"}, {"opt": "--cities-file", "field": "cities_file"}, {"opt": "--source", "field": "source"}, {"opt": "--tiers", "field": "tiers"}, {"flag": "--strict", "field": "strict"}],
     "fields": [{"name": "cities_file", "label": "Cities list", "type": "file", "required": True, "glob": "data/cities-*.csv"}, dict(SOURCE),
-               {"name": "tiers", "label": "Only tiers (like 1-3)", "type": "text", "required": False, "max": 20, "pattern": r"^\d{1,2}(-\d{1,2})?(,\d{1,2}(-\d{1,2})?)*$"}],
+               {"name": "tiers", "label": "Only tiers (like 1-3)", "type": "text", "required": False, "max": 20, "pattern": r"^\d{1,2}(-\d{1,2})?(,\d{1,2}(-\d{1,2})?)*$"}, dict(STRICT)],
     "timeout_min": 90, "outputs": list(LISTS)}
 
 T["dse.registry_find"] = {
@@ -99,6 +102,18 @@ T["dse.tech"] = {"label": "What every website on a list is built with", "group":
                  "fields": [{"name": "csv", "label": "List", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "tech"},
                             {"name": "max", "label": "Most sites in this run", "type": "int", "min": 1, "max": 2000, "default": 100}, dict(FAST)],
                  "timeout_min": 120, "outputs": [{"glob": "my-lists/*-tech-*.csv", "upload": True}]}
+
+T["dse.audit_make"] = {"label": "Check a lead list: make a sample sheet to label", "group": "Check websites",
+                       "help": "Picks about 20 leads from a lead list, strongest and weakest mixed, into a sheet with an empty is_right column. Open it on your PC and write y or n for each: is it a real business of the type, with its own website?",
+                       "script": "dse.py", "args": [{"lit": "audit"}, {"field": "csv"}, {"opt": "--sample", "field": "sample"}],
+                       "fields": [{"name": "csv", "label": "Lead list", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "audit"},
+                                  {"name": "sample", "label": "How many to check", "type": "int", "min": 5, "max": 60, "default": 20}],
+                       "timeout_min": 2, "outputs": [{"glob": "my-lists/*-audit-*.csv", "upload": True}]}
+T["dse.audit_score"] = {"label": "Check a lead list: score the sheet you labelled", "group": "Check websites",
+                        "help": "Reads the y and n you wrote and shows how many leads are right, by how clearly the site says the trade, and what to change (Only sites that say the trade clearly, or a directory to add).",
+                        "script": "dse.py", "args": [{"lit": "audit"}, {"field": "csv"}, {"flag": "--score", "field": "go"}],
+                        "fields": [{"name": "csv", "label": "Labelled sheet", "type": "file", "required": True, "glob": "my-lists/*audit*.csv"}, {"name": "go", "label": "Score it", "type": "bool", "default": True}],
+                        "timeout_min": 2, "outputs": []}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len([k for k in T if k in NEW]), "new tools,", len(T), "in all")

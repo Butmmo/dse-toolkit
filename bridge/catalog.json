@@ -124,6 +124,10 @@
         {
           "opt": "--source",
           "field": "source"
+        },
+        {
+          "flag": "--strict",
+          "field": "strict"
         }
       ],
       "fields": [
@@ -287,6 +291,13 @@
           "required": false,
           "max": 120,
           "pattern": "[A-Za-z0-9][A-Za-z0-9 ,'&/-]{1,119}"
+        },
+        {
+          "name": "strict",
+          "label": "Only sites that say the trade clearly",
+          "type": "bool",
+          "default": false,
+          "hint": "Keeps a lead only if its own site names the trade in its title or headings, or repeats it. Drops 'mentioned once' and 'too short to tell'."
         },
         {
           "name": "fast",
@@ -569,6 +580,10 @@
         {
           "opt": "--source",
           "field": "source"
+        },
+        {
+          "flag": "--strict",
+          "field": "strict"
         }
       ],
       "fields": [
@@ -687,6 +702,13 @@
           "required": false,
           "max": 120,
           "pattern": "[A-Za-z0-9][A-Za-z0-9 ,'&/-]{1,119}"
+        },
+        {
+          "name": "strict",
+          "label": "Only sites that say the trade clearly",
+          "type": "bool",
+          "default": false,
+          "hint": "Keeps a lead only if its own site names the trade in its title or headings, or repeats it. Drops 'mentioned once' and 'too short to tell'."
         }
       ],
       "timeout_min": 45,
@@ -9286,6 +9308,10 @@
         {
           "opt": "--tiers",
           "field": "tiers"
+        },
+        {
+          "flag": "--strict",
+          "field": "strict"
         }
       ],
       "fields": [
@@ -9324,6 +9350,13 @@
           "required": false,
           "max": 20,
           "pattern": "^\\d{1,2}(-\\d{1,2})?(,\\d{1,2}(-\\d{1,2})?)*$"
+        },
+        {
+          "name": "strict",
+          "label": "Only sites that say the trade clearly",
+          "type": "bool",
+          "default": false,
+          "hint": "Keeps a lead only if its own site names the trade in its title or headings, or repeats it. Drops 'mentioned once' and 'too short to tell'."
         }
       ],
       "timeout_min": 90,
@@ -9477,6 +9510,84 @@
           "upload": true
         }
       ]
+    },
+    "dse.audit_make": {
+      "label": "Check a lead list: make a sample sheet to label",
+      "group": "Check websites",
+      "help": "Picks about 20 leads from a lead list, strongest and weakest mixed, into a sheet with an empty is_right column. Open it on your PC and write y or n for each: is it a real business of the type, with its own website?",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "audit"
+        },
+        {
+          "field": "csv"
+        },
+        {
+          "opt": "--sample",
+          "field": "sample"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "Lead list",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*.csv",
+          "exclude": "audit"
+        },
+        {
+          "name": "sample",
+          "label": "How many to check",
+          "type": "int",
+          "min": 5,
+          "max": 60,
+          "default": 20
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": [
+        {
+          "glob": "my-lists/*-audit-*.csv",
+          "upload": true
+        }
+      ]
+    },
+    "dse.audit_score": {
+      "label": "Check a lead list: score the sheet you labelled",
+      "group": "Check websites",
+      "help": "Reads the y and n you wrote and shows how many leads are right, by how clearly the site says the trade, and what to change (Only sites that say the trade clearly, or a directory to add).",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "audit"
+        },
+        {
+          "field": "csv"
+        },
+        {
+          "flag": "--score",
+          "field": "go"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "Labelled sheet",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*audit*.csv"
+        },
+        {
+          "name": "go",
+          "label": "Score it",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
     }
   },
   "periodic": [

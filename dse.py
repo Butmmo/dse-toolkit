@@ -53,7 +53,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech, audit
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -92,6 +92,10 @@ def main():
     th = sub.add_parser("tech", help="what a website is built with and what it is missing (our own free BuiltWith)")
     th.add_argument("target", help="one web address, or a CSV with a website column")
     th.add_argument("--max", type=int, default=100); th.add_argument("--fast", action="store_true", help="skip the hidden browser (quicker, misses JavaScript-built sites)"); th.add_argument("--out", default="")
+    au = sub.add_parser("audit", help="is a lead list really the business type? a sample sheet you label, then a score")
+    au.add_argument("target", help="a lead list (makes the sample sheet), or the sheet with --score")
+    au.add_argument("--sample", type=int, default=20); au.add_argument("--seed", type=int, default=1); au.add_argument("--score", action="store_true", help="score a sheet you labelled (y or n in is_right)")
+    au.add_argument("--out", default="")
     sub.add_parser("directories", help="every lead source, how we may use it, and whether it is built")
     rg = sub.add_parser("registry", help="UK company register (Companies House): build, then find companies by town")
     rg.add_argument("action", choices=["build", "find"]); rg.add_argument("kind", help="build: types separated by commas. find: one type")
@@ -119,6 +123,7 @@ def main():
         p.add_argument("--cities-file", default="", dest="cities_file", help="a cities file made by: python dse.py cities (towns marked include = Y are searched)")
         p.add_argument("--tiers", default="", help="with --cities-file: search the towns in these tiers instead, like 1-3")
         p.add_argument("--all", action="store_true", help="keep national chains"); p.add_argument("--out", default="")
+        p.add_argument("--strict", action="store_true", help="keep only sites that say the trade in their title or headings, or repeat it (drops 'mentioned once' and 'too short to tell')")
         p.add_argument("--words", default="", help="your own words the website must use, comma separated (replaces the built-in ones)")
         p.add_argument("--skip", default="", help="your own words that put a business out when they are in its name")
     c = sub.add_parser("check"); c.add_argument("pack"); c.add_argument("target", help="a CSV with a website column, or one web address")
@@ -127,7 +132,7 @@ def main():
     c.add_argument("--out", default="")
     l = sub.add_parser("list"); l.add_argument("pack"); l.add_argument("kind"); l.add_argument("cities", nargs="?", default="")
     l.add_argument("--miles", type=float, default=25.0); l.add_argument("--max", type=int, default=40); l.add_argument("--country", default="US"); l.add_argument("--source", default="foursquare"); l.add_argument("--cities-file", default="", dest="cities_file"); l.add_argument("--tiers", default="")
-    l.add_argument("--fast", action="store_true"); l.add_argument("--all", action="store_true"); l.add_argument("--words", default=""); l.add_argument("--skip", default="")
+    l.add_argument("--strict", action="store_true"); l.add_argument("--fast", action="store_true"); l.add_argument("--all", action="store_true"); l.add_argument("--words", default=""); l.add_argument("--skip", default="")
     pc = sub.add_parser("podcasts"); pc.add_argument("terms"); pc.add_argument("--genre", default="business")
     pc.add_argument("--max", type=int, default=60); pc.add_argument("--max-silent", type=int, default=180); pc.add_argument("--out", default="")
     m = sub.add_parser("mystery"); m.add_argument("action", choices=["new", "score"]); m.add_argument("csv")
@@ -519,6 +524,11 @@ def main():
             tech.tech_file(a.target, a.max, not a.fast, a.out)
         else:
             print(tech.card(a.target, not a.fast))
+    elif a.cmd == "audit":
+        if a.score:
+            audit.score(a.target)
+        else:
+            audit.make(a.target, a.sample, a.seed, a.out)
     elif a.cmd == "directories":
         print(chr(10).join(registers.catalog_lines()))
     elif a.cmd == "registry":
@@ -535,7 +545,7 @@ def main():
             country, kind = country or inferred[0], kind or inferred[1]
         if not kind:
             sys.exit("Give a business type, or a cities file made by: python dse.py cities <type> --country <code>")
-        places.find(kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip, country or "US", a.source, a.cities_file, a.tiers)
+        places.find(kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip, country or "US", a.source, a.cities_file, a.tiers, a.strict)
     elif a.cmd == "check":
         if a.target.lower().startswith(("http://", "https://", "www.")) or (a.target.count(".") and not a.target.lower().endswith(".csv")):
             chk.check_one(a.pack, a.target, render=not a.fast, result_line=a.result_line)
@@ -544,7 +554,7 @@ def main():
     elif a.cmd == "list":
         if a.pack in PACK_KINDS and PACK_KINDS[a.pack] and a.kind not in PACK_KINDS[a.pack] and not places.kind_info(a.kind):
             print(f"Note: '{a.kind}' isn't one of the {a.pack} business types: treating it as a business type of your own.", file=sys.stderr)
-        src = places.find(a.kind, a.cities, a.miles, a.max, a.all, "", a.words, a.skip, a.country, a.source, a.cities_file, a.tiers)
+        src = places.find(a.kind, a.cities, a.miles, a.max, a.all, "", a.words, a.skip, a.country, a.source, a.cities_file, a.tiers, a.strict)
         chk.check_file(a.pack, src, render=not a.fast)
     elif a.cmd == "podcasts":
         podcasts.find(a.terms, a.genre, a.max, a.max_silent, a.out)
