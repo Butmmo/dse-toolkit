@@ -94,11 +94,12 @@ def scene_spec(text: str, kit: dict, size: tuple[int, int], frames: int, move: s
     if stat and stat[0]:
         big, rest = str(stat[0])[:14], str(stat[1] or "")[:110]
         bsize = 2.6 if len(big) <= 6 else 1.9 if len(big) <= 9 else 1.4
-        blocks.append({"text": big, "color": kit["accent"], "size": bsize, "y": 0.18 * frame_h, "font": head, "depth": 0.12, "tilt": 14})
+        fy = 0.18 * frame_h if rest else 0.03 * frame_h                       # a figure alone sits in the middle; with words under it the pair is centred
+        blocks.append({"text": big, "color": kit["accent"], "size": bsize, "y": fy, "font": head, "depth": 0.12, "tilt": 14})
         if rest:
             per = 26
             blocks.append({"text": _wrap(rest, per), "color": kit["fg"], "size": 0.78, "y": -0.05 * frame_h - 0.2, "font": body_font, "depth": 0.05})
-        bar_y = 0.07 * frame_h
+        bar_y = 0.07 * frame_h if rest else fy - bsize * 0.75 - 0.3
         bar = {"color": kit["accent"], "y": bar_y, "w": 1.6}
     else:
         n = len(text)

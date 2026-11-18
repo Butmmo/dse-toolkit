@@ -541,6 +541,7 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         clips: list[Path] = []
+        any_3d = False
         for i, s in enumerate(P["scenes"], 1):
             card = td / f"card{i}.png"
             if s["image"]:
@@ -578,6 +579,9 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                     q = (W, H) if P["quality"] == "high" else (W // 2 - (W // 2) % 2, H // 2 - (H // 2) % 2)
                     fps_in = B.FPS if P["quality"] == "high" else 12
                     st = stat_of(s["text"] or "") if auto_layout(s["text"] or "", "", "cover") == "stat" else None
+                    if not any_3d:
+                        say(f"Blender draws every scene in 3D: about {max(20, int(min(120, int(s['seconds'] * (B.FPS if P['quality'] == 'high' else 12))) * (6 if P['quality'] == 'high' else 1.2)))} seconds a scene on a typical PC. Please wait.")
+                        any_3d = True
                     spec = B.scene_spec(s["text"] or P["title"], kit, q, min(120, int(s["seconds"] * fps_in)), P["move"], 24 if P["quality"] == "high" else 16, st, fps_in)
                     frames = B.render_scene(spec, td / f"bl{i}")
                     bl_clip = B.frames_to_clip(ff, frames, s["seconds"], (W, H), td / f"bl{i}.mp4", fps_in)

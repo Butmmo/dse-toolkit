@@ -29,6 +29,9 @@ ok("the headline font follows the kit (serif is Georgia when this PC has it) and
 
 ok("a scene of 8 or more frames builds itself: the pieces arrive over about 0.7 s, a figure leans a little and settles, and a still or a very short scene has no intro", st["intro"] > 0 and st["intro"] <= st["frames"] // 2 and st["blocks"][0].get("tilt") and B.scene_spec("x", kit, (540, 960), 4)["intro"] == 0 and B.scene_spec("x", kit, (540, 960), 30, move="still")["intro"] == 0)
 
+alone = B.scene_spec("4 of 6", kit, (540, 960), 24, stat=("4 of 6", ""))
+ok("a figure with no words under it sits in the middle of the frame (not the top third) with its bar just under it", len(alone["blocks"]) == 1 and abs(alone["blocks"][0]["y"]) < 0.06 * (9 * 960 / 540) and alone["bar"]["y"] < alone["blocks"][0]["y"] and alone["bar"]["y"] > -2.5)
+
 # ---- finding Blender
 old = os.environ.get("BLENDER")
 fake = td / "myblender.exe"; fake.write_text("x")
