@@ -265,6 +265,9 @@ def push(csv_path: Path, grid_ref: str, key: str = "", new_columns: bool = True,
 
 
 def cli(argv: list[str]) -> int:
+    if argv and argv[0] == "run":          # python dse.py grid run <grid> <column>: Run column (dse/gridrun.py)
+        from . import gridrun
+        return gridrun.cli(argv[1:])
     import argparse
     ap = argparse.ArgumentParser(prog="dse.py grid")
     sub = ap.add_subparsers(dest="cmd", required=True)

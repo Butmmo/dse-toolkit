@@ -1,0 +1,408 @@
+"""Run column: fill ONE column of a grid, row by row, on this PC (Citadel: grid column menu > Run column).
+
+    python dse.py grid run <grid> <column> [--mode empty|all] [--limit N] [--dry]
+
+The column has a RUN SETTING, made in Citadel (column menu > Run settings), one of:
+  ask Claude      a question written with the row's own cells in {braces}, for example   Write a one-line opener for {Company} in {City}
+                  Uses YOUR Claude key (python dse.py claude setup), paid to Anthropic by you, counted against your daily token limit (python dse.py claude limit). Claude is told to answer
+                  with only the cell's value, or UNKNOWN when it cannot tell (the cell is then left as it is).
+  read a website  one fact (best email, phone, decision maker, social link ...) read from the business's OWN public website in another column: the same free, polite reader as Lead enrichment.
+What a run does:
+  * mode empty (the default) works only on rows whose cell is empty; mode all ("force") redoes every row. --limit N takes only the first N (test on a few before running them all).
+  * a row with nothing to read (no website, or every column named in the question empty) is skipped and counted.
+  * answers are saved in small batches while it works, so Stop (or a crash) keeps everything done so far; it only ever writes into THIS column of rows of YOUR grid, through this PC's own connection.
+  * every answer is turned into the column's type (a number, a date, a choice, a link ...); one that does not fit is left out and counted, never stored as junk.
+  * it reports "PROGRESS done/total failed N skipped N" lines, which Citadel shows with a Stop button, and ends with "FINISHED ...".
+Needs this PC connected to Citadel and the database file 20261224090000_grid_run_column.sql. Standard library only.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+from . import gridpush
+
+MAX_ROWS = 5000
+READ_PAGE = 500
+BATCH = 10
+MAX_CELL = {"text": 500, "longtext": 2000}
+SITE_FIELDS = ("email", "phone", "decision_maker", "decision_title", "linkedin", "instagram", "facebook", "booking", "contact_form", "tech", "description")
+MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5"}
+STOP_AFTER_FAILS = 5                   # this many answers in a row failing means something is wrong (key, credit, network): stop instead of hammering
+SYSTEM = ("You fill in ONE cell of a spreadsheet for a business. Reply with ONLY the value for the cell: no explanation, no quotes, no label, no markdown. "
+          "Keep it short and plain. If the information given is not enough to answer, reply with exactly: UNKNOWN")
+API = "https://api.anthropic.com/v1/messages"
+
+
+def norm(s: str) -> str:
+    return re.sub(r"\s+", " ", str(s or "")).strip().lower()
+
+
+# ------------------------------------------------------------------ the grid and its column
+
+def parse_columns(doc_text: str | None) -> list[dict]:
+    """Every column of the grid with what a run needs: key, label, type, choices and the run setting. Formula columns hold no values, so they are left out."""
+    try:
+        d = json.loads(doc_text or "{}")
+    except ValueError:
+        return []
+    out = []
+    for c in d.get("custom", []) if isinstance(d, dict) else []:
+        if not isinstance(c, dict) or not re.fullmatch(r"c_[a-z0-9_]{1,40}", str(c.get("key", ""))) or c.get("type") == "formula":
+            continue
+        run = c.get("run") if isinstance(c.get("run"), dict) else None
+        out.append({"key": c["key"], "label": str(c.get("label") or c["key"]), "type": c.get("type") or "text",
+                    "options": [o for o in (c.get("options") or []) if isinstance(o, dict)], "run": clean_run(run)})
+    return out
+
+
+def clean_run(run: dict | None) -> dict | None:
+    """The same rules as the grid (src/lib/crm-grid.ts cleanRun): anything incomplete or odd is no run setting at all."""
+    if not run:
+        return None
+    if run.get("kind") == "ai":
+        prompt = re.sub(r"[ \t]+", " ", str(run.get("prompt") or "")).strip()[:1000]
+        return {"kind": "ai", "prompt": prompt, "model": "sonnet" if run.get("model") == "sonnet" else "haiku"} if prompt else None
+    if run.get("kind") == "site":
+        frm, field = re.sub(r"\s+", " ", str(run.get("from") or "")).strip()[:40], str(run.get("field") or "")
+        return {"kind": "site", "from": frm, "field": field} if frm and field in SITE_FIELDS else None
+    return None
+
+
+def find_column(columns: list[dict], ref: str) -> dict:
+    ref = (ref or "").strip()
+    for c in columns:
+        if c["key"] == ref:
+            return c
+    hits = [c for c in columns if norm(c["label"]) == norm(ref)]
+    if len(hits) == 1:
+        return hits[0]
+    raise ValueError(f"The grid has no column called '{ref}'. Its columns: " + ", ".join(c["label"] for c in columns[:12]) + ".")
+
+
+def cell_text(col: dict, data: dict) -> str:
+    """What a cell shows, as text (a choice by its label, Yes/No for a tick)."""
+    v = (data or {}).get(col["key"])
+    if v is None or v == "" or v is False:
+        return ""
+    if v is True:
+        return "Yes"
+    if col["type"] == "select":
+        for o in col["options"]:
+            if o.get("value") == v:
+                return str(o.get("label") or v)
+    return str(v).strip()
+
+
+def prompt_refs(prompt: str) -> list[str]:
+    seen: list[str] = []
+    for m in re.finditer(r"\{([^{}]{1,40})\}", prompt or ""):
+        n = re.sub(r"\s+", " ", m.group(1)).strip()
+        if n and not any(norm(n) == norm(x) for x in seen):
+            seen.append(n)
+    return seen
+
+
+def build_prompt(prompt: str, columns: list[dict], data: dict) -> str:
+    by = {norm(c["label"]): c for c in columns}
+    return re.sub(r"\{([^{}]{1,40})\}", lambda m: cell_text(by[norm(m.group(1))], data) if norm(m.group(1)) in by else "", prompt)
+
+
+def has_inputs(run: dict, columns: list[dict], data: dict) -> bool:
+    by = {norm(c["label"]): c for c in columns}
+    names = prompt_refs(run["prompt"]) if run["kind"] == "ai" else [run["from"]]
+    return any(norm(n) in by and cell_text(by[norm(n)], data) != "" for n in names)
+
+
+def problem(col: dict, columns: list[dict]) -> str:
+    """Why this column cannot be run (empty text: it can). Mirrors the grid's own check."""
+    run = col["run"]
+    if not run:
+        return "That column has no run setting yet. In Citadel open its column menu and choose Run settings."
+    by = {norm(c["label"]): c for c in columns}
+    if run["kind"] == "ai":
+        refs = prompt_refs(run["prompt"])
+        if not refs:
+            return "The question names no column. Put a column name in { }, for example {Company}."
+        missing = [r for r in refs if norm(r) not in by]
+        if missing:
+            return "The question uses a column the grid does not have: " + ", ".join("{" + m + "}" for m in missing) + "."
+        if any(by[norm(r)]["key"] == col["key"] for r in refs):
+            return "The question cannot use the column it fills."
+        return ""
+    src = by.get(norm(run["from"]))
+    if not src:
+        return f"The website column '{run['from']}' is not in the grid."
+    if src["key"] == col["key"]:
+        return "The website column cannot be the column being filled."
+    return ""
+
+
+def pick_rows(rows: list[dict], col: dict, columns: list[dict], mode: str, limit: int = 0) -> dict:
+    """Which rows to work on: empty ones (or all), that have something to read, the first `limit`. Same rules as the grid shows before you press Run."""
+    chosen = [r for r in rows if mode == "all" or cell_text(col, r.get("data") or {}) == ""]
+    ready = [r for r in chosen if has_inputs(col["run"], columns, r.get("data") or {})]
+    cap = min(limit, MAX_ROWS) if limit and limit > 0 else MAX_ROWS
+    return {"rows": ready[:cap], "skipped": len(chosen) - len(ready), "empty": sum(1 for r in rows if cell_text(col, r.get("data") or {}) == ""), "total": len(rows)}
+
+
+# ------------------------------------------------------------------ turning an answer into a cell value
+
+def coerce(col: dict, text: str):
+    """The value to store for this column, or None when the answer does not fit the column's type (it is then left out)."""
+    t = re.sub(r"^[\"'`]+|[\"'`]+$", "", (text or "").strip()).strip()
+    if not t or t.upper() == "UNKNOWN":
+        return None
+    ty = col["type"]
+    if ty == "number":
+        try:
+            f = float(re.sub(r"[\s,$€£₦%]", "", t))
+        except ValueError:
+            return None
+        return int(f) if f.is_integer() else f
+    if ty == "date":
+        m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", t)
+        if not m:
+            return None
+        import datetime as dt
+        try:
+            dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+        return t
+    if ty == "checkbox":
+        return True if re.fullmatch(r"(?i)yes|y|true|1", t) else None        # "No" leaves the cell empty, which is how a Yes/No column shows No
+    if ty == "select":
+        for o in col["options"]:
+            if norm(o.get("value")) == norm(t) or norm(o.get("label")) == norm(t):
+                return o.get("value")
+        return None
+    if ty == "email":
+        return t.lower() if re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]{2,}", t) else None
+    if ty == "phone":
+        return t if re.fullmatch(r"[+\d][\d\s().-]{5,24}", t) else None
+    if ty == "url":
+        if re.search(r"\s", t):
+            return t[:500] if t.startswith("@") else None
+        if re.match(r"(?i)https?://", t) or t.startswith("@"):
+            return t[:500]
+        return ("https://" + t)[:500] if re.search(r"\.[a-z]{2,}", t, re.I) else t[:500]
+    if ty == "longtext":
+        return re.sub(r"[ \t]+", " ", t)[: MAX_CELL["longtext"]]
+    return re.sub(r"\s+", " ", t)[: MAX_CELL["text"]]
+
+
+def site_value(site: dict, field: str) -> str:
+    """One fact out of what the website reader found (dse/enrich.py enrich_site)."""
+    s = site or {}
+    people = s.get("people") or []
+    emails = s.get("emails") or []
+    socials = s.get("socials") or {}
+    if field == "email":
+        return str(emails[0].get("email", "")) if emails and isinstance(emails[0], dict) else ""
+    if field == "phone":
+        return str((s.get("phones") or [""])[0] or "")
+    if field == "decision_maker":
+        return str(people[0].get("name", "")) if people and isinstance(people[0], dict) else ""
+    if field == "decision_title":
+        return str(people[0].get("title", "")) if people and isinstance(people[0], dict) else ""
+    if field in ("linkedin", "instagram", "facebook"):
+        return str(socials.get(field, "") or "")
+    if field == "tech":
+        return ", ".join(str(x) for x in (s.get("tech") or []))
+    if field in ("booking", "contact_form", "description"):
+        return str(s.get(field, "") or "")
+    return ""
+
+
+# ------------------------------------------------------------------ the real helpers (replaced by fakes in the tests)
+
+def claude_key() -> str:
+    from . import claudekey
+    return claudekey.current_key()
+
+
+def _cost():
+    import importlib.util
+    p = Path(__file__).resolve().parents[1] / "chat" / "claude_cost.py"
+    spec = importlib.util.spec_from_file_location("hq_claude_cost", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def ask_claude(prompt: str, tier: str, key: str | None = None, http=None) -> tuple[str, int, int, str]:
+    """One question to Claude with this PC's own key. Returns (text, tokens in, tokens out, model id). Raises RuntimeError with a plain reason."""
+    key = key or claude_key()
+    if not key:
+        raise RuntimeError("Claude is not connected on this PC. Run: python dse.py claude setup")
+    model = MODELS.get(tier, MODELS["haiku"])
+    body = json.dumps({"model": model, "max_tokens": 300, "system": SYSTEM, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
+    headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    if http is None:
+        def http(url, hdrs, data):        # noqa: E306
+            req = urllib.request.Request(url, data=data, headers=hdrs, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                raise RuntimeError(f"Could not reach Anthropic ({e})") from None
+    code, raw = http(API, headers, body)
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = {}
+    if code != 200:
+        why = str((d.get("error") or {}).get("message", "")) or f"HTTP {code}"
+        raise RuntimeError(("Claude says: " + why)[:200].replace(key, "..."))
+    text = "".join(b.get("text", "") for b in d.get("content", []) if isinstance(b, dict) and b.get("type") == "text").strip()
+    u = d.get("usage") or {}
+    return text, int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0)), str(d.get("model") or model)
+
+
+def read_site(website: str) -> dict:
+    from . import enrich
+    return enrich.enrich_site(website, render=False)
+
+
+# ------------------------------------------------------------------ the run
+
+def read_rows(api, grid_id: str) -> list[dict]:
+    rows: list[dict] = []
+    for off in range(0, 20000, READ_PAGE):
+        part = api.rpc("hq_grid_rows", {"p_grid": grid_id, "p_offset": off, "p_limit": READ_PAGE}, tries=2) or []
+        rows.extend(part)
+        if len(part) < READ_PAGE:
+            break
+    return rows
+
+
+def save_cells(api, grid_id: str, updates: list[dict]) -> int:
+    return int(api.rpc("hq_grid_set_cells", {"p_grid": grid_id, "p_updates": updates}, tries=2) or 0)
+
+
+def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: bool = False, say=print, api=None, ask=None, site=None, cost=None, key_present=None, sleep=time.sleep) -> str:
+    if mode not in ("empty", "all"):
+        raise ValueError("mode must be empty or all.")
+    api = api or gridpush.connect()
+    grid = gridpush.resolve_grid(gridpush._grids(api), grid_ref)
+    columns = parse_columns(grid.get("doc"))
+    col = find_column(columns, col_ref)
+    why = problem(col, columns)
+    if why:
+        raise ValueError(why)
+    run_cfg = col["run"]
+    rows = read_rows(api, grid["id"])
+    pick = pick_rows(rows, col, columns, mode, limit)
+    todo = pick["rows"]
+    kind = "asks Claude" if run_cfg["kind"] == "ai" else "reads the website"
+    head = f"{grid.get('workbook', '')}/{grid['name']}: column '{col['label']}' {kind} for {len(todo)} of {pick['total']} rows ({'every row' if mode == 'all' else 'empty rows only'}{f', first {limit}' if limit else ''}); {pick['skipped']} skipped (nothing to read)."
+    if dry or not todo:
+        return head + ("\nDry run: nothing was asked and nothing was saved.\n" if dry else "\nNothing to run.\n")
+    say(head)
+    if run_cfg["kind"] == "ai":
+        if not (key_present() if key_present else claude_key()):
+            raise RuntimeError("Claude is not connected on this PC. Run: python dse.py claude setup")
+        cost = cost or _cost()
+        ask = ask or (lambda p, tier: ask_claude(p, tier))
+        if cost.over_limit():
+            raise RuntimeError(f"Today's Claude limit ({cost.limit():,} tokens, set by you) is used up. Raise it with: python dse.py claude limit <tokens>")
+    else:
+        site = site or read_site
+    by = {norm(c["label"]): c for c in columns}
+    total = len(todo)
+    done = failed = no_answer = misfit = filled = 0
+    skipped = pick["skipped"]
+    streak = 0
+    pending: list[dict] = []
+    cache: dict[str, str] = {}
+    note = ""
+
+    def flush() -> None:
+        nonlocal failed, filled, pending
+        if not pending:
+            return
+        try:
+            save_cells(api, grid["id"], pending)
+            filled += len(pending)
+        except Exception:               # one bad row must not lose the batch: save them one at a time
+            for u in pending:
+                try:
+                    save_cells(api, grid["id"], [u])
+                    filled += 1
+                except Exception:
+                    failed += 1
+        pending = []
+
+    for r in todo:
+        data = r.get("data") or {}
+        value = None
+        try:
+            if run_cfg["kind"] == "ai":
+                if cost.over_limit():
+                    note = f"STOPPED: today's Claude limit ({cost.limit():,} tokens) was reached. Raise it with: python dse.py claude limit <tokens>"
+                    break
+                text, tin, tout, model = ask(build_prompt(run_cfg["prompt"], columns, data), run_cfg["model"])
+                try:
+                    cost.record(model, tin, tout)
+                except Exception:
+                    pass
+            else:
+                src = cell_text(by[norm(run_cfg["from"])], data)
+                if src not in cache:
+                    cache[src] = site_value(site(src), run_cfg["field"])
+                text = cache[src]
+            streak = 0
+            if not (text or "").strip() or text.strip().upper() == "UNKNOWN":
+                no_answer += 1
+            else:
+                value = coerce(col, text)
+                if value is None:
+                    misfit += 1
+        except Exception as e:           # a failed row: counted, and a run of failures in a row stops it
+            failed += 1
+            streak += 1
+            if streak >= STOP_AFTER_FAILS:
+                note = f"STOPPED: {streak} rows in a row failed. Last problem: {str(e)[:160]}"
+                break
+        if value is not None:
+            pending.append({"id": r["id"], "cells": {col["key"]: value}})
+        done += 1
+        if len(pending) >= BATCH:
+            flush()
+        if done % 3 == 0 or done == total:
+            say(f"PROGRESS {done}/{total} failed {failed} skipped {skipped}")
+    flush()
+    say(f"PROGRESS {done}/{total} failed {failed} skipped {skipped}")
+    out = f"FINISHED {filled} filled, {failed} failed, {skipped} skipped, {no_answer} no answer" + (f", {misfit} did not fit the column type" if misfit else "")
+    return (note + "\n" if note else "") + out + "\n"
+
+
+def cli(argv: list[str]) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(prog="dse.py grid run")
+    ap.add_argument("grid")
+    ap.add_argument("column")
+    ap.add_argument("--mode", default="empty", choices=["empty", "all"])
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--dry", action="store_true")
+    a = ap.parse_args(argv)
+    try:
+        print(run(a.grid, a.column, a.mode, a.limit, a.dry, say=lambda m: print(m, flush=True)), end="")
+        return 0
+    except (ValueError, RuntimeError) as e:
+        msg = str(e)
+        print("grid run: " + ("the database update 20261224090000_grid_run_column.sql has not been run yet (ask the super admin)" if "hq_grid_" in msg and "function" in msg.lower() else msg[:300]))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(cli(sys.argv[1:]))
