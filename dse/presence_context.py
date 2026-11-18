@@ -191,7 +191,7 @@ def read_file(rel: str, kind: str, text: str) -> dict:
     elif Path(rel).stem and re.search(r"(idea|post|calendar|caption|content)", Path(rel).stem, re.I):
         for line in lines:
             b = re.match(r"^\s*(?:[-*•]|\d+[.)])\s+(.{15,160})$", line)
-            if b and not THEME_HEAD.match(line):
+            if b and not THEME_HEAD.match(line) and _clean(re.sub(r"\*\*|__", "", b.group(1)), 100) not in f["themes"]:     # a theme is a theme, not also a post idea
                 f["topics"].append((_clean(re.sub(r"\*\*|__", "", b.group(1)), 160), ""))
                 if len(f["topics"]) >= 12:
                     break
