@@ -89,9 +89,35 @@ except SystemExit as e:
 ok("an engine that does not exist is said plainly", rc == 1 and "No engine" in o3[0])
 ok("nothing in the folders was changed, moved or deleted", sorted(p.name for p in old.iterdir()) == sorted([".env", "README.md", "_private-keys", "api-notes.md", "archive.zip", "calendar.csv", "instagram-content-plan.md", "secrets.txt"]) and "hunter2" in (old / "secrets.txt").read_text(encoding="utf-8"))
 cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))["tools"]["dse.presence_context"]
-ok("the tool is in the catalog, takes one engine, and uploads only the short findings file", [f["name"] for f in cat["fields"]] == ["engine"] and cat["fields"][0]["choices_from"] == "engines" and cat["outputs"] == [{"glob": "my-lists/*-presence-context.json", "upload": True}])
+ok("the tool is in the catalog, takes one engine, and uploads only the short findings file", [f["name"] for f in cat["fields"]] == ["engine", "ai"] and cat["fields"][0]["choices_from"] == "engines" and cat["outputs"] == [{"glob": "my-lists/*-presence-context.json", "upload": True}])
+
+# ---- the optional local AI reading
+raw_ok = 'Sure. {"summary": "A plan to win new patients through Instagram, aimed at busy parents, using short reels and a weekly LinkedIn post.", "questions": ["Is the 4 posts a week still realistic with your current team?", "Should LinkedIn be aimed at patients or at referring dentists?", "x?", "Which of the four content pillars has worked best so far?", "A fourth real question that gets cut away?"]}'
+ai = C.parse_ai(raw_ok)
+ok("the model's reply is read into a short summary and at most three real questions (too short ones are dropped)", ai and ai["summary"].startswith("A plan to win new patients") and len(ai["questions"]) == 3 and all(q.endswith("?") and len(q) >= 12 for q in ai["questions"]))
+ok("hostile or odd replies are made safe or refused: tags and control characters removed, long text cut, no JSON or the wrong shape gives nothing", (lambda h: "<" not in h["summary"] and ">" not in h["summary"] and len(h["summary"]) <= 500 and all("<" not in q for q in h["questions"]))(C.parse_ai('{"summary": "<script>alert(1)</script> ' + "a" * 900 + '", "questions": ["<b>Is this a real question for you</b>?"]}')) and C.parse_ai("no json here") is None and C.parse_ai("[1,2]") is None and C.parse_ai('{"summary": "x", "questions": "not a list"}') is None and C.parse_ai('{"summary": "", "questions": []}') is None)
+dg = C.ai_digest([("a/plan.md", "Key: sk-ant-abcdefghijklmnopqrstuvwxyz123456 " + "word " * 600), ("b/other.md", "second file text " * 100), ("c/third.md", "third file " * 300)])
+ok("what the model sees is short, redacted and starts with the strongest files", len(dg) <= C.AI_BUDGET + 300 and "sk-ant-" not in dg and dg.index("a/plan.md") < dg.index("b/other.md"))
+seen = []
+def stub(model, system, user, timeout=150): seen.append((model, system, user)); return raw_ok
+out4 = []
+code = C.run_context("orlando-dentists", out4.append, ai=True, chat=stub, installed=lambda: ["gemma3:4b"])
+j4 = json.loads((C.LISTS / "orlando-dentists-presence-context.json").read_text(encoding="utf-8"))
+ok("with the AI on, the file gets the model's summary and its questions as open questions, after the rule-based ones; nothing leaves this PC but through the model call", code == 0 and j4["ai"]["model"] == "gemma3:4b" and j4["ai"]["summary"].startswith("A plan to win") and [q["id"] for q in j4["questions"]][-3:] == ["open:1", "open:2", "open:3"] and all(q["kind"] == "open" and q["options"] == [] for q in j4["questions"][-3:]) and len(seen) == 1 and seen[0][0] == "gemma3:4b" and "sk-ant-" not in seen[0][2] and "hunter2" not in seen[0][2] and any("My PC's AI" in x for x in out4))
+ok("the model is only shown files that read like social media work", "invoices and the lease" not in seen[0][2] and "instagram-content-plan" in seen[0][2])
+out5 = []
+C.run_context("orlando-dentists", out5.append, ai=False, chat=stub)
+j5 = json.loads((C.LISTS / "orlando-dentists-presence-context.json").read_text(encoding="utf-8"))
+ok("with the AI off the model is never called and the file has no AI part", "ai" not in j5 and len(seen) == 1 and not any(q["kind"] == "open" for q in j5["questions"]))
+def boom(*a, **k): raise OSError("Ollama is off")
+out6 = []
+code6 = C.run_context("orlando-dentists", out6.append, ai=True, chat=boom, installed=lambda: ["gemma3:4b"])
+j6 = json.loads((C.LISTS / "orlando-dentists-presence-context.json").read_text(encoding="utf-8"))
+ok("when Ollama is off or the model answers badly, the reading by rules still stands and the PC says so", code6 == 0 and "ai" not in j6 and any("rules only" in x for x in out6) and len(j6["questions"]) >= 7 and C.run_context("orlando-dentists", [].append, ai=True, chat=lambda *a, **k: "nonsense", installed=lambda: ["m"]) == 0 and C.run_context("orlando-dentists", [].append, ai=True, chat=stub, installed=lambda: []) == 0)
+cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))["tools"]["dse.presence_context"]
+ok("the tool offers the AI reading as a switch that is on by default", any(f["name"] == "ai" and f["type"] == "bool" and f.get("default") is True for f in cat["fields"]) and {"flag": "--ai", "field": "ai"} in cat["args"])
 src = Path(C.__file__).read_text(encoding="utf-8")
-ok("it only reads: one write (its own result file), no delete, move or network call", src.count(".write_text(") == 1 and "unlink" not in src and "rename" not in src and "shutil" not in src and "urlopen" not in src and "requests" not in src)
+ok("it only reads: one write (its own result file), no delete or move, and the only network call is to this PC's own Ollama", src.count(".write_text(") == 1 and "unlink" not in src and "rename" not in src and "shutil" not in src and "requests" not in src and src.count("urlopen(") == 1 and 'OLLAMA = "http://localhost:11434/api/chat"' in src and "api/tags" not in src)
 ok("no em dash in the file", chr(0x2014) not in src)
 print("\nALL PASS" if not fails else f"\n{fails} FAILED")
 sys.exit(1 if fails else 0)
