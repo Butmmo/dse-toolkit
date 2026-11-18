@@ -53,7 +53,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -87,15 +87,26 @@ def main():
     sub.add_parser("packs")
     b = sub.add_parser("build"); b.add_argument("kinds", help="comma-separated business types, e.g. dentist,plumber")
     b.add_argument("--country", default="US", help="a country code (GB) or a group (eu, gulf, ...): python dse.py countries")
+    b.add_argument("--source", default="foursquare", help="foursquare (needs the free HF_TOKEN), overture (open data, no token) or both")
     sub.add_parser("countries", help="the countries and groups the lead finder covers")
+    ct = sub.add_parser("cities", help="rate the towns of a country in 7 to 10 tiers by how many prospects of one business type they hold, and save an editable list")
+    ct.add_argument("kind"); ct.add_argument("--country", required=True, help="one country code, like GB")
+    ct.add_argument("--source", default="foursquare", help="foursquare, overture or both")
+    ct.add_argument("--levels", type=int, default=0, help="number of tiers, 7 to 10 (default: chosen from the size of the pool)")
+    ct.add_argument("--cover", type=float, default=cities.DEFAULT_COVER_MILES, help="miles: a town this close to a bigger one is folded into it")
+    ct.add_argument("--min-pool", type=int, default=cities.DEFAULT_MIN_POOL, dest="min_pool", help="leave out towns with fewer prospects than this")
+    ct.add_argument("--refresh", action="store_true", help="rebuild the list even if you already have one (your edits are replaced)")
     sub.add_parser("categories").add_argument("search", nargs="?", default="", help="words to find among Foursquare's business categories")
     mp = sub.add_parser("mypack", help="make your own website check for any kind of business"); mp.add_argument("name")
     mp.add_argument("--sells", required=True); mp.add_argument("--checks", action="append", required=True, help="words to look for, comma separated => what to say if they are missing (repeat or one per line)")
     mp.add_argument("--opener", default=""); mp.add_argument("--pages", default="")
-    f = sub.add_parser("find"); f.add_argument("kind", help="a business type from the list, or type your own (like 'wedding photographers')"); f.add_argument("cities")
+    f = sub.add_parser("find"); f.add_argument("kind", help="a business type from the list, or type your own (like 'wedding photographers')"); f.add_argument("cities", nargs="?", default="", help="cities separated by ;  (or use --cities-file)")
     for p in (f,):
         p.add_argument("--miles", type=float, default=25.0); p.add_argument("--max", type=int, default=100)
         p.add_argument("--country", default="US", help="one country code, like GB or AE (python dse.py countries); a group of several is refused")
+        p.add_argument("--source", default="foursquare", help="foursquare, overture (open data, no token) or both")
+        p.add_argument("--cities-file", default="", dest="cities_file", help="a cities file made by: python dse.py cities (towns marked include = Y are searched)")
+        p.add_argument("--tiers", default="", help="with --cities-file: search the towns in these tiers instead, like 1-3")
         p.add_argument("--all", action="store_true", help="keep national chains"); p.add_argument("--out", default="")
         p.add_argument("--words", default="", help="your own words the website must use, comma separated (replaces the built-in ones)")
         p.add_argument("--skip", default="", help="your own words that put a business out when they are in its name")
@@ -103,8 +114,8 @@ def main():
     c.add_argument("--fast", action="store_true", help="skip the hidden browser (quicker, misses JavaScript-built sites)")
     c.add_argument("--result-line", action="store_true", dest="result_line", help="with one web address: also print one RESULT line a BPS Table workflow reads")
     c.add_argument("--out", default="")
-    l = sub.add_parser("list"); l.add_argument("pack"); l.add_argument("kind"); l.add_argument("cities")
-    l.add_argument("--miles", type=float, default=25.0); l.add_argument("--max", type=int, default=40); l.add_argument("--country", default="US")
+    l = sub.add_parser("list"); l.add_argument("pack"); l.add_argument("kind"); l.add_argument("cities", nargs="?", default="")
+    l.add_argument("--miles", type=float, default=25.0); l.add_argument("--max", type=int, default=40); l.add_argument("--country", default="US"); l.add_argument("--source", default="foursquare"); l.add_argument("--cities-file", default="", dest="cities_file"); l.add_argument("--tiers", default="")
     l.add_argument("--fast", action="store_true"); l.add_argument("--all", action="store_true"); l.add_argument("--words", default=""); l.add_argument("--skip", default="")
     pc = sub.add_parser("podcasts"); pc.add_argument("terms"); pc.add_argument("--genre", default="business")
     pc.add_argument("--max", type=int, default=60); pc.add_argument("--max-silent", type=int, default=180); pc.add_argument("--out", default="")
@@ -480,11 +491,13 @@ def main():
         print("Type any of these (or a plain word like 'photographer') as the business type in the lead tools: it is saved for you.")
         print("podcasts    The Broadcast Engine: python dse.py podcasts \"<topics>\"")
     elif a.cmd == "build":
-        places.build([k.strip() for k in a.kinds.split(",") if k.strip()], a.country)
+        places.build([k.strip() for k in a.kinds.split(",") if k.strip()], a.country, a.source)
+    elif a.cmd == "cities":
+        cities.suggest(a.kind, a.country, a.source, a.levels, a.refresh, a.cover, a.min_pool)
     elif a.cmd == "countries":
         print(chr(10).join(countries.listing()))
     elif a.cmd == "find":
-        places.find(a.kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip, a.country)
+        places.find(a.kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip, a.country, a.source, a.cities_file, a.tiers)
     elif a.cmd == "check":
         if a.target.lower().startswith(("http://", "https://", "www.")) or (a.target.count(".") and not a.target.lower().endswith(".csv")):
             chk.check_one(a.pack, a.target, render=not a.fast, result_line=a.result_line)
@@ -493,7 +506,7 @@ def main():
     elif a.cmd == "list":
         if a.pack in PACK_KINDS and PACK_KINDS[a.pack] and a.kind not in PACK_KINDS[a.pack] and not places.kind_info(a.kind):
             print(f"Note: '{a.kind}' isn't one of the {a.pack} business types: treating it as a business type of your own.", file=sys.stderr)
-        src = places.find(a.kind, a.cities, a.miles, a.max, a.all, "", a.words, a.skip, a.country)
+        src = places.find(a.kind, a.cities, a.miles, a.max, a.all, "", a.words, a.skip, a.country, a.source, a.cities_file, a.tiers)
         chk.check_file(a.pack, src, render=not a.fast)
     elif a.cmd == "podcasts":
         podcasts.find(a.terms, a.genre, a.max, a.max_silent, a.out)

@@ -22,9 +22,11 @@ import time
 import requests
 
 from . import countries as C
+from . import overture as OV
 from .common import DATA, DEAD_TEXT, UA, log, out_path, write_csv
 
 HF = "hf://datasets/foursquare/fsq-os-places"
+FSQ_LABEL = "Foursquare Open Source Places"
 GEOCACHE = DATA / "geocode-cache.csv"
 
 # kind -> (what it is, Foursquare category names it matches exactly)
@@ -232,8 +234,21 @@ def _con():
     return con
 
 
-def extract_path(kind: str, country: str = "US"):
-    """The saved business list for one type in one country. The US file keeps its old name (places-us-<kind>), others are places-<cc>-<kind>."""
+SOURCES = ("foursquare", "overture", "both")
+
+
+def sources_for(source: str) -> list[str]:
+    """'foursquare', 'overture' or 'both' -> the list of data sources to use. Anything else is refused."""
+    s = (source or "foursquare").strip().lower()
+    if s not in SOURCES:
+        sys.exit(f"Unknown data source '{source}'. Use foursquare, overture or both.")
+    return ["foursquare", "overture"] if s == "both" else [s]
+
+
+def extract_path(kind: str, country: str = "US", source: str = "foursquare"):
+    """The saved business list for one type in one country. The US Foursquare file keeps its old name (places-us-<kind>), others are places-<cc>-<kind>; Overture files are overture-<cc>-<kind>."""
+    if source == "overture":
+        return OV.extract_path(kind, country)
     return DATA / f"places-{country.lower()}-{kind}.parquet"
 
 
@@ -242,7 +257,16 @@ def site_words_for(country: str, own: str, builtin: str) -> str:
     return own or (builtin if C.english(country) else "")
 
 
-def build(kinds: list[str], country: str = "US"):
+def build(kinds: list[str], country: str = "US", source: str = "foursquare"):
+    """Save the business lists for one source, or both. Foursquare needs the free HF_TOKEN; Overture needs nothing."""
+    for s_ in sources_for(source):
+        if s_ == "overture":
+            OV.build([k for k in kinds if kind_info(k) or OV.category_names(k)], country)
+        else:
+            _build_foursquare(kinds, country)
+
+
+def _build_foursquare(kinds: list[str], country: str = "US"):
     """Save the Foursquare places of each type for one country or a group of countries (one scan of the dataset per type, then split per country)."""
     codes = C.resolve(country)
     token = hf_token()
@@ -345,7 +369,7 @@ def own_words(text: str) -> str:
     return "|".join(ws[:12])
 
 
-def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "", words: str = "", skip: str = "", country: str = "US") -> str:
+def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "", words: str = "", skip: str = "", country: str = "US", source: str = "foursquare", cities_file: str = "", tiers: str = "") -> str:
     """kind: a built-in or saved business type, or one you type (found among Foursquare's categories, saved, and its data built on first use).
     words: your own words the business's website must use (replaces the built-in ones). skip: words that put a business out when they are in its name."""
     try:
@@ -354,24 +378,35 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
         sys.exit(str(e))
     kind = resolve_kind(kind)
     info = kind_info(kind)
-    src = extract_path(kind, country)
-    if not src.exists():
-        log(f"No business data for '{kind}' yet: building it now (once, a few minutes).")
-        build([kind], country)
+    if cities_file:
+        from . import cities as CT
+        places = CT.load(cities_file, tiers)
+    else:
+        places = [(c.strip(), None, None) for c in re.split(r"[;|]", cities) if c.strip()]
+    if not places:
+        sys.exit("Give at least one city, like 'Tampa FL; Orlando FL', or a cities file with some cities marked to use.")
+    paths = []
+    for s_ in sources_for(source):
+        src = extract_path(kind, country, s_)
+        if not src.exists():
+            log(f"No {s_} business data for '{kind}' in {country} yet: building it now (once, a few minutes).")
+            build([kind], country, s_)
+        if src.exists():
+            paths.append((s_, src))
+    if not paths:
+        sys.exit(f"No business data for '{kind}' in {country} from {source}. Types you typed yourself are Foursquare-only for now.")
     con = _con()
-    names = [n.lower() for n in info[1]]
+    names = [n.lower() for n in info[1]] + [n.lower() for n in OV.category_names(kind)]
     site_words = site_words_for(country, own_words(words), info[2])
     skip_re = re.compile(own_words(skip), re.I) if own_words(skip) else None
-    places = [c.strip() for c in re.split(r"[;|]", cities) if c.strip()]
-    if not places:
-        sys.exit("Give at least one city, like 'Tampa FL; Orlando FL'.")
     per_city = max(1, cap // len(places))
     rows, seen = [], set()
-    for place in places:
-        lat, lon = geocode(place, country)
+    for place, lat, lon in places:
+        if lat is None or lon is None:
+            lat, lon = geocode(place, country)
         dlat, dlon = miles / 69.0, miles / (69.0 * max(0.2, math.cos(math.radians(lat))))
-        rel = con.sql(f"""SELECT * FROM '{src.as_posix()}'
-                          WHERE latitude BETWEEN {lat - dlat} AND {lat + dlat} AND longitude BETWEEN {lon - dlon} AND {lon + dlon}""")
+        box = f"latitude BETWEEN {lat - dlat} AND {lat + dlat} AND longitude BETWEEN {lon - dlon} AND {lon + dlon}"
+        rel = con.sql(" UNION ALL BY NAME ".join(f"SELECT *, '{OV.SOURCE_LABEL if s_ == 'overture' else FSQ_LABEL}' AS _src FROM '{path.as_posix()}' WHERE {box}" for s_, path in paths))
         city_rows = []
         for p in (dict(zip(rel.columns, row)) for row in rel.fetchall()):
             dist = _miles(lat, lon, p["latitude"], p["longitude"])
@@ -403,7 +438,7 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
                 "address": ", ".join(x for x in (p["address"], p["locality"], f"{p['region'] or ''} {p['postcode'] or ''}".strip()) if x),
                 "category": info[0], "distance_mi": round(dist, 1), "search_city": place,
                 "last_refreshed": str(p["date_refreshed"] or ""),
-                "source": f"Foursquare Open Source Places, {time.strftime('%Y-%m-%d')}",
+                "source": f"{p['_src']}, {time.strftime('%Y-%m-%d')}",
                 **({"country": country} if country != "US" else {}),
             })
         found = len(city_rows)

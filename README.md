@@ -263,6 +263,26 @@ python dse.py find dentist "Leeds" --country GB   # searching needs ONE country 
 ```
 Leads outside the US get a `country` column. The "does the site talk about this trade" check uses English words, so it only runs where sites are normally in English (UK, Ireland, Australia, New Zealand, Singapore, South Africa, Kenya and similar); elsewhere it is off unless you give your own `--words`. How complete the data is varies by country: check a first list by hand before you send anything. Iran and Syria are left out on purpose (sanctions).
 
+### A second, open data source (no token): Overture Maps
+`--source overture` reads Overture Maps Places (open data, licence CDLA Permissive 2.0, credit "Overture Maps Foundation" if you publish its data) straight from the public files: no account and no HF_TOKEN. `--source both` uses Foursquare and Overture together and lists a business that is in both once. A build scans the whole file once for all the business types you name (a few minutes), so name several together:
+```bash
+python dse.py build dentist,plumber,hair-salon --country gulf --source overture
+python dse.py find dentist "Dubai" --country AE --source both
+```
+Only the built-in business types have Overture categories for now; a type you typed yourself stays Foursquare-only. Overture keeps places with a confidence of 0.5 or more and drops closed ones.
+
+### Which towns to search: city tiers
+Pick towns by the size of the real pool, not by guessing. After building a country's lists:
+```bash
+python dse.py cities dentist --country GB --source both      # writes data/cities-gb-dentist.csv and prints the tiers
+python dse.py find dentist --country GB --source both --cities-file data/cities-gb-dentist.csv            # the towns marked include = Y
+python dse.py find dentist --country GB --cities-file data/cities-gb-dentist.csv --tiers 1-4              # or every town in tiers 1 to 4
+```
+- A town's pool is its independent businesses (not chains) that have a website. Tier 1 is the biggest pool, the last tier the smallest, on a log scale. A small country pool gets 7 tiers, a big one up to 10 (`--levels 7` to `10` to choose).
+- A suburb within 10 miles (`--cover`) of a bigger town is folded into it, because that town's search radius already reaches it. Towns with fewer than 3 prospects (`--min-pool`) are left out.
+- The CSV is yours to edit: change `include` (Y or N), change a tier, delete a row, or add a town by name (leave `lat` and `lon` blank and it is looked up). Running `cities` again never overwrites your file; `--refresh` rebuilds it.
+- `find --max` is shared across the towns, so raise it when you search many (for example `--max 400`).
+
 ## Connect it to DBI Citadel (so you can run it from your phone)
 1. In Citadel, open **More → HQ Tools → Connect a PC**. The panel shows each command with a **Copy** button.
 2. Run its `setup` line here. It prints your **PC code**.
