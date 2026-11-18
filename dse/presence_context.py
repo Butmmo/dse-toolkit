@@ -296,6 +296,7 @@ def ideas_from_json(text: str) -> list[tuple[str, str]]:
 
 
 HEX_COLOR = re.compile(r"(?<![0-9A-Za-z&])#([0-9A-Fa-f]{6})(?![0-9A-Za-z])")
+COLOR_WORDS = re.compile(r"(colou?rs?|palette|hex|brand|background|accent|primary|secondary|font|fill|gold|green|blue|red|cream|black|white|orange|purple|pink|teal|navy|grey|gray)", re.I)
 STYLE_NAME = re.compile(r"(brand|style|palette|colou?r|design|theme|identity|guideline)", re.I)
 FONT_NAMES = ("Playfair Display", "DM Serif Display", "Cormorant", "Merriweather", "Georgia", "Lora", "Times New Roman", "Montserrat", "Poppins", "Inter", "Roboto", "Open Sans", "Lato", "Raleway", "Oswald",
               "DM Sans", "Nunito", "Source Sans", "Segoe UI", "Arial", "Helvetica", "Bebas Neue")
@@ -305,9 +306,13 @@ def style_from(items: list) -> dict | None:
     """The colours (hex codes, most used first) and fonts a brand or plan file names: only values that really appear in the text. None when there is no colour. Pure white and pure black are kept only when nothing else is named."""
     cols: Counter = Counter()
     fonts: Counter = Counter()
-    for _rel, text in items:
-        for m in HEX_COLOR.finditer(text):
-            cols["#" + m.group(1).upper()] += 1
+    for rel, text in items:
+        named = bool(STYLE_NAME.search(rel))
+        for line in text.splitlines():
+            # a six-digit code in a brand or style file, or on a line that talks about colour, is a colour; elsewhere "#123456" is a ticket or an invoice number
+            if named or COLOR_WORDS.search(line):
+                for m in HEX_COLOR.finditer(line):
+                    cols["#" + m.group(1).upper()] += 1
         for f in FONT_NAMES:
             n = len(re.findall(r"(?<![A-Za-z])" + re.escape(f) + r"(?![A-Za-z])", text))
             if n:

@@ -95,6 +95,8 @@ def stat_of(text: str):
     """(big figure, the words after it) for a text that leads with a number or has a percentage or an amount in it, else None. Mirrors statOf in the app."""
     t = re.sub(r"^In the news \([^)]*\):\s*", "", str(text or "").strip(), flags=re.I)
     m = STAT.match(t)
+    if m and re.fullmatch(r"\d{1,3}", m.group(1).strip()):
+        m = None                                  # a bare small number is a list count ("5 mistakes"), not a finding
     if m:
         return m.group(1).strip()[:14], m.group(2).strip()
     m = STAT_ANY.search(t)
@@ -103,13 +105,14 @@ def stat_of(text: str):
 
 def auto_layout(title: str, body: str = "", fallback: str = "cover") -> str:
     """The layout a text asks for: a figure gets the big-number layout, a question the question layout, a myth the two-part layout, a quote the quote layout."""
-    t = str(title or "").strip()
-    if stat_of(t) and stat_of(t)[0] and len(t) < 160:
-        return "stat"
-    if re.match(r"^myth\b", t, re.I):
+    t, b = str(title or "").strip(), str(body or "").strip()
+    if re.match(r"^myth\b", t, re.I) or re.match(r"^myth:", b, re.I):          # the same order as the app's layoutFor: myth, question, figure, quote
         return "myth"
-    if t.endswith("?") and len(str(body or "")) < 160:
+    if t.endswith("?") and len(b) < 160:
         return "question"
+    first = b.split("\n")[0]
+    if (stat_of(t) and len(t) < 160) or (first and stat_of(first)) or (re.match(r"^finding\b", t, re.I) and stat_of(b)):
+        return "stat"
     if t[:1] in ('"', "\u201c"):
         return "quote"
     return fallback
@@ -216,7 +219,7 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
         photo = _cover(Image.open(pp).convert("RGB"), W, H)
         shade = Image.new("RGB", (W, H), "#0f1115")
         img = Image.blend(photo, shade, 0.62)
-        k = {**k, "fg": "#F6F0E4", "muted": "#D9CFB5"}
+        k = {**k, "fg": "#F6F0E4", "muted": "#D9CFB5", "accent": k["accent"] if _contrast("#2A2D33", k["accent"]) >= 3.0 else "#F2C879"}
     pad = int(W * 0.09)
     inner = W - 2 * pad
     img = _motif(img, k, W, H, pad)
@@ -241,20 +244,33 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
     text = headline.strip()
     if layout == "stat":
         st = stat_of(text)
+        from_body = False
+        if not st and body.strip():
+            st, from_body = stat_of(body.strip().split("\n")[0]), True        # the figure may be the first line of the body, with a label such as "Finding 1" as the headline
         big, rest = (st if st else (text[:14], ""))
-        bf, bl, blh = _fit(d, big, True, inner, int(H * 0.30), int(W * 0.30), 60, "display" if hd == "display" else hd)
+        if from_body:
+            rest = rest or text
+        size = int(W * 0.30)                                                  # the figure is one line: it shrinks until it fits the width, so a long number never runs off the picture
+        while size > 40 and d.textlength(big, font=_font(True, size, hd)) > inner:
+            size -= 6
+        bf = _font(True, size, hd)
+        blh = int(size * 1.15)
         by = y + int(H * 0.06)
-        d.text((pad, by), bl[0], font=bf, fill=accent)
+        d.text((pad, by), big, font=bf, fill=accent)
         by += blh + 20
         d.rectangle((pad, by, pad + int(W * 0.15), by + 8), fill=accent)
-        words = rest or body.strip()
+        words = rest or ("" if from_body else body.strip())
         if words:
             wf, wl, wlh = _fit(d, words, True, inner, area_bottom - by - int(H * 0.12), int(W * 0.062), 28, "sans")
             for i, line in enumerate(wl):
                 d.text((pad, by + 40 + i * wlh), line, font=wf, fill=fg)
-        src = re.sub(r"^Source:\s*", "", body.strip()) if (rest and body.strip().lower().startswith("source")) else ""
+        m_src = re.search(r"^Source:\s*(.+)$", body, re.I | re.M)
+        src = m_src.group(1).strip() if m_src else ""
         if src:
-            d.text((pad, area_bottom - int(W * 0.04)), ("Source: " + src)[:80], font=_font(False, max(24, int(W * 0.03))), fill=muted)
+            sf = _font(False, max(24, int(W * 0.03)))
+            sl = _wrap(d, "Source: " + src, sf, inner)[:2]
+            for i, line in enumerate(sl):
+                d.text((pad, area_bottom - int(W * 0.04) * (len(sl) - i)), line, font=sf, fill=muted)
     elif layout == "question":
         qf = _font(True, int(W * 0.95), "serif")
         qb = d.textbbox((0, 0), "?", font=qf)
@@ -265,7 +281,9 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
         hy = max(y + 40, (H - len(hl) * hlh) // 2 - 40)
         for i, line in enumerate(hl):
             d.text((pad, hy + i * hlh), line, font=hf, fill=fg)
-        d.text((pad, hy + len(hl) * hlh + 40), (body.strip() or "Tell me below.")[:60], font=_font(True, int(W * 0.043), "sans"), fill=accent)
+        qsf = _font(True, int(W * 0.043), "sans")
+        for i, line in enumerate(_wrap(d, (body.strip() or "Tell me below.")[:160], qsf, inner)[:3]):
+            d.text((pad, hy + len(hl) * hlh + 40 + i * int(W * 0.055)), line, font=qsf, fill=accent)
     elif layout == "quote":
         d.text((pad - 10, y - 20), "\u201c", font=_font(True, int(W * 0.32), "serif"), fill=accent)
         qtext = text.strip('"\u201c\u201d')
@@ -276,7 +294,9 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
         ly = hy + len(hl) * hlh + 30
         d.rectangle((pad, ly, pad + int(W * 0.08), ly + 6), fill=accent)
         if body.strip():
-            d.text((pad, ly + 30), body.strip()[:60], font=_font(True, int(W * 0.037), "sans"), fill=muted)
+            qbf = _font(True, int(W * 0.037), "sans")
+            for i, line in enumerate(_wrap(d, body.strip()[:120], qbf, inner)[:2]):
+                d.text((pad, ly + 30 + i * int(W * 0.048)), line, font=qbf, fill=muted)
     elif layout == "myth":
         mt = re.sub(r"^myth:\s*", "", text, flags=re.I)
         d.text((pad, y + 10), "MYTH", font=_font(True, int(W * 0.037), "sans"), fill=muted)

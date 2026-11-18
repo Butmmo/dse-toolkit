@@ -204,9 +204,10 @@ ok("a schedule that is already over only offers to keep a note of it", past[0]["
 # ---- brand style from the plan
 sty = C.style_from([("brand.md", "Our colours: #1a4d3a green, #F4E9D8 cream, #1A4D3A again, and white #FFFFFF. Fonts: Playfair Display for headlines, Inter for text."), ("notes.md", "colour #12345 is too short, and &#123456 is an entity")])
 ok("it reads brand colours (most used first, white dropped when others exist) and fonts that really appear in the text", sty["colors"][:2] == ["#1A4D3A", "#F4E9D8"] and "#FFFFFF" not in sty["colors"] and sty["fonts"] == ["Playfair Display", "Inter"] and len(sty["colors"]) == 2)
-ok("no colour in the text means no style, and look-alikes are not read as colours", C.style_from([("a.md", "nothing here, # 123456 and &#123456; and #12345")]) is None and C.style_from([("a.md", "#FFFFFF #000000")])["colors"] == ["#FFFFFF", "#000000"])
+ok("no colour in the text means no style, and look-alikes are not read as colours", C.style_from([("a.md", "nothing here, # 123456 and &#123456; and #12345")]) is None and C.style_from([("a.md", "colours: #FFFFFF #000000")])["colors"] == ["#FFFFFF", "#000000"])
 qs = C.questions_for({"style": sty})
 ok("it asks whether to use the plan's colours and fonts as the Function's own look, saying which ones", qs[0]["id"] == "style" and qs[0]["kind"] == "style" and "#1A4D3A" in qs[0]["text"] and "Playfair Display" in qs[0]["text"] and [o["value"] for o in qs[0]["options"]] == ["adopt", "skip"])
+ok("review fix: a six-digit code in an ordinary file (a ticket, an invoice) is not a brand colour, but one in a brand file or on a colour line is", C.style_from([("notes.md", "Invoice #123456 is paid, ticket #ABCDEF closed")]) is None and C.style_from([("brand/palette.md", "#123456")])["colors"] == ["#123456"] and C.style_from([("plan.md", "Primary colour: #123456")])["colors"] == ["#123456"])
 src = Path(C.__file__).read_text(encoding="utf-8")
 ok("it only reads: one write (its own result file), no delete or move, and the only network call is to this PC's own Ollama", src.count(".write_text(") == 1 and "unlink" not in src and "rename" not in src and "shutil" not in src and "requests" not in src and src.count("urlopen(") == 1 and 'OLLAMA = "http://localhost:11434/api/chat"' in src and "api/tags" not in src)
 ok("no em dash in the file", chr(0x2014) not in src)

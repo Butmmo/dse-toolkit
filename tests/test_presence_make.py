@@ -175,6 +175,17 @@ P = M.parse_project({"title": "T", "kit": kit, "scenes": [{"text": "4 of 6 denti
 ok("a video project carries its kit, and a carousel too; a non-object kit is dropped", P["kit"] == kit and M.parse_carousel({"slides": [{"title": "a"}], "kit": kit})["kit"] == kit and M.parse_carousel({"slides": [{"title": "a"}], "kit": "x"})["kit"] is None)
 cf = M.make_carousel({"title": "Kits", "kit": kit, "slides": [{"title": "Cover"}, {"title": "73% of patients message first", "body": "Source: survey"}, {"title": "Last", "body": "Ask me."}]}, out_dir=td / "kc", say=lambda *_: None)
 ok("a carousel in an own kit renders every slide, with the figure slide chosen from its words", len(cf) == 3 and all(Image.open(f).getpixel((540, 1340)) == (0x1A, 0x4D, 0x3A) for f in cf))
+ok("a list count is not a finding: '5 mistakes dentists make' stays a cover, real figures stay stats", M.stat_of("5 mistakes dentists make") is None and M.auto_layout("10 tips for faster replies") == "cover" and M.stat_of("1,200 clinics closed")[0] == "1,200" and M.stat_of("3x more replies")[0] == "3x" and M.auto_layout("7 in 10 patients message first") == "stat")
+# ---- review fixes: long figures, wrapped lines, figure in the body, photo accent, layout order like the app
+for head, body in (("1,000,000,000 clicks", ""), ("100 of 1,000 dentists", "Source: " + "a very long source line " * 6), ("$2.5 million", ""), ("Finding 1", "4 of 6 dentists cannot be texted.\nSource: my list")):
+    im = Image.open(M.make_graphic("stat", head, body, "", "@ada", "post", "ink", out_path=td / "rf.png")).convert("RGB")
+    right = [im.getpixel((x, y)) for x in range(1080 - 60, 1080) for y in range(300, 800, 20)]
+    ok(f"a stat '{head[:20]}' never runs into the right margin", all(p == (0x1A, 0x14, 0x10) for p in right))
+ok("review fix: the layout order is the app's: myth, question, then figure", M.auto_layout("Stop losing 30% of leads?") == "question" and M.auto_layout("Myth: 40% of owners reply") == "myth" and M.auto_layout("Finding 1", "4 of 6 dentists") == "stat" and M.auto_layout("Why replies win", "73% of patients message first") == "stat")
+for lay, h, b in (("question", "Do you reply in a minute?", "x " * 80), ("quote", "Reply in a minute", "A very long name " * 8)):
+    im = Image.open(M.make_graphic(lay, h, b, "", "", "post", "ink", out_path=td / "rq.png")).convert("RGB")
+    ok(f"review fix: the {lay} body wraps and stays inside the margin", all(im.getpixel((x, y)) == (0x1A, 0x14, 0x10) for x in range(1080 - 70, 1080) for y in range(300, 1300, 10) if lay == "quote" or y > 700))
+ok("review fix: on a photo a dull accent is replaced so it can be read (gold on a dark photo)", (lambda im: im.size == (1080, 1350))(Image.open(M.make_graphic("stat", "4 of 6", "x", "", "", "post", "gold", out_path=td / "rp.png"))) and M._contrast("#2A2D33", "#4A3300") < 3.0)
 src = Path(M.__file__).read_text(encoding="utf-8")
 ok("nothing here posts or sends anything: the only network use is the one-time voice download (a GET from the project's release page)", "urllib" not in src and "smtplib" not in src and ".post(" not in src and src.count("requests.get(") == 1 and src.index("requests.get(") > src.index("def install_kokoro") and "github.com/thewh1teagle/kokoro-onnx/releases/download" in src)
 ok("no em dash in the file", chr(0x2014) not in src)
