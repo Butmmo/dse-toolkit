@@ -165,10 +165,13 @@ def cli(args: list[str]) -> int:
     if cmd in ("graphic", "video", "carousel", "voice-setup"):
         from . import presence_make
         return presence_make.cli([cmd] + rest)
+    if cmd == "trends":
+        from . import presence_trends
+        return presence_trends.cli(rest)
     if cmd == "publish":
         from . import publish
         return publish.run_cli(rest)
-    print(f"Unknown command '{cmd}'. Try: insights, graphic, video, carousel, voice-setup, publish")
+    print(f"Unknown command '{cmd}'. Try: insights, trends, graphic, video, carousel, voice-setup, publish")
     return 1
 
 

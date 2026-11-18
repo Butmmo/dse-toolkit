@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -95,6 +95,15 @@ T["dse.presence_post"] = {
     "fields": [{"name": "project", "label": "Post file", "type": "file", "required": True, "glob": "my-posts/*.json", "exclude": r"\.posted\.json$"},
                {"name": "approve", "label": "Type POST here to really post it (empty = preview only)", "type": "text", "required": False, "max": 4, "pattern": "POST"}],
     "timeout_min": 3, "outputs": [{"glob": "my-posts/*.posted.json", "upload": True}]}
+
+T["dse.presence_trends"] = {
+    "label": "Presence: what is in the news for your market", "group": "Grow",
+    "help": ("Reads ONE public news feed (Google News search) for the words you give and keeps the newest headlines of the last 7 days, with their publisher and date, as trend prompts for your content: react with your own "
+             "useful view and say where the news came from. Only headlines, publishers and dates are kept: no article, website or social account is opened. The result appears in Presence > Research. Nothing is posted."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "trends"}, {"field": "query"}, {"field": "region"}],
+    "fields": [{"name": "query", "label": "Your market in a few words (for example: dentists marketing)", "type": "text", "required": True, "max": 80, "pattern": r"[A-Za-z0-9 ,.'&/-]{3,80}"},
+               {"name": "region", "label": "News region", "type": "choice", "required": True, "default": "us", "choices": [{"value": "us", "label": "United States"}, {"value": "uk", "label": "United Kingdom"}, {"value": "ca", "label": "Canada"}, {"value": "au", "label": "Australia"}]}],
+    "timeout_min": 2, "outputs": [{"glob": "my-lists/*-trends.json", "upload": True}]}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("presence tools:", sum(1 for k in T if k.startswith("dse.presence")), "tools:", len(T))
