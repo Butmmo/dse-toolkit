@@ -116,6 +116,47 @@ j6 = json.loads((C.LISTS / "orlando-dentists-presence-context.json").read_text(e
 ok("when Ollama is off or the model answers badly, the reading by rules still stands and the PC says so", code6 == 0 and "ai" not in j6 and any("rules only" in x for x in out6) and len(j6["questions"]) >= 7 and C.run_context("orlando-dentists", [].append, ai=True, chat=lambda *a, **k: "nonsense", installed=lambda: ["m"]) == 0 and C.run_context("orlando-dentists", [].append, ai=True, chat=stub, installed=lambda: []) == 0)
 cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))["tools"]["dse.presence_context"]
 ok("the tool offers the AI reading as a switch that is on by default", any(f["name"] == "ai" and f["type"] == "bool" and f.get("default") is True for f in cat["fields"]) and {"flag": "--ai", "field": "ai"} in cat["args"])
+
+# ---- second review fixes
+sec = td / "work" / "secret-plan"; sec.mkdir(parents=True)
+(sec / "content-ideas.md").write_text("""# Content ideas for social media
+- Webhook for posting alerts: https://discord.com/api/webhooks/123456789012345678/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789
+- LinkedIn access token AQXdSP1234567890abcdefghijklmnopqrstuvwxyz
+- Password for Instagram login is Hunter2Hunter2!
+- Five myths about whitening that patients believe
+- A tour of the front desk and how we answer texts
+Follow https://www.instagram.com/reel/Cx123abc/ and https://www.youtube.com/watch?v=abc123 and https://www.instagram.com/orlando.smiles/ and @media screens.
+""", encoding="utf-8")
+scrubbed = C.scrub((sec / "content-ideas.md").read_text(encoding="utf-8"))
+ok("review 2: a Discord webhook address, an unlabelled access token and a 'password for X is Y' line are hidden, and the good lines stay", "discord.com/api/webhooks" not in scrubbed and "AQXdSP1234567890" not in scrubbed and "Hunter2" not in scrubbed and "Five myths about whitening" in scrubbed and "front desk" in scrubbed)
+fr = C.read_file("content-ideas.md", "text", (sec / "content-ideas.md").read_text(encoding="utf-8"))
+tops = " ".join(t for t, _ in fr["topics"])
+ok("review 2: no secret can become a post idea or go to the model: the topics and the digest are clean", "webhooks" not in tops and "AQXdSP" not in tops and "Hunter2" not in tops and any("myths about whitening" in t for t, _ in fr["topics"]) and "Hunter2" not in C.ai_digest([("a.md", (sec / "content-ideas.md").read_text(encoding="utf-8"))]) and "webhooks" not in C.ai_digest([("a.md", (sec / "content-ideas.md").read_text(encoding="utf-8"))]))
+hs = {h for _p, h in fr["handles"]}
+ok("review 2: address paths and style words are not account handles (reel, watch, @media), a real profile still is", not ({"reel", "watch", "media", "Cx123abc"} & hs) and "orlando.smiles" in hs)
+# a sibling folder that starts with the same letters, and a junction to it, are outside the folder
+import os, subprocess
+plan = td / "jt" / "plan"; plan.mkdir(parents=True); priv = td / "jt" / "plan-private"; priv.mkdir()
+(plan / "a-social.md").write_text("social media plan for instagram and linkedin, captions and hashtags, content calendar.", encoding="utf-8")
+(priv / "notes-social.md").write_text("PRIVATE social media plan instagram linkedin captions hashtags content calendar.", encoding="utf-8")
+linked = False
+try:
+    if os.name == "nt":
+        linked = subprocess.run(["cmd", "/c", "mklink", "/J", str(plan / "link"), str(priv)], capture_output=True).returncode == 0
+    else:
+        os.symlink(priv, plan / "link"); linked = True
+except OSError:
+    linked = False
+got = [r for r, _k, _t in C.walk_texts(plan)]
+ok("review 2: a junction or link to a sibling folder that starts with the same letters is not followed (nothing outside the folder is read)" + ("" if linked else " [no junction could be made here]"), "a-social.md" in got and not any("notes-social" in g or g.startswith("link") for g in got))
+ok("review 2: the engine context reader and this reader agree on what is inside a folder", C.cf.inside(plan, plan / "a-social.md") and not C.cf.inside(plan, priv) and not C.cf.inside(plan, str(plan) + "-private") and C.cf.inside(plan, plan))
+# a PDF whose compressed stream expands enormously is read to a limit, not to its full size
+import time, zlib
+bomb = td / "bomb.pdf"
+payload = b"BT (hello social media plan) Tj ET " + b"0" * (120 * 1024 * 1024)
+bomb.write_bytes(b"%PDF-1.4\n1 0 obj\n<< /Filter /FlateDecode >>\nstream\n" + zlib.compress(payload, 9) + b"\nendstream\nendobj\n%%EOF")
+t0 = time.time(); txt = C.cf.read_doc(bomb); dt_ = time.time() - t0
+ok("review 2: a PDF stream that expands 1000 to 1 is cut at a limit: quick, and only a small piece is read", dt_ < 5 and len(txt) < 200_000)
 src = Path(C.__file__).read_text(encoding="utf-8")
 ok("it only reads: one write (its own result file), no delete or move, and the only network call is to this PC's own Ollama", src.count(".write_text(") == 1 and "unlink" not in src and "rename" not in src and "shutil" not in src and "requests" not in src and src.count("urlopen(") == 1 and 'OLLAMA = "http://localhost:11434/api/chat"' in src and "api/tags" not in src)
 ok("no em dash in the file", chr(0x2014) not in src)

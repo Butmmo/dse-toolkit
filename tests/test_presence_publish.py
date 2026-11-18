@@ -147,6 +147,36 @@ out = []
 ok("review fix: when the platform answers with a refusal, nothing went out, so the attempt is cancelled and the text can be tried again", P.post_file(f4, "POST", now + dt.timedelta(days=2), conn, failing(401), out.append) == 1 and not any(e.get("sha") == P.text_sha("linkedin", "acct-two", g4t) for e in P.read_log()) if (g4t := "Yet another different post, about reminders that work. Do you use them?") else False)
 ok("review fix: three real posts a day is still the most, with attempts counted too", "3 a day" in P.rate_problem("linkedin", "acct-two", "zz", now, [{**ent(40), "account": "acct-two", "state": "posted"}, {**ent(90), "account": "acct-two", "state": "attempt"}, {**ent(150), "account": "acct-two", "state": "posted"}]))
 
+
+# ---- second review fixes
+P.LOG.unlink(missing_ok=True)
+st3 = Store(); P.write_accounts([]); P.connect("linkedin", "stale-acct", TOKEN, store=st3, http=fake)
+os.environ["PRESENCE_SECRET_LINKEDIN_STALE_ACCT"] = "OLD" + "o" * 40          # what a runner that started before the reconnect still holds
+ok("review 2: the saved secret wins over a stale copy in the running program's environment (after a reconnect the new token is used)", P.get_secret("linkedin", "stale-acct", st3) == TOKEN)
+os.environ.pop("PRESENCE_SECRET_LINKEDIN_STALE_ACCT", None)
+os.environ["PRESENCE_SECRET_DISCORD_GONE_HOOK"] = HOOK
+fg = P.POSTS / "gone.json"; fg.write_text(json.dumps({**good, "platform": "discord", "account": "gone-hook", "text": "A message for a webhook that was removed. Anyone there?"}), encoding="utf-8")
+calls.clear(); out = []
+ok("review 2: an account that is not in the connected list cannot post, even if an old copy of its webhook is still in the environment", P.post_file(fg, "POST", now, Store(), fake, out.append) == 1 and not any("webhooks" in c[1] for c in calls) and "connect" in out[0].lower())
+os.environ.pop("PRESENCE_SECRET_DISCORD_GONE_HOOK", None)
+P.LOG.unlink(missing_ok=True)
+f5 = P.POSTS / "five.json"; f5.write_text(json.dumps({**good, "account": "stale-acct", "text": "A post that meets a server error on the way. Does it exist?"}), encoding="utf-8")
+out = []
+for code5 in (500, 502, 503, 504):
+    P.LOG.unlink(missing_ok=True); out = []
+    rc5 = P.post_file(f5, "POST", now, st3, failing(code5), out.append)
+    ok(f"review 2: a {code5} from the platform may have come after the post was created, so the attempt stays and the same text is blocked", rc5 == 1 and [e["state"] for e in P.read_log()] == ["attempt"] and "may still have gone out" in out[0] and "answered" in out[0])
+P.LOG.unlink(missing_ok=True); out = []
+ok("review 2: a 4xx refusal (the platform said no) still cancels the attempt", P.post_file(f5, "POST", now, st3, failing(403), out.append) == 1 and P.read_log() == [])
+P.LOG.unlink(missing_ok=True)
+P.STATE.mkdir(parents=True, exist_ok=True)
+P.LOG.write_text('{"at": "2026-11-20T09:00:00", "platform": "linkedin", "account": "stale-acct", "sha": "aaaa", "state": "posted"}', encoding="utf-8")       # no newline at the end (a crash or a hand edit)
+P._log({"at": "2026-11-20T09:40:00", "platform": "linkedin", "account": "stale-acct", "sha": "bbbb", "state": "posted"})
+ok("review 2: a log that does not end in a newline does not swallow the next entry", len(P.read_log()) == 2)
+P.LOG.write_text('5\nnull\n"text"\n[1]\n{"at": "2026-11-20T09:00:00", "platform": "linkedin", "account": "stale-acct", "sha": "aaaa", "state": "posted"}\n', encoding="utf-8")
+ok("review 2: a log line that is valid JSON but not an entry is skipped, and the guards keep working", len(P.read_log()) == 1 and "already" in P.rate_problem("linkedin", "stale-acct", "aaaa", now, P.read_log()))
+P.LOG.unlink(missing_ok=True)
+
 # ---- routing and honesty
 r = subprocess.run([sys.executable, str(ROOT / "dse.py"), "presence", "publish", "accounts"], capture_output=True, text=True)
 ok("python dse.py presence publish ... reaches this module", r.returncode == 0 and "account" in r.stdout.lower())

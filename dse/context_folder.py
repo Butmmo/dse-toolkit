@@ -69,6 +69,12 @@ SECRET_PATTERNS = [
 ]
 
 
+def inside(root, path) -> bool:
+    """True when `path` is `root` or lies below it. Compares real path parts, so a sibling folder that merely starts with the same letters, or a junction to one, is outside."""
+    r, p = Path(os.path.realpath(root)), Path(os.path.realpath(path))
+    return p == r or r in p.parents
+
+
 def redact(text: str) -> str:
     """Hide anything that looks like a key, token or password."""
     t = text or ""
@@ -179,7 +185,7 @@ def _pdf_text(path: Path) -> str:
     for m in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
         blob = m.group(1)
         try:
-            blob = zlib.decompress(blob)
+            blob = zlib.decompressobj().decompress(blob, MAX_READ * 4)
         except Exception:
             pass
         if b"BT" not in blob:
@@ -360,7 +366,7 @@ def scan_folder(root: Path) -> dict:
                 skipped.append({"path": str(full.relative_to(root)).replace(os.sep, "/") + "/", "reason": "a folder that is never read" if d.lower() in FORBIDDEN_DIRS else "hidden or linked folder"})
             elif depth + 1 > MAX_DEPTH:
                 skipped.append({"path": str(full.relative_to(root)).replace(os.sep, "/") + "/", "reason": f"deeper than {MAX_DEPTH} levels"})
-            elif not os.path.realpath(full).startswith(seen_real):
+            elif not inside(root, os.path.realpath(full)):
                 skipped.append({"path": str(full.relative_to(root)).replace(os.sep, "/") + "/", "reason": "leads outside the folder"})
             else:
                 keep.append(d)

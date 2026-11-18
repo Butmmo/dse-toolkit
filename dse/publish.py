@@ -41,7 +41,7 @@ LIMITS = {"linkedin": 3000, "discord": 2000}
 LINKEDIN_VERSION = os.environ.get("PRESENCE_LINKEDIN_VERSION", "202610")   # LinkedIn's API versions are monthly (YYYYMM); change it here if LinkedIn retires this one
 WEBHOOK_RE = re.compile(r"^https://(?:discord|discordapp)\.com/api/webhooks/\d{5,25}/[A-Za-z0-9_-]{20,120}\Z")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._~+/=-]{20,2000}\Z")
-NO_ANSWER = "Could not reach"       # the platform did not answer: the post may or may not have gone out
+NO_ANSWER = "No clear answer from"       # the platform did not answer (or failed on its side after taking the request): the post may or may not have gone out
 PERSON_RE = re.compile(r"^[A-Za-z0-9_-]{4,60}\Z")
 
 
@@ -54,7 +54,8 @@ def secret_name(platform: str, account: str) -> str:
 
 def get_secret(platform: str, account: str, store=None) -> str:
     n = secret_name(platform, account)
-    return (os.environ.get(n, "").strip() or (store or WindowsStore()).get(n)).strip()
+    # The Windows setting is the truth. The running program's environment is only a copy taken when it started: after a reconnect or a remove it can hold an OLD secret, so it is used only when nothing is saved.
+    return ((store or WindowsStore()).get(n) or os.environ.get(n, "")).strip()
 
 
 def mask(s: str) -> str:
@@ -109,7 +110,9 @@ def read_log() -> list[dict]:
     try:
         for line in LOG.read_text(encoding="utf-8").splitlines():
             try:
-                out.append(json.loads(line))
+                e = json.loads(line)
+                if isinstance(e, dict):
+                    out.append(e)
             except ValueError:
                 pass
     except OSError:
@@ -178,7 +181,7 @@ def post_linkedin(text: str, token: str, person: str, http=_http) -> tuple[bool,
     if code == 201:
         urn = hdr.get("x-restli-id", "")
         return True, urn, f"https://www.linkedin.com/feed/update/{urn}/" if urn else ""
-    why = {0: NO_ANSWER + " LinkedIn: check your internet.", 401: "LinkedIn did not accept the token (it may have expired): connect the account again.",
+    why = {0: NO_ANSWER + " LinkedIn: check your internet.", **{c: NO_ANSWER + f" LinkedIn (it answered {c})." for c in range(500, 600)}, 401: "LinkedIn did not accept the token (it may have expired): connect the account again.",
            403: "LinkedIn refused: the token needs the w_member_social permission (add the 'Share on LinkedIn' product to your LinkedIn app, then get a new token).",
            429: "LinkedIn says too many requests: wait and try later."}.get(code, f"LinkedIn answered {code}.")
     return False, f"{why} {resp[:200]}".strip(), ""
@@ -192,7 +195,7 @@ def post_discord(text: str, webhook: str, http=_http) -> tuple[bool, str, str]:
             return True, str(json.loads(resp).get("id", "")), ""
         except ValueError:
             return True, "", ""
-    why = {0: NO_ANSWER + " Discord: check your internet.", 401: "Discord did not accept this webhook (it may have been deleted): connect it again.", 404: "That webhook no longer exists: make a new one in the channel's settings.",
+    why = {0: NO_ANSWER + " Discord: check your internet.", **{c: NO_ANSWER + f" Discord (it answered {c})." for c in range(500, 600)}, 401: "Discord did not accept this webhook (it may have been deleted): connect it again.", 404: "That webhook no longer exists: make a new one in the channel's settings.",
            429: "Discord says too many requests: wait and try later."}.get(code, f"Discord answered {code}.")
     return False, why, ""
 
@@ -223,7 +226,7 @@ def post_file(path: str | Path, approve: str = "", now: dt.datetime | None = Non
             out(f"  - {x}")
         return 1
     pf, acc, text = p["platform"], p["account"], str(p["text"]).strip()
-    secret = get_secret(pf, acc, store)
+    secret = get_secret(pf, acc, store) if any(a["platform"] == pf and a["account"] == acc for a in read_accounts()) else ""
     if approve.strip() != "POST":
         out(preview(p, bool(secret)))
         return 0
@@ -264,8 +267,12 @@ def post_file(path: str | Path, approve: str = "", now: dt.datetime | None = Non
 
 
 def _log(entry: dict) -> None:
+    try:
+        lead = "" if (not LOG.exists() or LOG.stat().st_size == 0 or LOG.read_bytes()[-1:] == b"\n") else "\n"     # a half-written last line must not swallow this entry
+    except OSError:
+        lead = ""
     with LOG.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry) + "\n")
+        fh.write(lead + json.dumps(entry) + "\n")
 
 
 def ask_secret(prompt: str, window: bool = True) -> str:

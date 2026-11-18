@@ -39,6 +39,8 @@ NAME_HINT = re.compile(r"(social|content|calendar|caption|hashtag|instagram|link
 SKIP_PATH = re.compile(r"(^|/)(context/digest|digest\.(md|json)$|engine\.json$|drafts/|sends/|replies/|outcomes/)", re.I)
 HANDLE = re.compile(r"(?<![\w.])@([A-Za-z0-9_.]{3,30})\b")
 PROFILE_URL = re.compile(r"https?://(?:www\.)?(instagram|tiktok|facebook|linkedin\.com/(?:in|company)|youtube|reddit\.com/user|pinterest|x|twitter)\.?(?:com)?/@?([A-Za-z0-9_.-]{3,50})", re.I)
+NOT_HANDLES = {"p", "reel", "reels", "explore", "watch", "intent", "share", "sharer", "tags", "hashtag", "video", "videos", "channel", "c", "user", "users", "in", "company", "groups", "pages", "profile", "stories", "story", "tv", "results", "search", "home", "feed", "login", "signup", "about", "help", "privacy", "terms", "pin", "pins"}
+NOT_AT_WORDS = {"media", "keyframes", "import", "font", "charset", "page", "supports", "container", "layer", "property", "apply", "screen", "tailwind", "namespace", "everyone", "channel", "here", "all", "mention", "example", "handle", "username", "yourname", "name"}
 HASHTAG = re.compile(r"(?<![\w&])#([A-Za-z][A-Za-z0-9_]{2,30})\b")
 CADENCE = re.compile(r"\b(?:post(?:s|ing)?|publish(?:es|ing)?|share|upload)\b[^.\n]{0,40}?\b(?:(\d{1,2}) ?(?:x|times)(?: a| per|/)? ?(day|week|month)|(daily|every day|weekly|once a week|twice a week|every other day|three times a week))", re.I)
 CADENCE2 = re.compile(r"\b(\d{1,2}) ?(?:x|times) ?(?:a|per|/) ?(day|week|month)\b", re.I)
@@ -51,8 +53,20 @@ CAL_PLATFORM = {"platform", "channel", "network"}
 CAL_TOPIC = {"topic", "idea", "post", "caption", "title", "theme", "hook", "content", "subject"}
 
 
+WEBHOOK = re.compile(r"https?://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\S+", re.I)
+OPAQUE = re.compile(r"\b(?=[A-Za-z0-9_\-.]*\d)(?=[A-Za-z0-9_\-.]*[A-Za-z])[A-Za-z0-9_\-.]{28,}\b")
+SECRETY_LINE = re.compile(r"\b(password|passwd|passcode|token|secret|webhook|api[ _-]?key|credentials?|login (details|info))\b", re.I)
+
+
+def scrub(text: str) -> str:
+    """cf.redact plus what Presence itself handles: Discord webhook addresses, long opaque tokens, and any line that talks about a password, token, secret, webhook or key (the whole line is dropped, so nothing around a secret survives)."""
+    t = WEBHOOK.sub("[hidden]", cf.redact(text or ""))
+    t = OPAQUE.sub("[hidden]", t)
+    return "\n".join("[line hidden]" if SECRETY_LINE.search(ln) else ln for ln in t.splitlines())
+
+
 def _clean(s: str, n: int = 200) -> str:
-    return re.sub(r"\s+", " ", cf.redact(s)).strip(" -*#>|\t\"'“”")[:n]
+    return re.sub(r"\s+", " ", scrub(s)).strip(" -*#>|\t\"'“”")[:n]
 
 
 # ------------------------------------------------------------------ the folders a Function inherits
@@ -81,7 +95,7 @@ def walk_texts(root: Path):
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         depth = len(Path(dirpath).relative_to(root).parts)
         dirnames[:] = [d for d in sorted(dirnames) if d.lower() not in cf.FORBIDDEN_DIRS and not d.startswith(".") and not (Path(dirpath) / d).is_symlink()
-                       and depth + 1 <= cf.MAX_DEPTH and os.path.realpath(Path(dirpath) / d).startswith(str(root))]
+                       and depth + 1 <= cf.MAX_DEPTH and cf.inside(root, Path(dirpath) / d)]
         for fn in sorted(filenames):
             p = Path(dirpath) / fn
             rel = str(p.relative_to(root)).replace(os.sep, "/")
@@ -147,15 +161,17 @@ def _calendar_rows(text: str) -> list[dict]:
 
 def read_file(rel: str, kind: str, text: str) -> dict:
     """What one file says about social media. Everything is short, redacted text; counts, not copies."""
-    red = cf.redact(text)
+    red = scrub(text)
     f: dict = {"platforms": platform_counts(red), "handles": [], "cadence": [], "themes": [], "voice": [], "goals": [], "audience": [], "hashtags": Counter(), "topics": [], "drafts": 0, "others": []}
     for m in PROFILE_URL.finditer(red):
         host = m.group(1).lower().replace("linkedin.com/in", "linkedin").replace("linkedin.com/company", "linkedin").replace("reddit.com/user", "reddit").replace("twitter", "x")
-        f["handles"].append((host, m.group(2)))
+        if m.group(2).lower() not in NOT_HANDLES and not m.group(2).lower().startswith(("watch", "reel")):
+            f["handles"].append((host, m.group(2)))
     for m in HANDLE.finditer(red):
         window = red[max(0, m.start() - 60): m.end() + 60].lower()
         host = next((k for k, rx in PLATFORM_WORDS.items() if re.search(rx, window, re.I)), "")
-        f["handles"].append((host, m.group(1)))
+        if m.group(1).lower() not in NOT_AT_WORDS:
+            f["handles"].append((host, m.group(1)))
     for m in CADENCE.finditer(red):
         f["cadence"].append(_clean(m.group(0), 90))
     for m in CADENCE2.finditer(red):
@@ -281,7 +297,7 @@ def ai_digest(sources: list[tuple[str, str]], budget: int = AI_BUDGET) -> str:
     for rel, text in sources:
         if left < 200:
             break
-        take = cf.redact(re.sub(r"\n{3,}", "\n\n", text.strip()))[: min(left, 1100)]
+        take = scrub(re.sub(r"\n{3,}", "\n\n", text.strip()))[: min(left, 1100)]
         parts.append(f"--- {rel}\n{take}")
         left -= len(take) + len(rel) + 6
     return "\n".join(parts)
