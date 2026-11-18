@@ -21,7 +21,7 @@ T["dse.presence_insights"] = {
 LINE = r"[^\x00-\x1f-][^\x00-\x1f]*"
 T["dse.presence_graphic"] = {
     "label": "Presence: make a picture for a post", "group": "Grow",
-    "help": ("Makes one finished picture in the Citadel colours (ink, cream or gold) from your words: a quote, a big number or phrase (stat), a tip or a carousel cover, in post, square, story, landscape or "
+    "help": ("Makes one finished picture in one of eight looks (ink, cream, gold, midnight, sage, blush, terracotta, mono) from your words: a quote, a big number or phrase (stat), a tip or a carousel cover, in post, square, story, landscape or "
              "thumbnail size. You can put your own picture behind the words (it is darkened so the words stay readable) and your logo top left: put them in the my-pictures folder first. The words are "
              "fitted so nothing runs off the edge. The PNG appears in Presence > Studio under 'Made by your PC', and in the my-graphics folder. Nothing is posted: you post it yourself."),
     "script": "dse.py",
@@ -29,7 +29,8 @@ T["dse.presence_graphic"] = {
              {"opt": "--footer", "field": "footer"}, {"opt": "--size", "field": "size"}, {"opt": "--theme", "field": "theme"}, {"opt": "--picture", "field": "picture"}, {"opt": "--logo", "field": "logo"}],
     "fields": [
         {"name": "layout", "label": "Layout", "type": "choice", "required": True, "default": "quote", "choices": [
-            {"value": "quote", "label": "Quote or statement"}, {"value": "stat", "label": "Big number or phrase (stat)"}, {"value": "tip", "label": "Tip"}, {"value": "cover", "label": "Carousel cover"}]},
+            {"value": "quote", "label": "Quote or statement"}, {"value": "stat", "label": "Big number or phrase (stat)"}, {"value": "tip", "label": "Tip"}, {"value": "cover", "label": "Carousel cover"},
+            {"value": "question", "label": "Question"}, {"value": "myth", "label": "Myth and fact (headline = the myth, smaller words = the fact)"}]},
         {"name": "headline", "label": "The main words (a number for a stat)", "type": "text", "required": True, "max": 200, "pattern": LINE},
         {"name": "body", "label": "Smaller words under it (optional)", "type": "text", "required": False, "max": 300, "pattern": LINE},
         {"name": "kicker", "label": "Small label above (optional, for example: What I found)", "type": "text", "required": False, "max": 40, "pattern": LINE},
@@ -38,7 +39,8 @@ T["dse.presence_graphic"] = {
             {"value": "post", "label": "Post or carousel slide, portrait 1080x1350"}, {"value": "square", "label": "Square 1080x1080"}, {"value": "story", "label": "Story or reel cover 1080x1920"},
             {"value": "landscape", "label": "Landscape 1920x1080"}, {"value": "thumb", "label": "Video thumbnail 1280x720"}]},
         {"name": "theme", "label": "Colours", "type": "choice", "required": True, "default": "ink", "choices": [
-            {"value": "ink", "label": "Ink (dark with gold)"}, {"value": "cream", "label": "Cream (light)"}, {"value": "gold", "label": "Gold"}]},
+            {"value": "ink", "label": "Ink (dark with gold)"}, {"value": "cream", "label": "Cream (light)"}, {"value": "gold", "label": "Gold"}, {"value": "midnight", "label": "Midnight (deep blue)"}, {"value": "sage", "label": "Sage (soft green)"},
+            {"value": "blush", "label": "Blush (soft pink)"}, {"value": "terracotta", "label": "Terracotta (warm clay)"}, {"value": "mono", "label": "Mono (black on white)"}]},
         {"name": "picture", "label": "Your picture behind the words (optional)", "type": "file", "required": False, "glob": "my-pictures/*"},
         {"name": "logo", "label": "Your logo (optional)", "type": "file", "required": False, "glob": "my-pictures/*"}],
     "timeout_min": 2, "outputs": [{"glob": "my-graphics/*.png", "upload": True}]}

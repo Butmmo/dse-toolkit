@@ -295,6 +295,31 @@ def ideas_from_json(text: str) -> list[tuple[str, str]]:
     return out[:12]
 
 
+HEX_COLOR = re.compile(r"(?<![0-9A-Za-z&])#([0-9A-Fa-f]{6})(?![0-9A-Za-z])")
+STYLE_NAME = re.compile(r"(brand|style|palette|colou?r|design|theme|identity|guideline)", re.I)
+FONT_NAMES = ("Playfair Display", "DM Serif Display", "Cormorant", "Merriweather", "Georgia", "Lora", "Times New Roman", "Montserrat", "Poppins", "Inter", "Roboto", "Open Sans", "Lato", "Raleway", "Oswald",
+              "DM Sans", "Nunito", "Source Sans", "Segoe UI", "Arial", "Helvetica", "Bebas Neue")
+
+
+def style_from(items: list) -> dict | None:
+    """The colours (hex codes, most used first) and fonts a brand or plan file names: only values that really appear in the text. None when there is no colour. Pure white and pure black are kept only when nothing else is named."""
+    cols: Counter = Counter()
+    fonts: Counter = Counter()
+    for _rel, text in items:
+        for m in HEX_COLOR.finditer(text):
+            cols["#" + m.group(1).upper()] += 1
+        for f in FONT_NAMES:
+            n = len(re.findall(r"(?<![A-Za-z])" + re.escape(f) + r"(?![A-Za-z])", text))
+            if n:
+                fonts[f] += n
+    colors = [c for c, _ in cols.most_common(12)]
+    real = [c for c in colors if c not in ("#FFFFFF", "#000000")]
+    colors = (real or colors)[:6]
+    if not colors:
+        return None
+    return {"colors": colors, "fonts": [f for f, _ in fonts.most_common(2)]}
+
+
 def brand_files(root: Path) -> list[str]:
     """The names (never the contents) of files in a brand, branding or logo folder: pictures and design files that cannot be read as text but show a brand exists."""
     out: list[str] = []
@@ -405,7 +430,7 @@ def combine(per_file: list[tuple[str, int, dict]]) -> dict:
     named = {h for (p, h) in handles if p}
     hs = [{"platform": p, "handle": h, "mentions": n} for (p, h), n in sorted(handles.items(), key=lambda kv: -kv[1]) if len(h) >= 3 and not h.lower().endswith((".com", ".org", ".net")) and (p or h not in named)]
     return {"platforms": [{"key": k, "mentions": n} for k, n in plats.most_common(6)], "handles": hs[:12], "cadence": cadence[:6], "themes": themes[:10], "voice": voice[:4], "goals": goals[:4],
-            "audience": audience[:4], "hashtags": [h for h, _ in tags.most_common(12)], "topics": topics[:24], "drafts": drafts, "others": sorted(others), "schedule": sched, "times": times[:3], "brand": []}
+            "audience": audience[:4], "hashtags": [h for h, _ in tags.most_common(12)], "topics": topics[:24], "drafts": drafts, "others": sorted(others), "schedule": sched, "times": times[:3], "brand": [], "style": None}
 
 
 def questions_for(findings: dict) -> list[dict]:
@@ -440,6 +465,10 @@ def questions_for(findings: dict) -> list[dict]:
     if findings.get("times"):
         q.append({"id": "times", "kind": "times", "text": f"Your plan says when to post: \"{findings['times'][0]}\". Keep that in your notes so Presence's reminders follow your times?",
                   "options": [{"value": "note", "label": "Yes, keep it"}, {"value": "skip", "label": "No"}]})
+    if findings.get("style"):
+        st = findings["style"]
+        q.append({"id": "style", "kind": "style", "text": f"Your plan names these brand colours: {', '.join(st['colors'][:4])}" + (f" and the font{'s' if len(st['fonts']) > 1 else ''} {' and '.join(st['fonts'])}" if st["fonts"] else "") + ". Use them as your own look for slides, pictures and videos (made readable, so the words never get lost)?",
+                  "options": [{"value": "adopt", "label": "Yes, use my brand look"}, {"value": "skip", "label": "No, keep Presence's looks"}]})
     if findings.get("brand"):
         q.append({"id": "brand", "kind": "brand", "text": f"I found brand files ({', '.join(findings['brand'][:3])}). Pictures cannot be read as text, but your logo can go on every slide: put it in the toolkit's my-pictures folder. Note that for this Function?",
                   "options": [{"value": "note", "label": "Yes, note it"}, {"value": "skip", "label": "No"}]})
@@ -548,11 +577,14 @@ def run_context(engine: str, out=print, today: dt.date | None = None, ai: bool =
         return 1
     scored: list[tuple[str, int, dict, str]] = []
     texts: dict[str, str] = {}
+    style_items: list[tuple[str, str]] = []
     scanned = 0
     for root in folders:
         for rel, kind, text in walk_texts(root):
             scanned += 1
             sc = social_score(rel, text)
+            if (sc >= 3 or STYLE_NAME.search(rel)) and len(style_items) < 60:
+                style_items.append((rel, text))
             if sc >= 3:
                 scored.append((f"{root.name}/{rel}", sc, read_file(rel, kind, text), kind))
                 texts[f"{root.name}/{rel}"] = text
@@ -563,6 +595,7 @@ def run_context(engine: str, out=print, today: dt.date | None = None, ai: bool =
         return 0
     findings = combine([(r, s, f) for r, s, f, _ in keep])
     findings["brand"] = [b for root in folders for b in brand_files(root)][:8]
+    findings["style"] = style_from(style_items)
     questions = questions_for(findings)
     reading = ai_read([(r, texts[r]) for r, _s, _f, _k in keep if r in texts][:6], chat=chat, installed=installed) if ai else None
     if reading:

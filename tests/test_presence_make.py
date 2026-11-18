@@ -156,6 +156,25 @@ if ff:
     lst = odd / "list.txt"; lst.write_text("file '" + clip.as_posix().replace("'", "'\\''") + "'\n", encoding="utf-8")
     r8 = subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(odd / "o.mp4")], capture_output=True, text=True)
     ok("review fix: a folder name with an apostrophe does not break the join list", r8.returncode == 0)
+
+# ---- phase 12: design kits and layouts (same table as the app), data-driven layouts, own brand kit
+ok("there are eight looks and six layouts, and the table matches the app's kit ids", set(M.THEMES) == {"ink", "cream", "gold", "midnight", "sage", "blush", "terracotta", "mono"} and set(M.LAYOUTS) == {"quote", "stat", "tip", "cover", "question", "myth"})
+ok("every built-in kit is readable: text, accent and muted words keep enough contrast on the page", all(M._contrast(k[0], k[1]) >= 4.5 and M._contrast(k[0], k[2]) >= 3.0 and M._contrast(k[0], k[3]) >= 3.0 for k in M.KITS.values()))
+ok("a text asks for its layout: a figure is a stat, a question a question, a myth a myth, a quote a quote, else the fallback", M.auto_layout("4 of 6 dentists cannot be texted") == "stat" and M.auto_layout("73% of patients message first") == "stat" and M.auto_layout("Do you answer texts in a minute?") == "question" and M.auto_layout("Myth: patients prefer to call") == "myth" and M.auto_layout("“Reply in a minute”") == "quote" and M.auto_layout("Why replies win", "", "tip") == "tip")
+ok("the big figure is split from its words, and a text with no figure has none", M.stat_of("4 of 6 dentists cannot be texted") == ("4 of 6", "dentists cannot be texted") and M.stat_of("In the news (2026-11-18): 73% of patients message first")[0] == "73%" and M.stat_of("Reply fast") is None)
+kit = {"bg": "#1A4D3A", "fg": "#F4E9D8", "accent": "#F2B84B", "muted": "#B7C9BE", "head": "serif", "motif": "arc"}
+pk = M.parse_kit(kit)
+ok("the student's own kit is used as given when readable", pk["bg"] == "#1A4D3A" and pk["head"] == "serif" and pk["motif"] == "arc")
+bad = M.parse_kit({"bg": "#222222", "fg": "#333333", "accent": "#444444", "head": "wingdings", "motif": "x"})
+ok("an unreadable or odd kit is made safe: words that cannot be read become black or white, unknown styles fall back, junk falls back to the named look", M._contrast(bad["bg"], bad["fg"]) >= 4.5 and bad["head"] == "sans" and bad["motif"] == "bar" and M.parse_kit("junk", "sage")["bg"] == "#E7EEE4" and M.parse_kit({"bg": "red", "fg": "#fff", "accent": "#000"}, "ink")["bg"] == "#1A1410")
+for lay in M.LAYOUTS:
+    pth = M.make_graphic(lay, "4 of 6 dentists cannot be texted" if lay != "question" else "Do you answer in a minute?", "Source: my list", "Finding", "@ada", "post", "ink", out_path=td / f"k-{lay}.png", kit=kit)
+    im = Image.open(pth).convert("RGB")
+    ok(f"the {lay} layout draws in the student's own kit at the right size, on the kit's page colour", im.size == (1080, 1350) and im.getpixel((540, 1340)) == (0x1A, 0x4D, 0x3A))
+P = M.parse_project({"title": "T", "kit": kit, "scenes": [{"text": "4 of 6 dentists", "voice": "x"}]})
+ok("a video project carries its kit, and a carousel too; a non-object kit is dropped", P["kit"] == kit and M.parse_carousel({"slides": [{"title": "a"}], "kit": kit})["kit"] == kit and M.parse_carousel({"slides": [{"title": "a"}], "kit": "x"})["kit"] is None)
+cf = M.make_carousel({"title": "Kits", "kit": kit, "slides": [{"title": "Cover"}, {"title": "73% of patients message first", "body": "Source: survey"}, {"title": "Last", "body": "Ask me."}]}, out_dir=td / "kc", say=lambda *_: None)
+ok("a carousel in an own kit renders every slide, with the figure slide chosen from its words", len(cf) == 3 and all(Image.open(f).getpixel((540, 1340)) == (0x1A, 0x4D, 0x3A) for f in cf))
 src = Path(M.__file__).read_text(encoding="utf-8")
 ok("nothing here posts or sends anything: the only network use is the one-time voice download (a GET from the project's release page)", "urllib" not in src and "smtplib" not in src and ".post(" not in src and src.count("requests.get(") == 1 and src.index("requests.get(") > src.index("def install_kokoro") and "github.com/thewh1teagle/kokoro-onnx/releases/download" in src)
 ok("no em dash in the file", chr(0x2014) not in src)

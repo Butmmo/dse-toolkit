@@ -8628,7 +8628,7 @@
     "dse.presence_graphic": {
       "label": "Presence: make a picture for a post",
       "group": "Grow",
-      "help": "Makes one finished picture in the Citadel colours (ink, cream or gold) from your words: a quote, a big number or phrase (stat), a tip or a carousel cover, in post, square, story, landscape or thumbnail size. You can put your own picture behind the words (it is darkened so the words stay readable) and your logo top left: put them in the my-pictures folder first. The words are fitted so nothing runs off the edge. The PNG appears in Presence > Studio under 'Made by your PC', and in the my-graphics folder. Nothing is posted: you post it yourself.",
+      "help": "Makes one finished picture in one of eight looks (ink, cream, gold, midnight, sage, blush, terracotta, mono) from your words: a quote, a big number or phrase (stat), a tip or a carousel cover, in post, square, story, landscape or thumbnail size. You can put your own picture behind the words (it is darkened so the words stay readable) and your logo top left: put them in the my-pictures folder first. The words are fitted so nothing runs off the edge. The PNG appears in Presence > Studio under 'Made by your PC', and in the my-graphics folder. Nothing is posted: you post it yourself.",
       "script": "dse.py",
       "args": [
         {
@@ -8697,6 +8697,14 @@
             {
               "value": "cover",
               "label": "Carousel cover"
+            },
+            {
+              "value": "question",
+              "label": "Question"
+            },
+            {
+              "value": "myth",
+              "label": "Myth and fact (headline = the myth, smaller words = the fact)"
             }
           ]
         },
@@ -8779,6 +8787,26 @@
             {
               "value": "gold",
               "label": "Gold"
+            },
+            {
+              "value": "midnight",
+              "label": "Midnight (deep blue)"
+            },
+            {
+              "value": "sage",
+              "label": "Sage (soft green)"
+            },
+            {
+              "value": "blush",
+              "label": "Blush (soft pink)"
+            },
+            {
+              "value": "terracotta",
+              "label": "Terracotta (warm clay)"
+            },
+            {
+              "value": "mono",
+              "label": "Mono (black on white)"
             }
           ]
         },

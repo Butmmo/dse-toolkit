@@ -38,18 +38,97 @@ KOKORO_VOICE = re.compile(r"^[a-z]{2}_[a-z]{2,12}$")
 DEFAULT_KOKORO_VOICE = "af_sarah"
 
 SIZES = {"post": (1080, 1350), "square": (1080, 1080), "story": (1080, 1920), "landscape": (1920, 1080), "thumb": (1280, 720)}
-THEMES = {  # background, text, accent
-    "ink": ("#0f1115", "#f4efe6", "#d4a942"),
-    "cream": ("#f6f0e4", "#1c1c1c", "#8a6a1f"),
-    "gold": ("#d4a942", "#15130f", "#15130f"),
+# Design kits: background, text, accent, muted, headline style, motif. The same table as the app's src/lib/presence-design.ts, so a picture made here looks like the slide drawn in Citadel.
+KITS = {
+    "ink": ("#1A1410", "#FBF6E9", "#C99A3B", "#B9AD91", "serif", "bar"),
+    "cream": ("#FBF6E9", "#1A1410", "#7A5A00", "#6B5D3F", "serif", "bar"),
+    "gold": ("#C99A3B", "#1A1410", "#4A3300", "#3D2E10", "sans", "corner"),
+    "midnight": ("#0E1B2C", "#EEF3F8", "#5AB0FF", "#9FB2C8", "sans", "arc"),
+    "sage": ("#E7EEE4", "#1D2B22", "#3F7D58", "#566B5C", "serif", "dots"),
+    "blush": ("#FBE9E6", "#3A1F22", "#C0485A", "#7B5459", "serif", "arc"),
+    "terracotta": ("#A94A2A", "#FFF3EA", "#FFD9B0", "#F2C9AE", "display", "corner"),
+    "mono": ("#FFFFFF", "#111111", "#111111", "#555555", "display", "none"),
 }
-LAYOUTS = ("quote", "stat", "tip", "cover")
+THEMES = tuple(KITS)
+HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+HEADS = ("serif", "sans", "display")
+MOTIFS = ("bar", "arc", "corner", "dots", "none")
+LAYOUTS = ("quote", "stat", "tip", "cover", "question", "myth")
+
+
+def _lum(hexv: str) -> float:
+    def c(v):
+        v = v / 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hexv[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
+
+
+def _contrast(a: str, b: str) -> float:
+    hi, lo = sorted((_lum(a), _lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _readable(bg: str, want: str, floor: float = 4.5) -> str:
+    if HEX.match(want) and _contrast(bg, want) >= floor:
+        return want.upper()
+    return "#111111" if _contrast(bg, "#111111") >= _contrast(bg, "#FFFFFF") else "#FFFFFF"
+
+
+def parse_kit(raw: object = None, theme: str = "ink") -> dict:
+    """A design kit as a plain dict: the student's own kit (colours that must be real hex values, words made readable) or a built-in one by name."""
+    base = KITS.get(theme if theme in KITS else "ink")
+    d = dict(zip(("bg", "fg", "accent", "muted", "head", "motif"), base))
+    if isinstance(raw, dict) and all(HEX.match(str(raw.get(k, ""))) for k in ("bg", "fg", "accent")):
+        bg = str(raw["bg"]).upper()
+        d.update(bg=bg, fg=_readable(bg, str(raw["fg"])), accent=_readable(bg, str(raw["accent"]), 3.0),
+                 muted=str(raw["muted"]).upper() if HEX.match(str(raw.get("muted", ""))) and _contrast(bg, str(raw["muted"])) >= 3.0 else _readable(bg, str(raw["fg"]), 3.0),
+                 head=raw.get("head") if raw.get("head") in HEADS else "sans", motif=raw.get("motif") if raw.get("motif") in MOTIFS else "bar")
+    return d
+
+
+STAT = re.compile(r"^(\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s*(?:of|out of|in)\s*\d{1,3}(?:[,.]\d{3})*|\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s?(?:%|x|k|m|bn|billion|million)?)(?=\s|[,.:;]|$)\s*(.*)$", re.I | re.S)
+STAT_ANY = re.compile(r"(\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s?%|\$\s?\d[\d,.]*\s?(?:billion|million|bn|m|k)?)", re.I)
+
+
+def stat_of(text: str):
+    """(big figure, the words after it) for a text that leads with a number or has a percentage or an amount in it, else None. Mirrors statOf in the app."""
+    t = re.sub(r"^In the news \([^)]*\):\s*", "", str(text or "").strip(), flags=re.I)
+    m = STAT.match(t)
+    if m:
+        return m.group(1).strip()[:14], m.group(2).strip()
+    m = STAT_ANY.search(t)
+    return (re.sub(r"\s+", " ", m.group(1)).strip()[:14], re.sub(r"^[\s,:;-]+", "", t.replace(m.group(1), "")).strip()) if m else None
+
+
+def auto_layout(title: str, body: str = "", fallback: str = "cover") -> str:
+    """The layout a text asks for: a figure gets the big-number layout, a question the question layout, a myth the two-part layout, a quote the quote layout."""
+    t = str(title or "").strip()
+    if stat_of(t) and stat_of(t)[0] and len(t) < 160:
+        return "stat"
+    if re.match(r"^myth\b", t, re.I):
+        return "myth"
+    if t.endswith("?") and len(str(body or "")) < 160:
+        return "question"
+    if t[:1] in ('"', "\u201c"):
+        return "quote"
+    return fallback
+
+
 FONT_DIR = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
 
 
-def _font(bold: bool, size: int):
+def _font(bold: bool, size: int, head: str = ""):
+    """A font from this PC: the headline styles are serif (Georgia), sans (Segoe UI) and display (Arial Black); body text is always sans."""
     from PIL import ImageFont
-    names = (["georgiab.ttf", "arialbd.ttf", "segoeuib.ttf"] if bold else ["georgia.ttf", "arial.ttf", "segoeui.ttf"])
+    if head == "serif":
+        names = ["georgiab.ttf", "georgia.ttf", "arialbd.ttf"]
+    elif head == "display":
+        names = ["ariblk.ttf", "arialbd.ttf", "segoeuib.ttf"]
+    elif head == "sans":
+        names = ["segoeuib.ttf", "arialbd.ttf"]
+    else:
+        names = (["georgiab.ttf", "arialbd.ttf", "segoeuib.ttf"] if bold else ["georgia.ttf", "arial.ttf", "segoeui.ttf"])
     for n in names:
         try:
             return ImageFont.truetype(str(FONT_DIR / n), size)
@@ -76,11 +155,11 @@ def _wrap(draw, text: str, font, width: int) -> list[str]:
     return lines
 
 
-def _fit(draw, text: str, bold: bool, width: int, height: int, start: int, floor: int = 22):
+def _fit(draw, text: str, bold: bool, width: int, height: int, start: int, floor: int = 22, head: str = ""):
     """Biggest font size (from start down to floor) whose wrapped text fits the box. Returns (font, lines, line_height)."""
     size = start
     while True:
-        f = _font(bold, size)
+        f = _font(bold, size, head)
         lines = _wrap(draw, text, f, width)
         lh = int(size * 1.22)
         if len(lines) * lh <= height or size <= floor:
@@ -96,8 +175,30 @@ def _cover(img, w: int, h: int):
     return img.crop((x, y, x + w, y + h))
 
 
+def _motif(img, k: dict, W: int, H: int, pad: int):
+    """A quiet shape that gives the page a signature (a bar, arcs, a corner, dots) without taking attention from the words."""
+    from PIL import Image, ImageDraw
+    if k["motif"] in ("none", "bar"):
+        return img
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    r, g, b = (int(k["accent"][i:i + 2], 16) for i in (1, 3, 5))
+    if k["motif"] == "arc":
+        for i in range(3):
+            rad = int(W * 0.21) + i * int(W * 0.065)
+            d.arc((W - rad, -rad, W + rad, rad), 0, 180, fill=(r, g, b, 90), width=max(8, int(W * 0.013)))
+    elif k["motif"] == "corner":
+        d.polygon([(W, 0), (W - int(W * 0.33), 0), (W, int(W * 0.33))], fill=(r, g, b, 80))
+    elif k["motif"] == "dots":
+        for row in range(5):
+            for col in range(5):
+                cx, cy = W - pad - col * int(W * 0.04), pad + row * int(W * 0.04)
+                d.ellipse((cx - 7, cy - 7, cx + 7, cy + 7), fill=(r, g, b, 90))
+    return Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
+
+
 def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kicker: str = "", footer: str = "", size: str = "post", theme: str = "ink",
-                 picture: str = "", logo: str = "", out_path: str | Path | None = None) -> Path:
+                 picture: str = "", logo: str = "", out_path: str | Path | None = None, kit: dict | None = None) -> Path:
     from PIL import Image, ImageDraw
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {', '.join(LAYOUTS)}")
@@ -108,17 +209,18 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
     if not str(headline).strip():
         raise ValueError("The headline is empty: write the words that go on the picture.")
     W, H = SIZES[size]
-    bg, fg, accent = THEMES[theme]
-    img = Image.new("RGB", (W, H), bg)
+    k = parse_kit(kit, theme)
+    img = Image.new("RGB", (W, H), k["bg"])
     if picture:
         pp = _resolve(picture, PICS)
         photo = _cover(Image.open(pp).convert("RGB"), W, H)
         shade = Image.new("RGB", (W, H), "#0f1115")
         img = Image.blend(photo, shade, 0.62)
-        fg, accent = "#f6f0e4", "#d4a942"
-    d = ImageDraw.Draw(img)
+        k = {**k, "fg": "#F6F0E4", "muted": "#D9CFB5"}
     pad = int(W * 0.09)
     inner = W - 2 * pad
+    img = _motif(img, k, W, H, pad)
+    d = ImageDraw.Draw(img)
     top = pad
     if logo:
         lg = Image.open(_resolve(logo, PICS)).convert("RGBA")
@@ -126,32 +228,86 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
         lg = lg.resize((max(1, int(lg.width * hgt / lg.height)), hgt), Image.LANCZOS)
         img.paste(lg, (pad, pad), lg)
         top = pad + hgt + int(H * 0.02)
-    # accent bar
-    d.rectangle((pad, top, pad + int(W * 0.12), top + 8), fill=accent)
+    hd, fg, accent, muted = k["head"], k["fg"], k["accent"], k["muted"]
+    if k["motif"] == "bar":
+        d.rectangle((pad, top, pad + int(W * 0.12), top + 8), fill=accent)
     y = top + 40
-    if kicker.strip():
-        kf = _font(True, max(26, int(W * 0.03)))
-        d.text((pad, y), kicker.strip().upper()[:40], font=kf, fill=accent)
+    footer_y = H - pad - int(W * 0.03)
+    kk = kicker.strip().upper()[:40]
+    if kk and layout not in ("question", "myth"):
+        d.text((pad, y), kk, font=_font(True, max(26, int(W * 0.03)), "sans"), fill=accent)
         y += int(W * 0.03) + 36
-    foot_h = int(H * 0.08) if footer.strip() else 0
-    avail = H - y - pad - foot_h
-    body_h = int(avail * 0.30) if body.strip() else 0
-    head_h = avail - body_h - (30 if body.strip() else 0)
-    start = {"stat": int(W * 0.30), "cover": int(W * 0.12), "quote": int(W * 0.095), "tip": int(W * 0.085)}[layout]
-    hf, hl, hlh = _fit(d, headline.strip(), True, inner, head_h, start)
-    # a stat sits low in its box, a quote sits in the middle, others from the top
-    used = len(hl) * hlh
-    hy = y + (head_h - used) // 2 if layout in ("stat", "quote") else y
-    for i, line in enumerate(hl):
-        d.text((pad, hy + i * hlh), line, font=hf, fill=accent if layout == "stat" else fg)
-    if body.strip():
-        bf, bl, blh = _fit(d, body.strip(), False, inner, body_h, int(W * 0.045))
-        by = y + head_h + 30
-        for i, line in enumerate(bl):
-            d.text((pad, by + i * blh), line, font=bf, fill=fg)
+    area_bottom = footer_y - (int(H * 0.04) if footer.strip() else 0)
+    text = headline.strip()
+    if layout == "stat":
+        st = stat_of(text)
+        big, rest = (st if st else (text[:14], ""))
+        bf, bl, blh = _fit(d, big, True, inner, int(H * 0.30), int(W * 0.30), 60, "display" if hd == "display" else hd)
+        by = y + int(H * 0.06)
+        d.text((pad, by), bl[0], font=bf, fill=accent)
+        by += blh + 20
+        d.rectangle((pad, by, pad + int(W * 0.15), by + 8), fill=accent)
+        words = rest or body.strip()
+        if words:
+            wf, wl, wlh = _fit(d, words, True, inner, area_bottom - by - int(H * 0.12), int(W * 0.062), 28, "sans")
+            for i, line in enumerate(wl):
+                d.text((pad, by + 40 + i * wlh), line, font=wf, fill=fg)
+        src = re.sub(r"^Source:\s*", "", body.strip()) if (rest and body.strip().lower().startswith("source")) else ""
+        if src:
+            d.text((pad, area_bottom - int(W * 0.04)), ("Source: " + src)[:80], font=_font(False, max(24, int(W * 0.03))), fill=muted)
+    elif layout == "question":
+        qf = _font(True, int(W * 0.95), "serif")
+        qb = d.textbbox((0, 0), "?", font=qf)
+        r, g, b = (int(accent[i:i + 2], 16) for i in (1, 3, 5))
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0)); ImageDraw.Draw(layer).text((W - (qb[2] - qb[0]) - 30, -qb[1] + 40), "?", font=qf, fill=(r, g, b, 46))
+        img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB"); d = ImageDraw.Draw(img)
+        hf, hl, hlh = _fit(d, text, True, inner, int(H * 0.5), int(W * 0.10), 40, hd)
+        hy = max(y + 40, (H - len(hl) * hlh) // 2 - 40)
+        for i, line in enumerate(hl):
+            d.text((pad, hy + i * hlh), line, font=hf, fill=fg)
+        d.text((pad, hy + len(hl) * hlh + 40), (body.strip() or "Tell me below.")[:60], font=_font(True, int(W * 0.043), "sans"), fill=accent)
+    elif layout == "quote":
+        d.text((pad - 10, y - 20), "\u201c", font=_font(True, int(W * 0.32), "serif"), fill=accent)
+        qtext = text.strip('"\u201c\u201d')
+        hf, hl, hlh = _fit(d, qtext, True, inner, int(H * 0.42), int(W * 0.078), 36, "serif")
+        hy = max(y + int(H * 0.16), (H - len(hl) * hlh) // 2 + 30)
+        for i, line in enumerate(hl):
+            d.text((pad, hy + i * hlh), line, font=hf, fill=fg)
+        ly = hy + len(hl) * hlh + 30
+        d.rectangle((pad, ly, pad + int(W * 0.08), ly + 6), fill=accent)
+        if body.strip():
+            d.text((pad, ly + 30), body.strip()[:60], font=_font(True, int(W * 0.037), "sans"), fill=muted)
+    elif layout == "myth":
+        mt = re.sub(r"^myth:\s*", "", text, flags=re.I)
+        d.text((pad, y + 10), "MYTH", font=_font(True, int(W * 0.037), "sans"), fill=muted)
+        mf, ml, mlh = _fit(d, mt, True, inner, int(H * 0.22), int(W * 0.07), 34, hd)
+        my = y + 80
+        for i, line in enumerate(ml):
+            d.text((pad, my + i * mlh), line, font=mf, fill=muted)
+        d.line((pad, my + mlh // 2, pad + int(d.textlength(ml[0], font=mf)), my + mlh // 2), fill=accent, width=6)
+        fy = max(my + len(ml) * mlh + 90, int(H * 0.53))
+        d.rectangle((pad, fy - 50, pad + inner, fy - 46), fill=accent)
+        d.text((pad, fy), "FACT", font=_font(True, int(W * 0.037), "sans"), fill=accent)
+        ft = re.sub(r"^fact:\s*", "", body.strip(), flags=re.I) or "..."
+        ff, fl, flh = _fit(d, ft, True, inner, area_bottom - fy - 90, int(W * 0.08), 36, hd)
+        for i, line in enumerate(fl):
+            d.text((pad, fy + 70 + i * flh), line, font=ff, fill=fg)
+    else:
+        foot_h = int(H * 0.08) if footer.strip() else 0
+        avail = H - y - pad - foot_h
+        body_h = int(avail * 0.30) if body.strip() else 0
+        head_h = avail - body_h - (30 if body.strip() else 0)
+        start = {"cover": int(W * 0.12), "tip": int(W * 0.085)}.get(layout, int(W * 0.09))
+        hf, hl, hlh = _fit(d, text, True, inner, head_h, start, 22, hd)
+        for i, line in enumerate(hl):
+            d.text((pad, y + i * hlh), line, font=hf, fill=fg)
+        if body.strip():
+            bf, bl, blh = _fit(d, body.strip(), False, inner, body_h, int(W * 0.045))
+            by = y + head_h + 30
+            for i, line in enumerate(bl):
+                d.text((pad, by + i * blh), line, font=bf, fill=fg)
     if footer.strip():
-        ff = _font(True, max(24, int(W * 0.028)))
-        d.text((pad, H - pad - int(W * 0.03)), footer.strip()[:60], font=ff, fill=accent)
+        d.text((pad, footer_y), footer.strip()[:60], font=_font(True, max(24, int(W * 0.028)), "sans"), fill=accent if layout != "stat" else muted)
     GRAPHICS.mkdir(exist_ok=True)
     out = Path(out_path) if out_path else GRAPHICS / f"{slug(headline)[:40] or 'graphic'}-{layout}-{size}.png"
     img.save(out, "PNG")
@@ -245,7 +401,7 @@ def parse_project(raw: object) -> dict:
         scenes.append({"text": text, "voice": voice, "image": str(s.get("image") or ""), "seconds": sec})
     if not scenes:
         raise ValueError("Every scene is empty.")
-    return {"title": str(raw.get("title") or "video")[:80], "size": size, "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink",
+    return {"title": str(raw.get("title") or "video")[:80], "size": size, "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink", "kit": raw.get("kit") if isinstance(raw.get("kit"), dict) else None,
             "voice": raw.get("voice") if raw.get("voice") in ("windows", "own", "kokoro") else "none", "kokoro_voice": raw.get("kokoro_voice") if KOKORO_VOICE.match(str(raw.get("kokoro_voice") or "")) else DEFAULT_KOKORO_VOICE, "captions": raw.get("captions") is not False, "footer": str(raw.get("footer") or "")[:60], "scenes": scenes}
 
 
@@ -355,7 +511,7 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                 from PIL import Image
                 _cover(Image.open(_resolve(s["image"], GRAPHICS if (GRAPHICS / Path(s["image"]).name).exists() else PICS)).convert("RGB"), W, H).save(card)
             else:
-                make_graphic("cover", s["text"] or P["title"], "", "", P["footer"], P["size"], P["theme"], out_path=card)
+                make_graphic(auto_layout(s["text"] or P["title"], "", "cover"), s["text"] or P["title"], "", "", P["footer"], P["size"], P["theme"], out_path=card, kit=P["kit"])
             wav = td / f"v{i}.wav"
             own = _own_audio(P["title"], i) if P["voice"] == "own" else None
             if P["voice"] == "own" and own is None:
@@ -415,7 +571,7 @@ def parse_carousel(raw: object) -> dict:
             break
     if not slides:
         raise ValueError("Every slide is empty.")
-    return {"title": str(raw.get("title") or "carousel")[:80], "size": raw.get("size") if raw.get("size") in SIZES else "post", "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink",
+    return {"title": str(raw.get("title") or "carousel")[:80], "size": raw.get("size") if raw.get("size") in SIZES else "post", "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink", "kit": raw.get("kit") if isinstance(raw.get("kit"), dict) else None,
             "footer": str(raw.get("footer") or "")[:60], "picture": str(raw.get("picture") or "")[:200], "logo": str(raw.get("logo") or "")[:200], "slides": slides}
 
 
@@ -426,9 +582,9 @@ def make_carousel(project: dict, out_dir: str | Path | None = None, say=print) -
     out.mkdir(parents=True, exist_ok=True)
     base, n, files = slug(P["title"])[:30] or "carousel", len(P["slides"]), []
     for i, sl in enumerate(P["slides"], 1):
-        layout = "cover" if i == 1 else "tip"
+        layout = auto_layout(sl["title"], sl["body"], "cover" if i == 1 else "tip")
         kicker = f"{i} / {n}"
-        files.append(make_graphic(layout, sl["title"], sl["body"], kicker, P["footer"] if i == n else "", P["size"], P["theme"], P["picture"], P["logo"], out_path=out / f"{base}-{i:02}.png"))
+        files.append(make_graphic(layout, sl["title"], sl["body"], kicker, P["footer"] if i == n else "", P["size"], P["theme"], P["picture"], P["logo"], out_path=out / f"{base}-{i:02}.png", kit=P["kit"]))
         say(f"Slide {i} of {n}")
     return files
 
