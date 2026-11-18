@@ -103,6 +103,9 @@ def main():
     rs.add_argument("--cap", type=int, default=100); rs.add_argument("--max", type=int, default=100); rs.add_argument("--strict", action="store_true"); rs.add_argument("--new-only", action="store_true", help="keep only leads not in the database yet")
     rs.add_argument("--no-enrich", action="store_true"); rs.add_argument("--icp", default=""); rs.add_argument("--words", default=""); rs.add_argument("--skip", default="")
     rs.add_argument("--min-score", type=int, default=0, help="leads: only this score or higher"); rs.add_argument("--csv", default="", help="leads: save to a CSV instead of printing")
+    dr = sub.add_parser("directors", help="UK: the director's first and last name for each business of a list, from Companies House (needs your free API key)")
+    dr.add_argument("source", help="a CSV list with a business name column"); dr.add_argument("--company-column", default=""); dr.add_argument("--city-column", default="")
+    dr.add_argument("--max", type=int, default=200); dr.add_argument("--out", default="")
     sub.add_parser("directories", help="every lead source, how we may use it, and whether it is built")
     rg = sub.add_parser("registry", help="UK company register (Companies House): build, then find companies by town")
     rg.add_argument("action", choices=["build", "find"]); rg.add_argument("kind", help="build: types separated by commas. find: one type")
@@ -541,6 +544,12 @@ def main():
             print(research.history())
         else:
             print(research.leads(a.kind, a.min_score, a.country, a.csv))
+    elif a.cmd == "directors":
+        from dse import chdirectors
+        try:
+            chdirectors.file(a.source, a.company_column, a.city_column, a.max, a.out)
+        except (ValueError, RuntimeError) as e:
+            sys.exit(str(e))
     elif a.cmd == "audit":
         if a.score:
             audit.score(a.target)

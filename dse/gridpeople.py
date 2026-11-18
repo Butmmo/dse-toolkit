@@ -34,6 +34,9 @@ FIRST_NAMES = {"first name", "firstname", "first", "given name", "forename"}
 LAST_NAMES = {"last name", "lastname", "last", "surname", "family name"}
 EMAIL_NAMES = {"work email", "business email", "work e mail", "company email", "email", "email address", "e mail"}
 TYPE_NAMES = {"email type", "email kind", "work email type"}
+SOURCE_NAMES = {"name source", "source of name", "name found by"}
+COMPANY_NAMES = {"company", "business", "business name", "company name", "name", "organisation", "organization"}
+CITY_NAMES = {"city", "town", "search city", "location"}
 NEW = (("first", "First name", "text", FIRST_NAMES), ("last", "Last name", "text", LAST_NAMES), ("email", "Work email", "email", EMAIL_NAMES), ("type", "Email type", "text", TYPE_NAMES))
 
 
@@ -94,6 +97,16 @@ def person_of(site: dict) -> tuple[str, str]:
     return split_name(str(people[0].get("name", ""))) if people and isinstance(people[0], dict) else ("", "")
 
 
+def ch_guess(first: str, last: str, domain: str, mx=None) -> str:
+    """first.last@domain for a name from the register, only when the domain receives mail (the site showed no address of the person's own)."""
+    from . import enrich
+    f, l = _slug(first), _slug(last)
+    if not (f and l and domain):
+        return ""
+    ok = (mx or enrich.has_mx)(domain)
+    return f"{f}.{l}@{domain}" if ok == "yes" else ""
+
+
 def find_columns(columns: list[dict], from_ref: str = "") -> dict:
     """{'website': column, 'first'|'last'|'email'|'type': column or None}. The website column is the one named, else the first that looks like one."""
     by = {}
@@ -107,6 +120,9 @@ def find_columns(columns: list[dict], from_ref: str = "") -> dict:
             raise ValueError("I could not find the website column of that grid. Name it with --from. Its columns: " + ", ".join(c["label"] for c in columns[:12]) + ".")
     for k, _label, _type, names in NEW:
         by[k] = next((c for c in columns if gridpush.norm(c["label"]) in names and c["key"] != by["website"]["key"]), None)
+    by["source"] = next((c for c in columns if gridpush.norm(c["label"]) in SOURCE_NAMES), None)
+    by["company"] = next((c for c in columns if gridpush.norm(c["label"]) in COMPANY_NAMES and c["key"] != by["website"]["key"]), None)
+    by["city"] = next((c for c in columns if gridpush.norm(c["label"]) in CITY_NAMES), None)
     return by
 
 
@@ -120,7 +136,8 @@ def read_site(website: str) -> dict:
     return enrich.enrich_site(website, render=False)
 
 
-def run(grid_ref: str, from_ref: str = "", mode: str = "empty", limit: int = 0, guess: bool = False, dry: bool = False, say=print, api=None, site=None) -> str:
+def run(grid_ref: str, from_ref: str = "", mode: str = "empty", limit: int = 0, guess: bool = False, dry: bool = False, say=print, api=None, site=None,
+        companies_house: bool = False, ch=None, mx=None) -> str:
     if mode not in ("empty", "all"):
         raise ValueError("mode must be empty or all.")
     api = api or gridpush.connect()
@@ -130,6 +147,11 @@ def run(grid_ref: str, from_ref: str = "", mode: str = "empty", limit: int = 0, 
     columns = gridpush.columns_of(grid.get("doc"))
     cols = find_columns(columns, from_ref)
     missing = [(k, label, ctype) for k, label, ctype, _n in NEW if cols[k] is None]
+    if companies_house:
+        if cols["company"] is None:
+            raise ValueError("To use Companies House I need the business name column (called Company, Business or Name). Its columns: " + ", ".join(c["label"] for c in columns[:12]) + ".")
+        if cols["source"] is None:
+            missing.append(("source", "Name source", "text"))
     head = f"{grid.get('workbook', '')} / {grid['name']}: website column '{cols['website']['label']}'."
     rows = read_rows(api, grid["id"])
     todo = []
@@ -156,11 +178,15 @@ def run(grid_ref: str, from_ref: str = "", mode: str = "empty", limit: int = 0, 
         res = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": label, "type": ctype} for _k, label, ctype in missing]}, tries=2) or []
         for (k, label, ctype), r in zip(missing, res):
             cols[k] = {"key": r["key"], "label": r.get("label", label), "type": r.get("type", ctype)}
-        if any(cols[k] is None for k, *_ in NEW):
+        if any(cols[k] is None for k, *_ in NEW) or (companies_house and cols["source"] is None):
             raise RuntimeError("The grid did not accept the new columns.")
     for ln in lines:
         say(ln)
     site = site or read_site
+    if companies_house and ch is None:
+        from . import chdirectors
+        ch = chdirectors.Client(chdirectors.need_key())
+    ch_found = 0
     cache: dict[str, dict] = {}
     total = len(todo)
     done = names = emails = failed = 0
@@ -192,11 +218,29 @@ def run(grid_ref: str, from_ref: str = "", mode: str = "empty", limit: int = 0, 
         for r, s, err in ex.map(read, todo):
             d = r.get("data") or {}
             first, last = person_of(s)
+            source = "website" if first and last else ""
+            if companies_house and not (first and last) and not (cell(cols["first"], d) and cell(cols["last"], d)):
+                from . import chdirectors
+                try:
+                    res = chdirectors.director_for(ch, cell(cols["company"], d), cell(cols["city"], d))
+                except RuntimeError:
+                    raise
+                except Exception as e:                # one failed lookup must not stop the run
+                    res = {"why": str(e)[:80]}
+                if res.get("first"):
+                    first, last, ch_found = res["first"], res["last"], ch_found + 1
+                    source = f"Companies House: {res['company']} ({res['number']})"
             email, kind = pick_work_email(s, first or cell(cols["first"], d), last or cell(cols["last"], d), guess)
+            if guess and not email and source.startswith("Companies House") and (s or {}).get("domain"):
+                g = ch_guess(first, last, s["domain"], mx)
+                if g:
+                    email, kind = g, "guess"
             out: dict = {}
             for k, v in (("first", first), ("last", last), ("email", email), ("type", kind)):
                 if v and (mode == "all" or not cell(cols[k], d)):
                     out[cols[k]["key"]] = v
+            if source and cols.get("source") and cols["first"]["key"] in out:          # the source of the name that was just written
+                out[cols["source"]["key"]] = source
             if first or last:
                 names += 1
             if email:
@@ -214,7 +258,7 @@ def run(grid_ref: str, from_ref: str = "", mode: str = "empty", limit: int = 0, 
     flush()
     say(f"PROGRESS {done}/{total} failed {failed} skipped {skipped}")
     detail = ", ".join(f"{n} {k}" for k, n in sorted(kinds.items(), key=lambda kv: -kv[1]))
-    return (f"FINISHED {done} rows read: {names} with a first and last name, {emails} with a work email" + (f" ({detail})" if detail else "") + f", {failed} failed, {skipped} skipped"
+    return (f"FINISHED {done} rows read: {names} with a first and last name" + (f" ({ch_found} from Companies House)" if companies_house else "") + f", {emails} with a work email" + (f" ({detail})" if detail else "") + f", {failed} failed, {skipped} skipped"
             + ("" if guess else ". No addresses were guessed (add --guess to also get likely addresses, marked guess)") + ".\n")
 
 
@@ -227,9 +271,10 @@ def cli(argv: list[str]) -> int:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--guess", action="store_true")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--companies-house", action="store_true", dest="companies_house", help="UK: where the website names nobody, look the business up in the Companies House register for its director (needs your free API key)")
     a = ap.parse_args(argv)
     try:
-        print(run(a.grid, a.from_ref, a.mode, a.limit, a.guess, a.dry, say=lambda m: print(m, flush=True)), end="")
+        print(run(a.grid, a.from_ref, a.mode, a.limit, a.guess, a.dry, say=lambda m: print(m, flush=True), companies_house=a.companies_house), end="")
         return 0
     except (ValueError, RuntimeError) as e:
         msg = str(e)

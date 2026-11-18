@@ -9947,6 +9947,10 @@
           "field": "guess"
         },
         {
+          "flag": "--companies-house",
+          "field": "companies_house"
+        },
+        {
           "flag": "--dry",
           "field": "dry"
         }
@@ -9998,6 +10002,12 @@
           "default": false
         },
         {
+          "name": "companies_house",
+          "label": "UK: where the website names nobody, ask Companies House for the director (needs your free key; adds a Name source column)",
+          "type": "bool",
+          "default": false
+        },
+        {
           "name": "dry",
           "label": "Dry run (show what would happen, change nothing)",
           "type": "bool",
@@ -10006,6 +10016,71 @@
       ],
       "timeout_min": 240,
       "outputs": []
+    },
+    "dse.directors": {
+      "label": "UK: find each business's director (first and last name) from Companies House",
+      "group": "Find clients",
+      "help": "For a list with a business name column: searches the official UK register (Companies House) for each business and adds the first and last name of its longest-serving active director, with the company and number it matched. It accepts only a match it is confident of (active company, same name apart from Ltd and Limited, not two equally good fits; the town breaks a tie) and leaves the rest empty: a wrong owner is worse than none. Sole traders and partnerships are not on the register. Needs your own free Companies House API key, set once on this PC (the run tells you how if it is missing); it is never sent to Citadel. About one request every 0.6 seconds, two per business at most.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "directors"
+        },
+        {
+          "field": "csv"
+        },
+        {
+          "opt": "--company-column",
+          "field": "company_column"
+        },
+        {
+          "opt": "--city-column",
+          "field": "city_column"
+        },
+        {
+          "opt": "--max",
+          "field": "max"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "List",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*.csv",
+          "exclude": "directors"
+        },
+        {
+          "name": "company_column",
+          "label": "Business name column (empty = Company, Business or Name)",
+          "type": "text",
+          "required": false,
+          "max": 60
+        },
+        {
+          "name": "city_column",
+          "label": "Town column (empty = City or Town)",
+          "type": "text",
+          "required": false,
+          "max": 60
+        },
+        {
+          "name": "max",
+          "label": "Most businesses in this run",
+          "type": "int",
+          "min": 1,
+          "max": 2000,
+          "default": 200
+        }
+      ],
+      "timeout_min": 120,
+      "outputs": [
+        {
+          "glob": "my-lists/*-directors-*.csv",
+          "upload": true
+        }
+      ]
     }
   },
   "periodic": [
