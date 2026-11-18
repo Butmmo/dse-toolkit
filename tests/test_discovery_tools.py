@@ -22,7 +22,7 @@ def check(name, cond, extra=""):
 
 cat = R.load_catalog(base_only=True)
 T = cat["tools"]
-NEW = ["dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech"]
+NEW = ["dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech", "dse.audit_make", "dse.audit_score"]
 CHANGED = ["dse.find", "dse.list", "dse.build"]
 ALL = NEW + CHANGED
 
@@ -95,14 +95,16 @@ def parse(argv):
 
 
 made = []
-for rel, body in (("data/cities-gb-dentist.csv", "tier,city,include\n1,Leeds,Y\n"), ("my-lists/zz-test-leads.csv", "business,website\nA,a.example\n")):
+for rel, body in (("my-lists/zz-test-audit.csv", "business,website,is_right\nA,a.example,y\n"), ("data/cities-gb-dentist.csv", "tier,city,include\n1,Leeds,Y\n"), ("my-lists/zz-test-leads.csv", "business,website\nA,a.example\n")):
     fp = ROOT / rel
     fp.parent.mkdir(exist_ok=True)
     fp.write_text(body, encoding="utf-8")
     made.append(fp)
 try:
     SAMPLES = {
-        "dse.find": {"kind": "stump grinding", "cities": "Leeds", "country": "GB", "source": "both"},
+        "dse.find": {"kind": "stump grinding", "cities": "Leeds", "country": "GB", "source": "both", "strict": True},
+        "dse.audit_make": {"csv": "my-lists/zz-test-leads.csv", "sample": 10},
+        "dse.audit_score": {"csv": "my-lists/zz-test-audit.csv"},
         "dse.list": {"pack": "smb", "kind": "dentist", "cities": "Leeds", "country": "GB", "source": "overture"},
         "dse.build": {"kinds": "dentist,stump grinding", "country": "eu", "source": "overture"},
         "dse.cities": {"kind": "dentist", "country": "GB", "source": "both"},
@@ -122,6 +124,9 @@ try:
     check("every button builds a command that dse.py's own parser accepts", all(ok.values()), str({k: str(v)[:80] for k, v in ns.items() if not ok[k]}))
     if all(ok.values()):
         check("find: country and source reach the command", ns["dse.find"].country == "GB" and ns["dse.find"].source == "both" and ns["dse.find"].kind == "stump grinding")
+        check("find: the strict box reaches the command, and is off by default", ns["dse.find"].strict is True and ns["dse.find_tiers"].strict is False)
+        check("audit: make takes a list and a sample size, score takes the labelled sheet", ns["dse.audit_make"].target == "my-lists/zz-test-leads.csv" and ns["dse.audit_make"].sample == 10 and not ns["dse.audit_make"].score
+              and ns["dse.audit_score"].target == "my-lists/zz-test-audit.csv" and ns["dse.audit_score"].score)
         check("list: country and source reach the command", ns["dse.list"].country == "GB" and ns["dse.list"].source == "overture")
         check("build: a group, a source and niche names reach the command", ns["dse.build"].country == "eu" and ns["dse.build"].source == "overture" and ns["dse.build"].kinds == "dentist,stump grinding")
         check("cities: type, country and source reach the command", ns["dse.cities"].kind == "dentist" and ns["dse.cities"].country == "GB" and ns["dse.cities"].source == "both")
@@ -167,6 +172,7 @@ try:
         sys.argv = old_argv
     check("a search with no type and no cities file is still explained, not run", seen["args"][0] == "Leeds")        # "Leeds" is taken as the business type, exactly as before
     # a file that is not on the form's list is refused
+    check("the audit buttons only offer the right files (lists for the sheet, sheets for the score)", bad("dse.audit_make", "csv", "my-lists/zz-test-audit.csv") and not bad("dse.audit_make", "csv", "my-lists/zz-test-leads.csv") and bad("dse.audit_score", "csv", "my-lists/zz-test-leads.csv"))
     check("a cities list that is not one of the offered files is refused", bad("dse.find_tiers", "cities_file", "data/cities-nope-x.csv") and bad("dse.find_tiers", "cities_file", "../secrets.csv"))
 finally:
     for fp in made:

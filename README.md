@@ -306,6 +306,18 @@ python dse.py tech my-leads.csv --max 200                # every row with a webs
 ```
 It opens ONE page per site (the homepage, after reading robots.txt) and matches its source and response headers against `dse/tech_rules.json`, our own fingerprint list (edit it to add a tool). A site drawn by JavaScript is also opened in hidden Edge unless you pass `--fast`. No account or key, and the paid BuiltWith API is not used. Everything is about the homepage, so the gap lines say "detected" or "found" ("no online booking tool detected on the homepage"): a booking page deeper in the site is not seen, so check before you quote a gap to a business. The `tech_gaps` column makes ready opening lines for an offer.
 
+### Is a list really the business type? (precision, `--strict`, `audit`)
+Foursquare's categories are coarser than the app's 512 niches, so a niche search returns a wider category filtered by the words of the niche. Every lead now says how clearly its OWN website shows the trade, in the `niche_match` column (and the page title in `site_title`):
+- `title`: the trade is in the page title, a heading or the description; `body`: repeated in the page; `weak`: mentioned once or twice; `thin`: the page is too short to tell; `blocked`: the site blocks scripts.
+- `find` prints how many of each and the share that clearly say the trade. `--strict` keeps only `title` and `body` (it searches deeper in each town to still fill the count). Note: a `weak` lead is often a real business that simply does not talk about the niche (a tree surgeon who does stumps but does not say so), so strict means "clearly says this specialty", not "the others are wrong".
+- Directory and profile pages (yell.com, thomsonlocal.com, ratedpeople.com, checkatrade.com, LinkedIn, TripAdvisor and others) are no longer taken as a business's website; a parked "domain for sale" page is rejected.
+```bash
+python dse.py audit my-lists/<your list>.csv                 # writes <name>-audit.csv: about 20 leads, every level of evidence represented, empty is_right column
+# open it, write y or n in is_right (a real business of the type, with its own website?), save, then:
+python dse.py audit my-lists/<name>-audit.csv --score        # precision overall and by evidence level, what --strict would give, addresses that were wrong more than once
+```
+Do this for a niche before you send to it. Both steps are HQ Tools buttons too, and Leads only, Leads + problem check and Leads from my best towns have an "Only sites that say the trade clearly" box.
+
 ### The same things as HQ Tools buttons (Citadel)
 No runner restart is needed (the runner re-reads `bridge/catalog.json`). In Citadel, More, HQ Tools shows:
 - **Find clients:** Leads only and Leads + problem check now ask for a country and a data source; Download business data takes any business type by name, a country or a group (eu, gulf, uk), and a source; **Rate the towns of a country (tiers)**; **Leads from my best towns (tiers)** (pick a cities list, optionally tiers like 1-3: its name tells the type and country); **UK company register: find by town** (the 470 MB download stays a command: `python dse.py registry build <type>`).

@@ -115,6 +115,18 @@ check("each lead says which source it came from", all(r["source"].startswith("Ov
 check("chains are still left out", not any("Aspen" in r["business"] for r in got))
 check("find() refuses a cities file with nothing marked", "cities file" in (raises(P.find, "dentist", "", country="GB", source="overture", cities_file=path, tiers="9") or ""))
 
+# no --out given (what the HQ Tools button does): the output file is named from the first town, for typed towns and for a cities file
+from dse import common as CM  # noqa: E402
+CM.LISTS = TMP / "lists"
+dst1 = P.find("dentist", "", miles=10, cap=10, country="GB", source="overture", cities_file=path, tiers="1-7")
+check("a search with no output name works with a cities file and names the file from the first town", Path(dst1).is_file() and "leeds-plus1" in Path(dst1).name, str(dst1))
+real_geocode = P.geocode
+P.geocode = lambda place, country="US": (53.8, -1.54)
+dst2 = P.find("dentist", "Leeds; Hull", miles=10, cap=10, country="GB", source="overture")
+dst3 = P.find("dentist", "Leeds", miles=10, cap=10, country="GB", source="overture")
+check("a search with no output name works with typed towns, one or several", Path(dst2).is_file() and "leeds-plus1" in Path(dst2).name and Path(dst3).is_file() and Path(dst3).name.endswith("-leeds.csv"), f"{dst2} | {dst3}")
+P.geocode = real_geocode
+
 # both sources at once: the same business in both appears once, and each lead keeps its own source label
 write(TMP / "places-gb-dentist.parquet", [("f1", "Hull Dental 0", 53.74, -0.33, "Hull", "https://hull0.example", "Dentist"), ("f2", "Foursquare Only Dental", 53.741, -0.331, "Hull", "https://fsqonly.example", "Dentist")])
 P.find("dentist", "", miles=10, cap=200, out=str(TMP / "both.csv"), country="GB", source="both", cities_file=path, tiers="1-7")

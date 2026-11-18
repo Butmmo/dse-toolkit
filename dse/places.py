@@ -111,8 +111,15 @@ CHAINS = re.compile(r"u-?haul|penske|two men and a truck|allied van|mayflower|un
                     r"accentcare|kindred at home|encompass health|lhc group|bright horizons|seniors helping seniors|nurse next door|"
                     r"assisting hands|care ?patrol|amada senior|homecare ?assistance|banfield|vca animal|petsmart|pearle vision|"
                     r"lenscrafters|walmart|target optical|costco|jiffy|midas|meineke|firestone", re.I)
+# Directories, marketplaces and social profiles: a listing there is not the business's own website. The second half was found by a real audit (UK tree
+# surgeons whose "website" was a yell.com, thomsonlocal.com or ratedpeople.com page). Hosts are matched whole, so a business called Bark & Bite is not bark.com.
 NOT_A_SITE = re.compile(r"yelp\.com|google\.com|mapquest|yellowpages|facebook\.com|instagram\.com|bbb\.org|nextdoor|"
-                        r"healthgrades|zocdoc|vitals\.com|caring\.com|aplaceformom", re.I)
+                        r"healthgrades|zocdoc|vitals\.com|caring\.com|aplaceformom|"
+                        r"(?://|\.)(?:yell\.com|thomsonlocal\.com|ratedpeople\.com|checkatrade\.com|mybuilder\.com|trustatrader\.com|freeindex\.co\.uk|192\.com|bark\.com|"
+                        r"cylex[a-z.-]*|scoot\.co\.uk|hotfrog[a-z.]*|misterwhat\.[a-z.]+|europages\.[a-z.]+|gelbeseiten\.de|11880\.com|pagesjaunes\.fr|paginasamarillas\.es|"
+                        r"paginegialle\.it|goudengids\.nl|tripadvisor\.[a-z.]+|trustpilot\.com|linkedin\.com|twitter\.com|x\.com|youtube\.com|tiktok\.com|pinterest\.[a-z.]+|"
+                        r"gumtree\.com|houzz\.[a-z.]+|angi\.com|homeadvisor\.com|thumbtack\.com|porch\.com|buildzoom\.com|networx\.com|ebay\.[a-z.]+|amazon\.[a-z.]+|"
+                        r"businessmagnet\.co\.uk|local\.yahoo\.com|bing\.com|wikipedia\.org)(?:/|$)", re.I)
 
 
 # ---- business types you define yourself (any Foursquare category), saved on this PC
@@ -359,23 +366,49 @@ def _miles(a, b, c, d):
     return 3958.8 * 2 * math.asin(math.sqrt(h))
 
 
-def site_live(url: str, words: str = "") -> bool:
-    """Opens, isn't parked or for sale, and (when `words` is given) talks about the right kind of business."""
+SITE_TITLES: dict[str, str] = {}               # url -> the page's title, filled by site_live (the audit sheet shows it)
+EVIDENCE_STRONG = ("title", "body")            # the site says the trade in its title or headings, or repeats it in the page
+EVIDENCE_WEAK = ("weak", "thin", "blocked")    # mentioned once or twice, page too short to tell, or the site blocks scripts: kept, but not confirmed
+
+
+def site_live(url: str, words: str = "") -> str:
+    """'' when the site is dead, parked or for sale, or a full page that never mentions the trade. Otherwise how strongly it says it is that business:
+    'title' (in the page title, a heading or the description), 'body' (3 or more times in the page), 'weak' (once or twice), 'thin' (page too short to tell),
+    'blocked' (the site blocks scripts: the check reads it with Edge), or 'unchecked' (no words to look for). A non-empty answer means live, so old callers that
+    only want a yes or no still work."""
     try:
         r = requests.get(url, timeout=12, headers=UA, allow_redirects=True)
     except Exception:
-        return False
+        return ""
     if r.status_code in (403, 429):
-        return True                          # blocks scripts, opens in a browser: the check reads it with Edge
+        return "blocked"
     if r.status_code >= 400:
-        return False
-    t = r.text[:200000].lower()
+        return ""
+    raw = r.text[:200000]
+    t = raw.lower()
     if len(t) <= 300 or any(d in t[:30000] for d in DEAD_TEXT):
-        return False
+        return ""
+    m = re.search(r"(?is)<title[^>]*>(.*?)</title>", raw)
+    title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1))).strip() if m else ""
+    if re.search(r"\bfor sale\b", title.lower()) and re.search(r"\.[a-z]{2,}\b", title.lower()):
+        return ""                                # "TheAirportHotel.com for sale": a parked domain whose page text our list of phrases did not catch
+    SITE_TITLES[url] = title[:120]
     visible = re.sub(r"<[^>]+>", " ", t)
-    if words and len(visible.split()) > 150 and not re.search(words, visible):
-        return False                         # a full page that never mentions the trade: wrong website for this place
-    return True
+    if not words:
+        return "unchecked"
+    heads = " ".join(re.sub(r"<[^>]+>", " ", h) for h in re.findall(r"(?is)<h[12][^>]*>(.*?)</h[12]>", t)) + " " + title.lower()
+    meta = re.search(r"(?is)<meta[^>]+name=[\"']description[\"'][^>]*content=[\"'](.*?)[\"']", t)
+    heads += " " + (meta.group(1) if meta else "")
+    if re.search(words, heads):
+        return "title"
+    hits = len(re.findall(words, visible))
+    if hits >= 3:
+        return "body"
+    if hits >= 1:
+        return "weak"
+    if len(visible.split()) > 150:
+        return ""                            # a full page that never mentions the trade: wrong website for this place
+    return "thin"
 
 
 def own_words(text: str) -> str:
@@ -384,7 +417,7 @@ def own_words(text: str) -> str:
     return "|".join(ws[:12])
 
 
-def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "", words: str = "", skip: str = "", country: str = "US", source: str = "foursquare", cities_file: str = "", tiers: str = "") -> str:
+def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "", words: str = "", skip: str = "", country: str = "US", source: str = "foursquare", cities_file: str = "", tiers: str = "", strict: bool = False) -> str:
     """kind: a built-in or saved business type, or one you type (found among Foursquare's categories, saved, and its data built on first use).
     words: your own words the business's website must use (replaces the built-in ones). skip: words that put a business out when they are in its name."""
     try:
@@ -465,11 +498,21 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
             batch = pool[i:i + 40]
             with cf.ThreadPoolExecutor(16) as ex:
                 for r, live in zip(batch, ex.map(lambda u: site_live(u, site_words), (b["website"] for b in batch))):
-                    if live and len(kept) < per_city:
+                    ev = live if isinstance(live, str) and live else ("unchecked" if live else "")      # a plain True from an old caller or a test
+                    if strict and site_words and ev in EVIDENCE_WEAK:
+                        continue                                                                       # --strict: only sites that say the trade clearly
+                    if ev and len(kept) < per_city:
+                        r["niche_match"] = ev
+                        r["site_title"] = SITE_TITLES.get(r["website"], "")
                         kept.append(r)
         rows += kept
         log(f"  {place}: {found} independent {info[0].lower()} in range, kept {len(kept)} with a live website")
-    dst = out or str(out_path(kind, places[0] + (f"-plus{len(places) - 1}" if len(places) > 1 else "")))
+    dst = out or str(out_path(kind, places[0][0] + (f"-plus{len(places) - 1}" if len(places) > 1 else "")))
     write_csv(dst, rows)
+    mix = {k: sum(1 for r in rows if r.get("niche_match") == k) for k in ("title", "body", "weak", "thin", "blocked", "unchecked")}
     print(f"{len(rows)} {info[0].lower()} -> {dst}")
+    if rows and site_words:
+        sure = mix["title"] + mix["body"]
+        print(f"   their websites say the trade: {mix['title']} in the title or headings, {mix['body']} repeated in the page, {mix['weak']} once or twice, {mix['thin']} page too short to tell, "
+              f"{mix['blocked']} blocked -> {round(100 * sure / len(rows))}% clearly the trade" + ("" if strict else " (add --strict to keep only those)"))
     return dst
