@@ -306,6 +306,12 @@ python dse.py tech my-leads.csv --max 200                # every row with a webs
 ```
 It opens ONE page per site (the homepage, after reading robots.txt) and matches its source and response headers against `dse/tech_rules.json`, our own fingerprint list (edit it to add a tool). A site drawn by JavaScript is also opened in hidden Edge unless you pass `--fast`. No account or key, and the paid BuiltWith API is not used. Everything is about the homepage, so the gap lines say "detected" or "found" ("no online booking tool detected on the homepage"): a booking page deeper in the site is not seen, so check before you quote a gap to a business. The `tech_gaps` column makes ready opening lines for an offer.
 
+### The same things as HQ Tools buttons (Citadel)
+No runner restart is needed (the runner re-reads `bridge/catalog.json`). In Citadel, More, HQ Tools shows:
+- **Find clients:** Leads only and Leads + problem check now ask for a country and a data source; Download business data takes any business type by name, a country or a group (eu, gulf, uk), and a source; **Rate the towns of a country (tiers)**; **Leads from my best towns (tiers)** (pick a cities list, optionally tiers like 1-3: its name tells the type and country); **UK company register: find by town** (the 470 MB download stays a command: `python dse.py registry build <type>`).
+- **Check websites:** **What a website is built with** (one site) and **What every website on a list is built with** (a lead list).
+The buttons are made by `python bridge/add_discovery_tools.py` (safe to re-run). **Size limit:** Citadel refuses a published tool catalog over 200,000 characters and it is close (about 198,000 with every tool loaded, so about 1,700 are left), so keep new fields and help short until the limit is raised in Citadel; `tests/test_discovery_tools.py` fails when less than 1,500 characters are left.
+
 ## Connect it to DBI Citadel (so you can run it from your phone)
 1. In Citadel, open **More → HQ Tools → Connect a PC**. The panel shows each command with a **Copy** button.
 2. Run its `setup` line here. It prints your **PC code**.
