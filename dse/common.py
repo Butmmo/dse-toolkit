@@ -52,7 +52,8 @@ def fetch(url: str, timeout: int = 15, tries: int = 2) -> tuple[int, str, str]:
     """(status, final url, html). Status 0 = no answer."""
     for attempt in range(tries):
         try:
-            r = requests.get(url, headers=UA, timeout=timeout, allow_redirects=True)
+            from . import pagecache
+            r = pagecache.get(url, timeout=timeout)
             text = r.text if "text" in r.headers.get("content-type", "text") or "xml" in r.headers.get("content-type", "") else ""
             return r.status_code, r.url, text
         except Exception:
