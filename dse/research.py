@@ -82,6 +82,7 @@ def run(kind: str = "", cities: str = "", country: str = "US", cities_file: str 
         enrich: bool = True, icp: str = "", words: str = "", skip: str = "", source: str = "foursquare", max_rows: int = 100, db: Path | str | None = None, today: str = "") -> str:
     from . import enrich as EN, places as P, tech as T
     today = today or time.strftime("%Y-%m-%d")
+    max_rows = max(max_rows, cap)            # every lead found is checked and enriched, not just the first 100
     con = connect(db)
     before = known_keys(con)
     with pagecache.active():

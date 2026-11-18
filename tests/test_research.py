@@ -162,6 +162,12 @@ check("and the same leads are 'seen before', not new", "4 leads, 0 new, 4 seen b
 enriched_for.clear()
 R.run("stump grinding", "Leeds", country="GB", db=db2, new_only=True, today="2026-11-20")
 check("--new-only drops leads already in the database, so nothing is checked or enriched again", enriched_for == [], str(enriched_for))
+seen_max = []
+real_tech = T.tech_file
+T.tech_file = lambda src, max_rows=100, **k: (seen_max.append(max_rows), real_tech(src, max_rows=max_rows, **k))[1]
+R.run("stump grinding", "Leeds", country="GB", cap=250, db=TMP / "run4.sqlite", enrich=False, today="2026-11-18")
+T.tech_file = real_tech
+check("every lead found is checked: the tech and enrich limit is never below how many leads were asked for", seen_max == [250], str(seen_max))
 enriched_for.clear()
 R.run("stump grinding", "Leeds", country="GB", db=TMP / "run3.sqlite", enrich=False, today="2026-11-18")
 check("--no-enrich skips the enrich step", enriched_for == [])

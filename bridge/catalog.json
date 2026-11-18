@@ -9616,6 +9616,243 @@
       ],
       "timeout_min": 2,
       "outputs": []
+    },
+    "dse.research_run": {
+      "label": "Research run: find, check, enrich and keep the leads",
+      "group": "Find clients",
+      "help": "Finds the businesses, reads each website once, adds technology and enrichment, scores them, and keeps every lead in one database. Run it again later with 'Only leads I have not had before' ticked.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "research"
+        },
+        {
+          "lit": "run"
+        },
+        {
+          "field": "kind"
+        },
+        {
+          "field": "cities"
+        },
+        {
+          "opt": "--country",
+          "field": "country"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        },
+        {
+          "opt": "--cap",
+          "field": "max"
+        },
+        {
+          "opt": "--words",
+          "field": "words"
+        },
+        {
+          "opt": "--skip",
+          "field": "skip"
+        },
+        {
+          "flag": "--strict",
+          "field": "strict"
+        },
+        {
+          "flag": "--new-only",
+          "field": "new_only"
+        },
+        {
+          "flag": "--no-enrich",
+          "field": "no_enrich"
+        }
+      ],
+      "fields": [
+        {
+          "name": "kind",
+          "label": "Business type",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "[A-Za-z][A-Za-z0-9 &'/-]{2,59}"
+        },
+        {
+          "name": "cities",
+          "label": "Cities",
+          "type": "text",
+          "required": true,
+          "max": 300,
+          "pattern": "^[A-Za-z][A-Za-z0-9 .,;'&-]{2,299}$",
+          "placeholder": "Tampa FL; Orlando FL"
+        },
+        {
+          "name": "country",
+          "label": "Country",
+          "type": "text",
+          "required": false,
+          "max": 2,
+          "pattern": "^[A-Za-z]{2}$",
+          "suggestions": [
+            "GB",
+            "DE",
+            "FR",
+            "AE",
+            "IL",
+            "JP"
+          ],
+          "default": "US"
+        },
+        {
+          "name": "source",
+          "label": "Data from",
+          "type": "choice",
+          "required": false,
+          "default": "foursquare",
+          "choices": [
+            {
+              "value": "foursquare",
+              "label": "Foursquare"
+            },
+            {
+              "value": "overture",
+              "label": "Overture"
+            },
+            {
+              "value": "both",
+              "label": "Both"
+            }
+          ]
+        },
+        {
+          "name": "max",
+          "label": "How many leads",
+          "type": "int",
+          "min": 5,
+          "max": 500,
+          "default": 100
+        },
+        {
+          "name": "words",
+          "label": "Words the website must use (optional)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,'&/-]{1,119}"
+        },
+        {
+          "name": "skip",
+          "label": "Leave out names with these words (optional)",
+          "type": "text",
+          "required": false,
+          "max": 120,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,'&/-]{1,119}"
+        },
+        {
+          "name": "strict",
+          "label": "Only sites that say the trade clearly",
+          "type": "bool",
+          "default": false,
+          "hint": "Keeps a lead only if its own site names the trade in its title or headings, or repeats it. Drops 'mentioned once' and 'too short to tell'."
+        },
+        {
+          "name": "new_only",
+          "label": "Only leads I have not had before",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "no_enrich",
+          "label": "Skip the enrich step (faster)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 180,
+      "outputs": [
+        {
+          "glob": "my-lists/*-research-*.csv",
+          "upload": true
+        }
+      ]
+    },
+    "dse.research_history": {
+      "label": "Research runs so far",
+      "group": "Find clients",
+      "help": "Every research run: when, what, how many leads, how many were new, and how many pages were reused instead of downloaded.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "research"
+        },
+        {
+          "lit": "history"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 1,
+      "outputs": []
+    },
+    "dse.research_leads": {
+      "label": "My lead database: save the best as a list",
+      "group": "Find clients",
+      "help": "Every lead from every research run, best score first, saved as one list. Filter by a lowest score or a country.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "research"
+        },
+        {
+          "lit": "leads"
+        },
+        {
+          "opt": "--min-score",
+          "field": "min_score"
+        },
+        {
+          "opt": "--country",
+          "field": "country"
+        },
+        {
+          "lit": "--csv"
+        },
+        {
+          "lit": "my-lists/research-leads.csv"
+        }
+      ],
+      "fields": [
+        {
+          "name": "min_score",
+          "label": "Lowest score",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 0
+        },
+        {
+          "name": "country",
+          "label": "Only this country (optional)",
+          "type": "text",
+          "required": false,
+          "max": 2,
+          "pattern": "^[A-Za-z]{2}$",
+          "suggestions": [
+            "GB",
+            "DE",
+            "FR",
+            "AE",
+            "IL",
+            "JP"
+          ]
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": [
+        {
+          "glob": "my-lists/research-leads.csv",
+          "upload": true
+        }
+      ]
     }
   },
   "periodic": [
