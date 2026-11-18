@@ -58,6 +58,7 @@ class Api:
     def __init__(self, rows, grid=GRID, save_fails=0):
         self.rows, self.grid, self.calls, self.save_fails = rows, grid, [], save_fails
         self.saved = {}
+        self.fps = {}
 
     def rpc(self, name, body, tries=3):
         self.calls.append((name, body))
@@ -70,7 +71,10 @@ class Api:
                 self.save_fails -= 1
                 raise RuntimeError("batch refused")
             for u in body["p_updates"]:
-                self.saved.setdefault(u["id"], {}).update(u["cells"])
+                vals = {k: v for k, v in u["cells"].items() if not k.startswith("_")}
+                if vals:
+                    self.saved.setdefault(u["id"], {}).update(vals)                 # the values written into the column
+                self.fps.setdefault(u["id"], {}).update({k: v for k, v in u["cells"].items() if k.startswith("_")})   # the fingerprints left on rows
             return len(body["p_updates"])
         raise RuntimeError("unexpected " + name)
 
@@ -289,10 +293,52 @@ check("with a free source first, a run over the Claude limit still fills what th
 run_src = (ROOT / "dse" / "gridrun.py").read_text(encoding="utf-8")
 check("the module says several sources are tried in order and the first answer wins", "SEVERAL sources" in run_src and "MAX_STEPS = 5" in run_src)
 
+# ---- out-of-date rows (fingerprints)
+check("the hash is FNV-1a 32 of the UTF-8 bytes: the published test values, an empty text and a non-ASCII text", R.fnv1a32("hello") == "4f9f2cab" and R.fnv1a32("") == "811c9dc5" and R.fnv1a32("Ünï€") == "1fcb8fc2")
+fpc = [{"key": "c_company", "label": "Company", "type": "text", "options": [], "run": None}, {"key": "c_website", "label": "Website", "type": "url", "options": [], "run": None},
+       {"key": "c_city", "label": "City", "type": "text", "options": [], "run": None}, {"key": "c_opener", "label": "Opener", "type": "longtext", "options": [], "run": R.clean_run(AI)}]
+fp_wf = {**fpc[3], "run": R.clean_run({"kind": "site", "from": "Website", "field": "email", "then": [{"kind": "ai", "prompt": "Guess the best email for {Company}", "model": "sonnet"}]})}
+check("THE SHARED TEST VALUES: these exact fingerprints are also asserted in Citadel's tests (src/lib/crm-run.ts), so the two always agree", R.fingerprint(fpc[3], fpc, {"c_company": "Acme", "c_city": "Leeds"}) == "faa98a36" and R.fingerprint(fp_wf, fpc, {"c_website": "  acme.com ", "c_company": "Ünïcode Ltd", "c_city": "x"}) == "e92d2c24" and R.fingerprint(fp_wf, fpc, {}) == "0404fcdf")
+check("the fingerprint changes when a cell the sources read changes, when the question changes, when the order of sources changes, and not for an unrelated cell or stray spaces", (lambda base: base != R.fingerprint(fpc[3], fpc, {"c_company": "Acme Ltd", "c_city": "Leeds"}) and base != R.fingerprint({**fpc[3], "run": R.clean_run({**AI, "prompt": AI["prompt"] + "!"})}, fpc, {"c_company": "Acme", "c_city": "Leeds"})
+      and base == R.fingerprint(fpc[3], fpc, {"c_company": "Acme", "c_city": "Leeds", "c_website": "x.com"}) and base == R.fingerprint(fpc[3], fpc, {"c_company": "  Acme ", "c_city": "Leeds"})
+      and R.fingerprint(fp_wf, fpc, {}) != R.fingerprint({**fp_wf, "run": {**R.steps_of(fp_wf["run"])[1], "then": [R.steps_of(fp_wf["run"])[0]]}}, fpc, {}))(R.fingerprint(fpc[3], fpc, {"c_company": "Acme", "c_city": "Leeds"})))
+check("a prompt with runs of blank lines is cleaned the same way as the grid cleans it (so the hash agrees)", R.clean_run({"kind": "ai", "prompt": "a  {Company}" + chr(10) * 4 + "b", "model": "haiku"})["prompt"] == "a {Company}" + chr(10) * 2 + "b")
+sc = {"key": "c_found", "label": "Email found", "type": "email", "options": [], "run": R.clean_run(S_SITE)}
+scols = [{"key": "c_website", "label": "Website", "type": "url", "options": [], "run": None}, sc]
+fpn = lambda d: R.fingerprint(sc, scols, d)  # noqa: E731
+srows = [{"id": "s1", "data": {"c_website": "a.com", "c_found": "x@a.com", "_c_found": fpn({"c_website": "a.com"})}},          # filled by a run, inputs unchanged
+         {"id": "s2", "data": {"c_website": "b.com", "c_found": "x@old.com", "_c_found": fpn({"c_website": "old.com"})}},       # filled by a run, website since changed
+         {"id": "s3", "data": {"c_website": "c.com", "c_found": "typed@by.hand"}},                                              # typed by hand: no fingerprint
+         {"id": "s4", "data": {"c_website": "d.com"}},                                                                          # never run, empty
+         {"id": "s5", "data": {"c_website": "e.com", "_c_found": fpn({"c_website": "e.com"})}},                                 # tried, no answer, inputs unchanged
+         {"id": "s6", "data": {"c_website": "f.com", "_c_found": fpn({"c_website": "old.com"})}}]                               # tried, no answer, website since changed
+pk = R.pick_rows(srows, sc, scols, "stale")
+check("stale mode picks rows never run and still empty, plus rows whose fingerprint no longer matches; never a hand-typed value, never a row tried with unchanged inputs", [r["id"] for r in pk["rows"]] == ["s2", "s4", "s6"] and pk["outdated"] == 2, str([r["id"] for r in pk["rows"]]))
+check("empty mode still means just empty cells (a tried row with an empty cell counts), and force mode everything with something to read", [r["id"] for r in R.pick_rows(srows, sc, scols, "empty")["rows"]] == ["s4", "s5", "s6"] and len(R.pick_rows(srows, sc, scols, "all")["rows"]) == 6)
+api = Api(srows, grid={**GRID, "doc": doc(run_site=S_SITE)})
+out, lines = run(api, col="Email found", mode="stale", site=lambda w: {"emails": [{"email": "new@" + w}]} if w in ("b.com", "d.com") else {})
+check("a stale run fills only the picked rows, leaves the hand-typed value and the untouched row alone", set(api.saved) == {"s2", "s4"} and api.saved["s2"] == {"c_found": "new@b.com"} and "s3" not in api.fps and "s1" not in api.fps)
+check("every row a run fills carries a fingerprint, and a row tried with no answer gets one too (so it is not asked again), written under _<column key>", api.fps["s2"] == {"_c_found": fpn({"c_website": "b.com"})} and api.fps["s6"] == {"_c_found": fpn({"c_website": "f.com"})} and set(api.fps) == {"s2", "s4", "s6"})
+rows2 = [{"id": r["id"], "data": {**r["data"], **api.saved.get(r["id"], {}), **api.fps.get(r["id"], {})}} for r in srows]
+check("running stale again straight away finds nothing to do", R.pick_rows(rows2, sc, scols, "stale")["rows"] == [] and "Nothing to run" in run(Api(rows2, grid={**GRID, "doc": doc(run_site=S_SITE)}), col="Email found", mode="stale", site=lambda w: {})[0])
+rows3 = [{**r, "data": {**r["data"], "c_website": "changed.com"}} if r["id"] == "s2" else r for r in rows2]
+check("changing a cell a source reads makes just that row out of date again", [r["id"] for r in R.pick_rows(rows3, sc, scols, "stale")["rows"]] == ["s2"])
+api = Api([{"id": "q1", "data": {"c_website": "x.com"}}], grid={**GRID, "doc": doc(run_site=S_SITE)})
+out, _ = run(api, col="Email found", mode="stale", site=lambda w: (_ for _ in ()).throw(RuntimeError("timed out")))
+check("a row where the source failed gets no fingerprint, so it is simply tried again next time", not api.fps and not api.saved)
+out, _ = run(Api(srows, grid={**GRID, "doc": doc(run_site=S_SITE)}), col="Email found", mode="stale", dry=True)
+check("a dry stale run says how many rows are out of date and saves nothing", "empty or out-of-date rows" in out and "2 out of date" in out and "Dry run" in out)
+try:
+    R.run("Leads", "Email found", "sometimes", 0, False, say=print, api=Api(srows), key_present=lambda: "k")
+    check("an unknown mode is refused", False)
+except ValueError as e:
+    check("an unknown mode is refused", "empty, stale or all" in str(e))
+check("the command takes the stale mode", '"stale"' in (ROOT / "dse" / "gridrun.py").read_text(encoding="utf-8").split("def cli")[1])
+
 # ---- the tool and the command
 cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))
 t = cat["tools"]["dse.grid_run"]
-check("the catalog has the tool with the grid, column, mode and limit, and the args that run `grid run`", [f["name"] for f in t["fields"]] == ["grid", "column", "mode", "limit"] and t["args"][:3] == [{"lit": "grid"}, {"lit": "run"}, {"field": "grid"}] and any(f["type"] == "choice" and [c["value"] for c in f["choices"]] == ["empty", "all"] for f in t["fields"]) and t["timeout_min"] >= 120)
+check("the catalog has the tool with the grid, column, mode and limit, and the args that run `grid run`", [f["name"] for f in t["fields"]] == ["grid", "column", "mode", "limit"] and t["args"][:3] == [{"lit": "grid"}, {"lit": "run"}, {"field": "grid"}] and any(f["type"] == "choice" and [c["value"] for c in f["choices"]] == ["empty", "stale", "all"] for f in t["fields"]) and t["timeout_min"] >= 120)
 check("the tool says it uses your own Claude key, writes only that column of your own grid, and that Stop keeps what is done", "own Claude key" in t["help"] and "only into that one column" in t["help"] and "Stop keeps what is done" in t["help"])
 src = {n: (ROOT / n).read_text(encoding="utf-8") for n in ("dse/gridpush.py", "dse/gridrun.py", "bridge/add_gridrun_tool.py")}
 check("`python dse.py grid run` reaches the module through the grid command", 'argv[0] == "run"' in src["dse/gridpush.py"] and "gridrun.cli(argv[1:])" in src["dse/gridpush.py"])

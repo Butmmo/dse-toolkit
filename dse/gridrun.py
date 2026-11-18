@@ -1,6 +1,6 @@
 """Run column: fill ONE column of a grid, row by row, on this PC (Citadel: grid column menu > Run column).
 
-    python dse.py grid run <grid> <column> [--mode empty|all] [--limit N] [--dry]
+    python dse.py grid run <grid> <column> [--mode empty|stale|all] [--limit N] [--dry]
 
 The column has a RUN SETTING, made in Citadel (column menu > Run settings), one of:
   ask Claude      a question written with the row's own cells in {braces}, for example   Write a one-line opener for {Company} in {City}
@@ -10,7 +10,10 @@ The column has a RUN SETTING, made in Citadel (column menu > Run settings), one 
 What a run does:
   * a column can have SEVERAL sources, tried in order for each row (a waterfall): the first that gives an answer that fits the column fills the cell, so a paid Claude answer is only asked for
     when the free website reading found nothing. Up to five.
-  * mode empty (the default) works only on rows whose cell is empty; mode all ("force") redoes every row. --limit N takes only the first N (test on a few before running them all).
+  * mode empty (the default) works only on rows whose cell is empty; mode stale works on rows never run and still empty PLUS rows OUT OF DATE (see below); mode all ("force") redoes every row. --limit N takes only the first N (test on a few before running them all).
+  * OUT-OF-DATE ROWS: a run leaves a small fingerprint on every row it fills or tries (a hash of the cells the sources read and of the sources themselves, under the key _<column key>). A row is out of date when
+    that fingerprint no longer matches what the row and the sources are now. A value typed by hand, or filled before fingerprints existed, has none and is never called out of date. A row tried with no answer
+    keeps its fingerprint, so it is not paid for again until its inputs change. The fingerprint is the same text and hash as in Citadel (src/lib/crm-run.ts): a shared test value keeps them equal.
   * a row with nothing to read (no website, or every column named in the question empty) is skipped and counted.
   * answers are saved in small batches while it works, so Stop (or a crash) keeps everything done so far; it only ever writes into THIS column of rows of YOUR grid, through this PC's own connection.
   * every answer is turned into the column's type (a number, a date, a choice, a link ...); one that does not fit is left out and counted, never stored as junk.
@@ -32,6 +35,7 @@ from . import gridpush
 
 MAX_ROWS = 5000
 MAX_STEPS = 5
+SEP_PART, SEP_STEP, SEP_FIELD = "\x1f", "\x1d", "\x1e"      # the separators of the fingerprint text (the same as SEP in src/lib/crm-run.ts)
 READ_PAGE = 500
 BATCH = 10
 MAX_CELL = {"text": 500, "longtext": 2000}
@@ -70,7 +74,7 @@ def clean_step(run: dict | None) -> dict | None:
     if not isinstance(run, dict):
         return None
     if run.get("kind") == "ai":
-        prompt = re.sub(r"[ \t]+", " ", str(run.get("prompt") or "")).strip()[:1000]
+        prompt = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", str(run.get("prompt") or ""))).strip()[:1000]
         return {"kind": "ai", "prompt": prompt, "model": "sonnet" if run.get("model") == "sonnet" else "haiku"} if prompt else None
     if run.get("kind") == "site":
         frm, field = re.sub(r"\s+", " ", str(run.get("from") or "")).strip()[:40], str(run.get("field") or "")
@@ -177,12 +181,65 @@ def problem(col: dict, columns: list[dict]) -> str:
     return ""
 
 
+def fnv1a32(text: str) -> str:
+    """FNV-1a, 32 bits, of the text's UTF-8 bytes, as 8 hex digits (the same function as in Citadel)."""
+    h = 0x811C9DC5
+    for b in text.encode("utf-8"):
+        h = ((h ^ b) * 0x01000193) & 0xFFFFFFFF
+    return f"{h:08x}"
+
+
+def fp_key(col: dict) -> str:
+    return "_" + col["key"]
+
+
+def input_columns(run: dict | None, columns: list[dict]) -> list[dict]:
+    """The cells a run reads, in the order the sources first use them, each once."""
+    by = {norm(c["label"]): c for c in columns}
+    out: list[dict] = []
+    for st in steps_of(run):
+        names = prompt_refs(st["prompt"]) if st["kind"] == "ai" else [st["from"]]
+        for n in names:
+            c = by.get(norm(n))
+            if c and not any(x["key"] == c["key"] for x in out):
+                out.append(c)
+    return out
+
+
+def steps_signature(run: dict | None) -> str:
+    return SEP_STEP.join(SEP_FIELD.join(["ai", st["prompt"], st["model"]] if st["kind"] == "ai" else ["site", st["from"], st["field"]]) for st in steps_of(run))
+
+
+def fingerprint(col: dict, columns: list[dict], data: dict) -> str:
+    """What a run read for this row, as a short hash: the sources plus the cells they use. The same text and hash as Citadel's fingerprint."""
+    parts = ["v1", steps_signature(col["run"])] + [f"{c['key']}={cell_text(c, data).strip()}" for c in input_columns(col["run"], columns)]
+    return fnv1a32(SEP_PART.join(parts))
+
+
+def stored_fp(col: dict, data: dict) -> str | None:
+    v = (data or {}).get(fp_key(col))
+    return v if isinstance(v, str) and v else None
+
+
+def is_out_of_date(col: dict, columns: list[dict], data: dict) -> bool:
+    fp = stored_fp(col, data)
+    return fp is not None and fp != fingerprint(col, columns, data)
+
+
 def pick_rows(rows: list[dict], col: dict, columns: list[dict], mode: str, limit: int = 0) -> dict:
-    """Which rows to work on: empty ones (or all), that have something to read, the first `limit`. Same rules as the grid shows before you press Run."""
-    chosen = [r for r in rows if mode == "all" or cell_text(col, r.get("data") or {}) == ""]
+    """Which rows to work on, with the same answers as the grid shows before you press Run: empty ones, or (stale) never-run empty ones plus out-of-date ones, or all; that have something to read; the first `limit`."""
+    def empty(r):
+        return cell_text(col, r.get("data") or {}) == ""
+
+    def stale(r):
+        d = r.get("data") or {}
+        return empty(r) if stored_fp(col, d) is None else is_out_of_date(col, columns, d)
+
+    chosen = [r for r in rows if mode == "all" or (stale(r) if mode == "stale" else empty(r))]
     ready = [r for r in chosen if has_inputs(col["run"], columns, r.get("data") or {})]
     cap = min(limit, MAX_ROWS) if limit and limit > 0 else MAX_ROWS
-    return {"rows": ready[:cap], "skipped": len(chosen) - len(ready), "empty": sum(1 for r in rows if cell_text(col, r.get("data") or {}) == ""), "total": len(rows)}
+    return {"rows": ready[:cap], "skipped": len(chosen) - len(ready), "empty": sum(1 for r in rows if empty(r)), "total": len(rows),
+            "outdated": sum(1 for r in rows if is_out_of_date(col, columns, r.get("data") or {}))}
 
 
 # ------------------------------------------------------------------ turning an answer into a cell value
@@ -323,8 +380,8 @@ def save_cells(api, grid_id: str, updates: list[dict]) -> int:
 
 
 def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: bool = False, say=print, api=None, ask=None, site=None, cost=None, key_present=None, sleep=time.sleep) -> str:
-    if mode not in ("empty", "all"):
-        raise ValueError("mode must be empty or all.")
+    if mode not in ("empty", "stale", "all"):
+        raise ValueError("mode must be empty, stale or all.")
     api = api or gridpush.connect()
     grid = gridpush.resolve_grid(gridpush._grids(api), grid_ref)
     columns = parse_columns(grid.get("doc"))
@@ -337,7 +394,7 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
     pick = pick_rows(rows, col, columns, mode, limit)
     todo = pick["rows"]
     kind = f"tries {len(steps)} sources in order" if len(steps) > 1 else "asks Claude" if steps[0]["kind"] == "ai" else "reads the website"
-    head = f"{grid.get('workbook', '')}/{grid['name']}: column '{col['label']}' {kind} for {len(todo)} of {pick['total']} rows ({'every row' if mode == 'all' else 'empty rows only'}{f', first {limit}' if limit else ''}); {pick['skipped']} skipped (nothing to read)."
+    head = f"{grid.get('workbook', '')}/{grid['name']}: column '{col['label']}' {kind} for {len(todo)} of {pick['total']} rows ({'every row' if mode == 'all' else 'empty or out-of-date rows' if mode == 'stale' else 'empty rows only'}{f', first {limit}' if limit else ''}); {pick['skipped']} skipped (nothing to read){f'; {pick["outdated"]} out of date' if mode == 'stale' else ''}."
     if dry or not todo:
         return head + ("\nDry run: nothing was asked and nothing was saved.\n" if dry else "\nNothing to run.\n")
     say(head)
@@ -368,12 +425,12 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
             return
         try:
             save_cells(api, grid["id"], pending)
-            filled += len(pending)
+            filled += sum(1 for u in pending if col["key"] in u["cells"])
         except Exception:               # one bad row must not lose the batch: save them one at a time
             for u in pending:
                 try:
                     save_cells(api, grid["id"], [u])
-                    filled += 1
+                    filled += 1 if col["key"] in u["cells"] else 0
                 except Exception:
                     failed += 1
         pending = []
@@ -418,10 +475,11 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
         if value is None and ai_blocked:
             note = f"STOPPED: today's Claude limit ({cost.limit():,} tokens) was reached. Raise it with: python dse.py claude limit <tokens>"
             break
+        fp = fingerprint(col, columns, data)
         if value is not None:
             streak = 0
             by_source[used] += 1
-            pending.append({"id": r["id"], "cells": {col["key"]: value}})
+            pending.append({"id": r["id"], "cells": {col["key"]: value, fp_key(col): fp}})
         elif attempted == 0 and errored > 0:          # every source that was tried failed: a failed row, and a run of them in a row stops it
             failed += 1
             streak += 1
@@ -435,6 +493,7 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
                 misfit += 1
             else:
                 no_answer += 1
+            pending.append({"id": r["id"], "cells": {fp_key(col): fp}})        # tried with these inputs and nothing came of it: not asked again until they change
         done += 1
         if len(pending) >= BATCH:
             flush()
@@ -453,7 +512,7 @@ def cli(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="dse.py grid run")
     ap.add_argument("grid")
     ap.add_argument("column")
-    ap.add_argument("--mode", default="empty", choices=["empty", "all"])
+    ap.add_argument("--mode", default="empty", choices=["empty", "stale", "all"])
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--dry", action="store_true")
     a = ap.parse_args(argv)
