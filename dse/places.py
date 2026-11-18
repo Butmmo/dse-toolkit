@@ -10,6 +10,7 @@ Never scrape Google Maps pages: it breaks Google's terms and risks the student's
 from __future__ import annotations
 
 import concurrent.futures as cf
+from pathlib import Path
 import csv
 import json
 import math
@@ -20,6 +21,7 @@ import time
 
 import requests
 
+from . import countries as C
 from .common import DATA, DEAD_TEXT, UA, log, out_path, write_csv
 
 HF = "hf://datasets/foursquare/fsq-os-places"
@@ -230,11 +232,19 @@ def _con():
     return con
 
 
-def extract_path(kind: str):
-    return DATA / f"places-us-{kind}.parquet"
+def extract_path(kind: str, country: str = "US"):
+    """The saved business list for one type in one country. The US file keeps its old name (places-us-<kind>), others are places-<cc>-<kind>."""
+    return DATA / f"places-{country.lower()}-{kind}.parquet"
 
 
-def build(kinds: list[str]):
+def site_words_for(country: str, own: str, builtin: str) -> str:
+    """Words a business website must use. Your own words always apply; the built-in English ones only where sites are in English."""
+    return own or (builtin if C.english(country) else "")
+
+
+def build(kinds: list[str], country: str = "US"):
+    """Save the Foursquare places of each type for one country or a group of countries (one scan of the dataset per type, then split per country)."""
+    codes = C.resolve(country)
     token = hf_token()
     if not token:
         sys.exit("Set HF_TOKEN first (README, 'One-time: business data'). It's a free Hugging Face read token.")
@@ -256,37 +266,44 @@ def build(kinds: list[str]):
             log(f"  {kind}: no Foursquare category found, skipped")
             continue
         t = time.time()
-        dst = extract_path(kind).as_posix()
+        tmp = (DATA / f"_building-{kind}.parquet").as_posix()
+        in_list = ", ".join(repr(c) for c in codes)
         con.sql(f"""
             COPY (
-              SELECT fsq_place_id, name, latitude::DOUBLE AS latitude, longitude::DOUBLE AS longitude, address, locality,
+              SELECT country, fsq_place_id, name, latitude::DOUBLE AS latitude, longitude::DOUBLE AS longitude, address, locality,
                      region, postcode, tel, website, email, facebook_id, instagram, fsq_category_labels, date_refreshed
               FROM '{HF}/release/dt={dt}/places/parquet/*.parquet'
-              WHERE country = 'US' AND date_closed IS NULL
+              WHERE country IN ({in_list}) AND date_closed IS NULL
                 AND list_has_any(fsq_category_ids, [{', '.join(repr(i) for i in ids)}])
-            ) TO '{dst}' (FORMAT parquet)""")
-        n = con.sql(f"SELECT count(*) FROM '{dst}'").fetchall()[0][0]
-        log(f"  {kind}: {n} US places saved in {int(time.time() - t)} s (release {dt})")
+            ) TO '{tmp}' (FORMAT parquet)""")
+        cols = "fsq_place_id, name, latitude, longitude, address, locality, region, postcode, tel, website, email, facebook_id, instagram, fsq_category_labels, date_refreshed"
+        for cc in codes:
+            dst = extract_path(kind, cc).as_posix()
+            con.sql(f"COPY (SELECT {cols} FROM '{tmp}' WHERE country = '{cc}') TO '{dst}' (FORMAT parquet)")
+            n = con.sql(f"SELECT count(*) FROM '{dst}'").fetchall()[0][0]
+            log(f"  {kind}: {n} {C.NAMES[cc]} places saved ({cc}, release {dt})")
+        Path(tmp).unlink(missing_ok=True)
+        log(f"  {kind}: done in {int(time.time() - t)} s")
     (DATA / "places-release.txt").write_text(dt + "\n", encoding="utf-8")
 
 
-def geocode(place: str) -> tuple[float, float]:
-    """'Tampa FL' -> (lat, lon) via OpenStreetMap Nominatim (free, max 1 request a second), cached."""
+def geocode(place: str, country: str = "US") -> tuple[float, float]:
+    """'Tampa FL' -> (lat, lon) via OpenStreetMap Nominatim (free, max 1 request a second), cached. The US keeps its old cache keys; other countries are cached as 'GB|leeds'."""
     DATA.mkdir(exist_ok=True)
     cache = {}
     if GEOCACHE.exists():
         with open(GEOCACHE, newline="", encoding="utf-8") as f:
             cache = {r["place"]: (float(r["lat"]), float(r["lon"])) for r in csv.DictReader(f)}
-    key = place.strip().lower()
+    key = place.strip().lower() if country == "US" else f"{country}|{place.strip().lower()}"
     if key in cache:
         return cache[key]
     time.sleep(1.1)
     r = requests.get("https://nominatim.openstreetmap.org/search",
-                     params={"q": place + ", USA", "format": "json", "limit": 1, "countrycodes": "us"},
+                     params={"q": place + ", USA" if country == "US" else place, "format": "json", "limit": 1, "countrycodes": country.lower()},
                      headers={"User-Agent": "DSEToolkit/1.0 (local lead research)"}, timeout=20)
     hits = r.json()
     if not hits:
-        sys.exit(f"Could not find the city '{place}'. Write it like 'Tampa FL'.")
+        sys.exit(f"Could not find the city '{place}'" + (". Write it like 'Tampa FL'." if country == "US" else f" in {C.NAMES.get(country, country)}. Try the city name alone."))
     cache[key] = (float(hits[0]["lat"]), float(hits[0]["lon"]))
     new = not GEOCACHE.exists()
     with open(GEOCACHE, "a", newline="", encoding="utf-8") as f:
@@ -328,18 +345,22 @@ def own_words(text: str) -> str:
     return "|".join(ws[:12])
 
 
-def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "", words: str = "", skip: str = "") -> str:
+def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: bool = False, out: str = "", words: str = "", skip: str = "", country: str = "US") -> str:
     """kind: a built-in or saved business type, or one you type (found among Foursquare's categories, saved, and its data built on first use).
     words: your own words the business's website must use (replaces the built-in ones). skip: words that put a business out when they are in its name."""
+    try:
+        country = C.one(country)
+    except ValueError as e:
+        sys.exit(str(e))
     kind = resolve_kind(kind)
     info = kind_info(kind)
-    src = extract_path(kind)
+    src = extract_path(kind, country)
     if not src.exists():
         log(f"No business data for '{kind}' yet: building it now (once, a few minutes).")
-        build([kind])
+        build([kind], country)
     con = _con()
     names = [n.lower() for n in info[1]]
-    site_words = own_words(words) or info[2]
+    site_words = site_words_for(country, own_words(words), info[2])
     skip_re = re.compile(own_words(skip), re.I) if own_words(skip) else None
     places = [c.strip() for c in re.split(r"[;|]", cities) if c.strip()]
     if not places:
@@ -347,7 +368,7 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
     per_city = max(1, cap // len(places))
     rows, seen = [], set()
     for place in places:
-        lat, lon = geocode(place)
+        lat, lon = geocode(place, country)
         dlat, dlon = miles / 69.0, miles / (69.0 * max(0.2, math.cos(math.radians(lat))))
         rel = con.sql(f"""SELECT * FROM '{src.as_posix()}'
                           WHERE latitude BETWEEN {lat - dlat} AND {lat + dlat} AND longitude BETWEEN {lon - dlon} AND {lon + dlon}""")
@@ -383,6 +404,7 @@ def find(kind: str, cities: str, miles: float = 25.0, cap: int = 100, keep_all: 
                 "category": info[0], "distance_mi": round(dist, 1), "search_city": place,
                 "last_refreshed": str(p["date_refreshed"] or ""),
                 "source": f"Foursquare Open Source Places, {time.strftime('%Y-%m-%d')}",
+                **({"country": country} if country != "US" else {}),
             })
         found = len(city_rows)
         city_rows.sort(key=lambda r: (r["website"] == "", r["last_refreshed"][:4] < "2021", r["distance_mi"]))
