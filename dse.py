@@ -96,6 +96,13 @@ def main():
     au.add_argument("target", help="a lead list (makes the sample sheet), or the sheet with --score")
     au.add_argument("--sample", type=int, default=20); au.add_argument("--seed", type=int, default=1); au.add_argument("--score", action="store_true", help="score a sheet you labelled (y or n in is_right)")
     au.add_argument("--out", default="")
+    rs = sub.add_parser("research", help="one research run (find, read each site once, tech, enrich, score) with a lead database and history")
+    rs.add_argument("action", choices=["run", "history", "leads"])
+    rs.add_argument("kind", nargs="?", default="", help="run: the business type"); rs.add_argument("cities", nargs="?", default="", help="run: cities separated by ;  (or --cities-file)")
+    rs.add_argument("--country", default="US"); rs.add_argument("--cities-file", default=""); rs.add_argument("--tiers", default=""); rs.add_argument("--source", default="foursquare")
+    rs.add_argument("--cap", type=int, default=100); rs.add_argument("--max", type=int, default=100); rs.add_argument("--strict", action="store_true"); rs.add_argument("--new-only", action="store_true", help="keep only leads not in the database yet")
+    rs.add_argument("--no-enrich", action="store_true"); rs.add_argument("--icp", default=""); rs.add_argument("--words", default=""); rs.add_argument("--skip", default="")
+    rs.add_argument("--min-score", type=int, default=0, help="leads: only this score or higher"); rs.add_argument("--csv", default="", help="leads: save to a CSV instead of printing")
     sub.add_parser("directories", help="every lead source, how we may use it, and whether it is built")
     rg = sub.add_parser("registry", help="UK company register (Companies House): build, then find companies by town")
     rg.add_argument("action", choices=["build", "find"]); rg.add_argument("kind", help="build: types separated by commas. find: one type")
@@ -524,6 +531,16 @@ def main():
             tech.tech_file(a.target, a.max, not a.fast, a.out)
         else:
             print(tech.card(a.target, not a.fast))
+    elif a.cmd == "research":
+        from dse import research
+        if a.action == "run":
+            if not (a.kind or a.cities_file):
+                sys.exit("Give a business type and cities, or --cities-file.")
+            research.run(a.kind, a.cities, a.country, a.cities_file, a.tiers, a.cap, a.strict, a.new_only, not a.no_enrich, a.icp, a.words, a.skip, a.source, a.max)
+        elif a.action == "history":
+            print(research.history())
+        else:
+            print(research.leads(a.kind, a.min_score, a.country if a.country != "US" else "", a.csv))
     elif a.cmd == "audit":
         if a.score:
             audit.score(a.target)
