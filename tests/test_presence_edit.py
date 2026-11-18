@@ -64,6 +64,18 @@ ok("a very long text still makes a picture of the right size (no crash)", Image.
 bb = Image.open(long_).getchannel("A").getbbox()
 ok("long text is wrapped inside the frame: ink stays at least 5 percent in from each side", bb is not None and bb[0] >= 0.05 * 540 and bb[2] <= 0.95 * 540)
 
+# ---- speed and fades (slice 3): reading
+Z = E.parse_edit({"v": 1, "clips": [{"kind": "video", "name": "a", "srcSeconds": 10, "out": 10, "speed": 2, "fadeIn": 0.5, "fadeOut": 9},
+                                   {"kind": "video", "name": "b", "srcSeconds": 10, "out": 10, "speed": 7, "fadeIn": -3},
+                                   {"kind": "picture", "name": "c", "out": 3, "speed": 2}]})
+ok("speed is one of the listed values for a video (an unknown one or a picture's is normal)", [c["speed"] for c in Z["clips"]] == [2, 1, 1] and E.SPEEDS == (0.5, 0.75, 1, 1.25, 1.5, 2))
+ok("a clip's time on the timeline is its stretch of the file divided by its speed, and the total adds them up (5 + 10 + 3)", [c["seconds"] for c in Z["clips"]] == [5.0, 10.0, 3.0] and Z["seconds"] == 18.0)
+ok("fades are 0 to 1 second and never pass the clip's length together (the fade in first)", Z["clips"][0]["fadeIn"] == 0.5 and Z["clips"][0]["fadeOut"] == 1.0 and Z["clips"][1]["fadeIn"] == 0)
+F = E.parse_edit({"v": 1, "clips": [{"kind": "color", "out": 1.5, "fadeIn": 1, "fadeOut": 1}]})
+ok("two fades that would pass the clip are cut: the fade in keeps 1 s, the fade out gets what is left", F["clips"][0]["fadeIn"] == 1.0 and F["clips"][0]["fadeOut"] == 0.5)
+W = E.parse_edit({"v": 1, "clips": [{"kind": "video", "name": "c", "srcSeconds": 100, "out": 100, "speed": 0.5}]})
+ok("a slowed clip that would run past 90 seconds is cut to fit (45 s of the file at half speed)", W["seconds"] == 90.0 and W["clips"][0]["out"] == 45.0)
+
 # ---- a real render
 ff = PM.find_ffmpeg()
 if not ff:
@@ -112,6 +124,44 @@ else:
     loud = E.render_edit(project_with_volume(1.0), draft=True, say=lambda *_: None); quiet = E.render_edit(project_with_volume(0.25), draft=True, say=lambda *_: None)
     out_keep, out = out, loud; lv_loud = level(0.2, 1.5); out = quiet; lv_quiet = level(0.2, 1.5); out = out_keep
     ok("a sound's volume changes how loud it is (a quarter volume is about 12 dB quieter)", 9 < lv_loud - lv_quiet < 15)
+    run("-f", "lavfi", "-i", "color=c=0xe0e0e0:s=320x180:r=30:d=4", "-f", "lavfi", "-i", "sine=frequency=440:duration=4:sample_rate=44100", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(PM.VIDEOS / "bright.mp4"))
+    def length_of(path):
+        d = re.search(r"Duration: (\d+):(\d+):([\d.]+)", probe(path)); return int(d.group(1)) * 3600 + int(d.group(2)) * 60 + float(d.group(3))
+    def luma(path, t):
+        f = td / f"l{abs(hash((str(path), t)))}.png"
+        run("-ss", str(t), "-i", str(path), "-frames:v", "1", str(f))
+        im = Image.open(f).convert("L"); return sum(im.getdata()) / (im.size[0] * im.size[1])
+    def level_of(path, a, b):
+        r = subprocess.run([ff, "-hide_banner", "-ss", str(a), "-t", str(b), "-i", str(path), "-af", "volumedetect", "-vn", "-f", "null", "-"], capture_output=True, text=True).stderr
+        m = re.search(r"mean_volume: (-?[\d.]+|-inf) dB", r); return -200.0 if not m or m.group(1) == "-inf" else float(m.group(1))
+    def one(**kw):
+        c = {"kind": "video", "name": "bright.mp4", "srcSeconds": 4, "in": 0, "out": 4}; c.update(kw)
+        return E.render_edit({"v": 1, "title": f"sp{abs(hash(str(kw)))}", "preset": "square", "clips": [c]}, draft=True, say=lambda *_: None)
+    run("-f", "lavfi", "-i", "color=c=black:s=320x180:r=30:d=2", "-f", "lavfi", "-i", "color=c=white:s=320x180:r=30:d=2", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-f", "lavfi", "-i", "sine=frequency=440:duration=2:sample_rate=44100",
+        "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v];[2:a]atrim=0:2[s];[s][3:a]concat=n=2:v=0:a=1[a]", "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(PM.VIDEOS / "half.mp4"))
+    def half(**kw):
+        c = {"kind": "video", "name": "half.mp4", "srcSeconds": 4, "in": 0, "out": 4}; c.update(kw)
+        return E.render_edit({"v": 1, "title": f"half{abs(hash(str(kw)))}", "preset": "square", "clips": [c]}, draft=True, say=lambda *_: None)
+    hf = half(speed=2)
+    ok("at double speed the dark first half of the file is shown in the first second and the bright second half in the next (the speed changes WHAT is shown, not just how long)", luma(hf, 0.5) < 40 and luma(hf, 1.5) > 150)
+    hn = half()
+    ok("at normal speed the same file is dark for 2 seconds then bright", luma(hn, 1.5) < 40 and luma(hn, 2.5) > 150)
+    ok("at double speed the sound is sped up too: silence for the first second, the tone from 1 s to 2 s (pitch stays the same)", level_of(hf, 0.1, 0.6) < -60 and level_of(hf, 1.2, 0.6) > -40)
+    fast = one(speed=2); slow = one(speed=0.5)
+    ok("a clip at double speed makes a video half as long (4 s of the file in 2 s)", abs(length_of(fast) - 2.0) < 0.2)
+    ok("a clip at half speed makes a video twice as long (4 s of the file in 8 s)", abs(length_of(slow) - 8.0) < 0.2)
+    ok("a sped-up clip still has its sound, the same length as the picture", "Audio: aac" in probe(fast))
+    plain = one()
+    faded = one(fadeIn=1, fadeOut=1)
+    ok("a clip with no fades is bright from its very first frame", luma(plain, 0.0) > 150)
+    ok("a fade in starts black and is clear a moment after it ends", luma(faded, 0.0) < 40 and luma(faded, 1.6) > 150)
+    ok("a fade out ends black and the clip is clear before it starts", luma(faded, 3.95) < 60 and luma(faded, 2.0) > 150)
+    def level_of(path, a, b):
+        r = subprocess.run([ff, "-hide_banner", "-ss", str(a), "-t", str(b), "-i", str(path), "-af", "volumedetect", "-vn", "-f", "null", "-"], capture_output=True, text=True).stderr
+        m = re.search(r"mean_volume: (-?[\d.]+|-inf) dB", r); return -200.0 if not m or m.group(1) == "-inf" else float(m.group(1))
+    ok("the sound fades with the picture: much quieter in the first and last half second than in the middle", level_of(faded, 0.0, 0.3) < level_of(faded, 1.5, 1.0) - 6 and level_of(faded, 3.7, 0.3) < level_of(faded, 1.5, 1.0) - 6)
+    mixed = E.render_edit({"v": 1, "title": "speedmix", "preset": "square", "clips": [{"kind": "video", "name": "bright.mp4", "srcSeconds": 4, "in": 1, "out": 3, "speed": 2}, {"kind": "color", "out": 1}]}, draft=True, say=lambda *_: None)
+    ok("speed works together with a trimmed clip and the next clip (2 s of file at double speed is 1 s, then 1 s more)", abs(length_of(mixed) - 2.0) < 0.2)
     muted = dict(proj, clips=[dict(proj["clips"][0], muted=True)] + proj["clips"][1:])
     out2 = E.render_edit(muted, draft=True, out_path=td / "muted.mp4", say=lambda *_: None)
     out_keep, out = out, out2
