@@ -205,7 +205,9 @@ try:
     check("5 rows in, 5 rows out", len(rows) == 5)
     check("first lead enriched: personal email, owner, score", rows[0]["best_email"] == "maria@smileclinic.example" and rows[0]["decision_maker"] == "Maria Lopez" and int(rows[0]["lead_score"]) > 80, str(rows[0]))
     check("a duplicate domain is read once and shares the result", rows[1]["best_email"] == rows[0]["best_email"] and CALLS[calls_before:].count("https://smileclinic.example") == 1)
-    check("an email already in your file is never overwritten", rows[2]["Email"] == "me@mine.example" and rows[2]["best_email"] == "me@mine.example" and rows[2]["best_email_source"] == "your file")
+    check("your own Email column is never overwritten", rows[2]["Email"] == "me@mine.example")
+    check("but an address on another domain than the website is not the best email when the site shows its own (it is probably an agency's), and the file says so",
+          rows[2]["best_email"] == "info@tiny.example" and "another domain" in rows[2]["email_check"] and "info@tiny.example" in rows[2]["email_check"], str(rows[2]))
     check("dead domain and missing site are explained, not scored high", "dead domain" in rows[3]["enrich_status"] and int(rows[3]["lead_score"]) == 0 and rows[4]["enrich_status"] == "no website")
     summ = out_csv.with_suffix(".md").read_text(encoding="utf-8")
     check("summary: counts, free cost line, best leads first, could-not-read list", "Cost: nothing" in summ and "Best leads first" in summ and "Could not read" in summ and "Leads looked at: 5" in summ, summ)

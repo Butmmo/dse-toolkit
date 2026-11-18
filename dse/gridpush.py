@@ -268,6 +268,9 @@ def cli(argv: list[str]) -> int:
     if argv and argv[0] == "run":          # python dse.py grid run <grid> <column>: Run column (dse/gridrun.py)
         from . import gridrun
         return gridrun.cli(argv[1:])
+    if argv and argv[0] == "people":       # python dse.py grid people <grid>: first name, last name and work email for every row (dse/gridpeople.py)
+        from . import gridpeople
+        return gridpeople.cli(argv[1:])
     import argparse
     ap = argparse.ArgumentParser(prog="dse.py grid")
     sub = ap.add_subparsers(dest="cmd", required=True)
