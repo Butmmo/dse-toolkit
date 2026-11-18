@@ -1,4 +1,4 @@
-"""The result line a BPS Table workflow reads (dse enrich --site X --result-line) and the tool entry.   python tests/test_row_result.py"""
+"""The result line a Ledger workflow reads (dse enrich --site X --result-line) and the tool entry.   python tests/test_row_result.py"""
 import json
 import sys
 from pathlib import Path

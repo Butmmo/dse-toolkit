@@ -8382,7 +8382,7 @@
     "dse.grid_push": {
       "label": "Grids: send a list or a tool's result into a grid",
       "group": "Grow",
-      "help": "Takes a CSV from your lists (for example the result of Lead enrichment) and adds its rows to a grid of one of your BPS Tables. Headers are matched to the grid's columns by name (Website = URL = Domain, Email = Work email ...); a header the grid does not have becomes a new column unless you tick the box that stops that. With a key (the Email column unless you pick another) a lead is added once: sending it again fills empty cells and keeps what you typed, unless you tick Replace. Tick Dry run first to see exactly what would happen. Workflows of that BPS Table start for the rows it adds. It changes only the grid you name, in your own BPS Table, through this PC's own connection to your account. The file is never changed.",
+      "help": "Takes a CSV from your lists (for example the result of Lead enrichment) and adds its rows to a grid of one of your Ledgers. Headers are matched to the grid's columns by name (Website = URL = Domain, Email = Work email ...); a header the grid does not have becomes a new column unless you tick the box that stops that. With a key (the Email column unless you pick another) a lead is added once: sending it again fills empty cells and keeps what you typed, unless you tick Replace. Tick Dry run first to see exactly what would happen. Workflows of that Ledger start for the rows it adds. It changes only the grid you name, in your own Ledger, through this PC's own connection to your account. The file is never changed.",
       "script": "dse.py",
       "args": [
         {
@@ -8428,7 +8428,7 @@
         },
         {
           "name": "grid",
-          "label": "Grid (its name, or BPS Table/grid name)",
+          "label": "Grid (its name, or Ledger/grid name)",
           "type": "text",
           "required": true,
           "max": 120
@@ -8472,7 +8472,7 @@
     "dse.grid_list": {
       "label": "Grids: show my grids and their columns",
       "group": "Grow",
-      "help": "Lists the grids of your BPS Tables with their columns, so you know the name to give 'send a list into a grid'. It changes nothing.",
+      "help": "Lists the grids of your Ledgers with their columns, so you know the name to give 'send a list into a grid'. It changes nothing.",
       "script": "dse.py",
       "args": [
         {
@@ -8489,7 +8489,7 @@
     "dse.enrich_row": {
       "label": "Lead enrichment: one website, for a grid row",
       "group": "Grow",
-      "help": "Looks at one website and finds the owner, an email, a phone number and the score, and prints them as one result line that a workflow of your BPS Tables reads and writes into the row. A workflow runs this for you with the step 'Run a tool on this PC' (the PC must be on and connected); you can also run it here by hand. It only reads public pages and changes nothing of yours.",
+      "help": "Looks at one website and finds the owner, an email, a phone number and the score, and prints them as one result line that a workflow of your Ledgers reads and writes into the row. A workflow runs this for you with the step 'Run a tool on this PC' (the PC must be on and connected); you can also run it here by hand. It only reads public pages and changes nothing of yours.",
       "script": "dse.py",
       "args": [
         {
@@ -8527,7 +8527,7 @@
     "dse.check_row": {
       "label": "Problem check: one website, for a grid row",
       "group": "Check websites",
-      "help": "Checks one website against your path's checklist and prints the gap to lead with as one result line that a workflow of your BPS Tables reads and writes into the row. A workflow runs this for you with the step 'Run a tool on this PC' (the PC must be on and connected); you can also run it here by hand. It only reads public pages and changes nothing of yours.",
+      "help": "Checks one website against your path's checklist and prints the gap to lead with as one result line that a workflow of your Ledgers reads and writes into the row. A workflow runs this for you with the step 'Run a tool on this PC' (the PC must be on and connected); you can also run it here by hand. It only reads public pages and changes nothing of yours.",
       "script": "dse.py",
       "args": [
         {
@@ -8924,7 +8924,7 @@
     "dse.grid_run": {
       "label": "Grids: run a column (ask Claude, or read a website, for each row)",
       "group": "Grow",
-      "help": "Fills one column of a grid of your BPS Tables, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: ask Claude a question about each row (uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). A column can have several sources tried in order for each row (for example the free website reading first, then Claude only for the rows it found nothing for): the first answer that fits wins. A run leaves a small fingerprint on each row it fills or tries, so 'Empty or out-of-date rows' re-runs only rows whose inputs or sources changed (values typed by hand are never touched). It works on empty rows unless you ask for another mode, and 'first N rows' lets you test on a few before running them all. Answers are saved in small batches, so Stop keeps what is done. It writes only into that one column of your own grid, through this PC's own connection to your account.",
+      "help": "Fills one column of a grid of your Ledgers, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: ask Claude a question about each row (uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). A column can have several sources tried in order for each row (for example the free website reading first, then Claude only for the rows it found nothing for): the first answer that fits wins. A run leaves a small fingerprint on each row it fills or tries, so 'Empty or out-of-date rows' re-runs only rows whose inputs or sources changed (values typed by hand are never touched). It works on empty rows unless you ask for another mode, and 'first N rows' lets you test on a few before running them all. Answers are saved in small batches, so Stop keeps what is done. It writes only into that one column of your own grid, through this PC's own connection to your account.",
       "script": "dse.py",
       "args": [
         {
@@ -8951,7 +8951,7 @@
       "fields": [
         {
           "name": "grid",
-          "label": "Grid (its id, its name, or BPS Table/grid name)",
+          "label": "Grid (its id, its name, or Ledger/grid name)",
           "type": "text",
           "required": true,
           "max": 120
