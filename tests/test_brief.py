@@ -46,6 +46,7 @@ today = dt.date.today()
 iso = lambda n: (today - dt.timedelta(days=n)).isoformat()  # noqa: E731
 brief_json, brief_md = B.BRIEF_JSON, B.BRIEF_MD
 tmp = ROOT / "data" / "zz-brief-out"
+tmp.mkdir(parents=True, exist_ok=True)         # a fresh clone has no data folder
 B.BRIEF_JSON, B.BRIEF_MD = tmp / "brief.json", tmp / "brief.md"
 B.DATA = tmp
 try:
