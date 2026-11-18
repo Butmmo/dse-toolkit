@@ -207,7 +207,7 @@
           ],
           "pattern": "[A-Za-z][A-Za-z0-9 &'/-]{2,59}",
           "max": 60,
-          "hint": "Any business you sell to: dentists, wedding photographers, dog trainers. Types we already know are used as they are; a new one is matched to Foursquare's business categories and remembered. The first time for a new type it builds its data (a few minutes)."
+          "hint": "Any of the app's 512 niches by name (like stump grinding or wedding photographers), or any business of your own: a new one is matched to Foursquare's business categories and remembered. The first time for a type it builds its data (a few minutes)."
         },
         {
           "name": "cities",
@@ -607,7 +607,7 @@
           ],
           "pattern": "[A-Za-z][A-Za-z0-9 &'/-]{2,59}",
           "max": 60,
-          "hint": "Any business you sell to: dentists, wedding photographers, dog trainers. Types we already know are used as they are; a new one is matched to Foursquare's business categories and remembered. The first time for a new type it builds its data (a few minutes)."
+          "hint": "Any of the app's 512 niches by name (like stump grinding or wedding photographers), or any business of your own: a new one is matched to Foursquare's business categories and remembered. The first time for a type it builds its data (a few minutes)."
         },
         {
           "name": "cities",

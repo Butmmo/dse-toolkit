@@ -56,8 +56,11 @@ def add_after(tool: str, after: str, fields: list[dict], args: list[dict]):
     t["args"] += args
 
 
+NICHE_HINT = ("Any of the app's 512 niches by name (like stump grinding or wedding photographers), or any business of your own: a new one is matched to "
+              "Foursquare's business categories and remembered. The first time for a type it builds its data (a few minutes).")
 for tool in ("dse.find", "dse.list"):
     add_after(tool, "cities", [country(), dict(SOURCE)], [{"opt": "--country", "field": "country"}, {"opt": "--source", "field": "source"}])
+    next(f for f in T[tool]["fields"] if f["name"] == "kind")["hint"] = NICHE_HINT
 T["dse.build"]["fields"] = [
     {"name": "kinds", "label": "Business types (comma-separated)", "type": "text", "required": True, "max": 300,
      "pattern": r"^[A-Za-z][A-Za-z0-9 &'/-]*(,[A-Za-z][A-Za-z0-9 &'/-]*)*$", "placeholder": "dentist,plumber,stump grinding"},
