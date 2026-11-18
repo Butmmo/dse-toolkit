@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -51,6 +51,15 @@ T["dse.presence_video"] = {
     "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "video"}, {"field": "project"}],
     "fields": [{"name": "project", "label": "Video project", "type": "file", "required": True, "glob": "my-video/*.json"}],
     "timeout_min": 20, "outputs": [{"glob": "my-video/*.srt", "upload": True}]}
+
+T["dse.presence_carousel"] = {
+    "label": "Presence: make every carousel slide at once", "group": "Grow",
+    "help": ("Turns a carousel project into every slide as a finished PNG in one go: a cover, one slide per point and a last slide with your name, in the Citadel colours, with your picture and logo if the project names them. "
+             "The project comes from Presence > Studio ('Carousel project (for your PC)'): put the file in the my-carousel folder of the toolkit first. The slides appear in Presence > Studio under 'Made by your PC' "
+             "and in the my-graphics folder. Nothing is posted: you post them in order yourself."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "carousel"}, {"field": "project"}],
+    "fields": [{"name": "project", "label": "Carousel project", "type": "file", "required": True, "glob": "my-carousel/*.json"}],
+    "timeout_min": 3, "outputs": [{"glob": "my-graphics/*.png", "upload": True}]}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("presence tools:", sum(1 for k in T if k.startswith("dse.presence")), "tools:", len(T))
