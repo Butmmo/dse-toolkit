@@ -29,6 +29,7 @@ from .engines import engine_dir, load
 MAX_FILES = 300
 MAX_SOURCES = 25
 MAX_TEXT = 80_000
+MAX_JSON = 600_000                     # an idea bank or a schedule can be big: it is read whole so it can be understood, then only short findings are kept
 PLATFORM_WORDS = {
     "instagram": r"\b(instagram|insta|ig|reels?)\b", "tiktok": r"\btik ?tok\b", "linkedin": r"\blinked ?in\b", "facebook": r"\bfacebook\b|\bfb\b", "x": r"\b(twitter|tweets?|x\.com)\b",
     "youtube": r"\byoutube\b|\byt shorts\b", "reddit": r"\breddit\b|\bsubreddit\b", "pinterest": r"\bpinterest\b|\bpins?\b", "discord": r"\bdiscord\b",
@@ -111,7 +112,7 @@ def walk_texts(root: Path):
                 elif kind == "doc":
                     txt = cf.read_doc(p)[:MAX_TEXT]
                 elif kind == "json":
-                    txt = cf._read(p, MAX_TEXT)
+                    txt = cf._read(p, MAX_JSON)
                 elif kind == "csv":
                     txt = cf._read(p, MAX_TEXT)
                 else:
@@ -135,7 +136,8 @@ def platform_counts(text: str) -> Counter:
 
 def social_score(rel: str, text: str) -> int:
     pc = platform_counts(text)
-    return len(SOCIAL_WORDS.findall(text)) + sum(min(n, 5) for n in pc.values()) + (4 if NAME_HINT.search(Path(rel).stem) else 0)
+    # a file named like a calendar or a schedule is the plan itself: it always ranks high, so a long list of other files cannot push it out of the top
+    return len(SOCIAL_WORDS.findall(text)) + sum(min(n, 5) for n in pc.values()) + (4 if NAME_HINT.search(Path(rel).stem) else 0) + (40 if re.search(r"calendar|schedule", Path(rel).stem, re.I) else 0)
 
 
 def _calendar_rows(text: str) -> list[dict]:
@@ -159,10 +161,160 @@ def _calendar_rows(text: str) -> list[dict]:
     return out
 
 
+# ------------------------------------------------------------------ calendars, schedules, idea banks, posting times, brand files
+
+MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+ISO = re.compile(r"\b(20\d\d)-(\d\d)-(\d\d)\b")
+ISO_RANGE = re.compile(r"(20\d\d-\d\d-\d\d)[-_ ]+(?:to|until|through|-)[-_ ]+(20\d\d-\d\d-\d\d)")
+DAY_MONTH = re.compile(r"\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s+(20\d\d))?\b", re.I)
+TIMES_LINE = re.compile(r"(?:^|\.\s+)\s*(?:\*\*|[-*]\s*)?(?:post(?:ing)? times?|times?|posting schedule)\s*:\s*([^\n]{8,140})", re.I | re.M)
+CLOCK = re.compile(r"\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(?:am|pm)\b", re.I)
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".svg", ".webp", ".gif", ".pdf", ".ai", ".psd", ".fig", ".ico"}
+BRAND_DIR = re.compile(r"^(brand|branding|logos?|brand[-_ ]?kit|brand[-_ ]?assets|identity)$", re.I)
+
+
+def _date(y: int, m: int, d: int):
+    try:
+        return dt.date(y, m, d)
+    except ValueError:
+        return None
+
+
+def _range_of(rel: str, text: str):
+    """The date range a calendar file says it covers: two ISO dates in its name, else two dates in its first lines (like '10 Dec - 08 Jan 2027')."""
+    m = ISO_RANGE.search(rel)
+    if m:
+        a, b = [dt.date.fromisoformat(x) for x in (m.group(1), m.group(2))]
+        return (a, b) if a <= b else None
+    head = "\n".join(text.splitlines()[:3])
+    hits = [(int(g[0]), MONTHS[g[1][:3].lower()], int(g[2]) if g[2] else None) for g in DAY_MONTH.findall(head)]
+    if len(hits) >= 2:
+        yb = hits[-1][2] or dt.date.today().year
+        d2 = _date(yb, hits[-1][1], hits[-1][0])
+        if not d2:
+            return None
+        ya = hits[0][2] or (yb if hits[0][1] <= hits[-1][1] else yb - 1)
+        d1 = _date(ya, hits[0][1], hits[0][0])
+        return (d1, d2) if d1 and d1 <= d2 else None
+    return None
+
+
+def _cell_date(cell: str, rng):
+    """A date in a table's first column: 2026-12-10, '10 Dec 2026' or 'Thu 10 Dec' (the year is taken from the range the file covers)."""
+    m = ISO.search(cell)
+    if m:
+        return _date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    m = DAY_MONTH.search(cell)
+    if not m:
+        return None
+    mon, day = MONTHS[m.group(2)[:3].lower()], int(m.group(1))
+    if m.group(3):
+        return _date(int(m.group(3)), mon, day)
+    if rng:
+        for y in sorted({rng[0].year, rng[1].year}):
+            d = _date(y, mon, day)
+            if d and rng[0] - dt.timedelta(days=3) <= d <= rng[1] + dt.timedelta(days=3):
+                return d
+    return None
+
+
+EMPTY_CELL = {"", "-", "\u2013", "\u2014", "n/a", "none", "tbd"}
+
+
+def schedule_from(rel: str, text: str, kind: str) -> dict | None:
+    """Scheduled content in a markdown calendar table (a Date column, one column per kind of post) or a date-keyed JSON file: the first and last day, the number of items, the days and the post ideas with their ids removed."""
+    items = 0
+    days: set = set()
+    topics: list[tuple[str, str]] = []
+    cols: Counter = Counter()
+    if kind == "json":
+        try:
+            j = json.loads(text)
+        except ValueError:
+            return None
+        if not isinstance(j, dict):
+            return None
+        for k, v in j.items():
+            m = ISO.fullmatch(str(k))
+            d = _date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+            if d and isinstance(v, (dict, list)):
+                n = len([x for x in (v.values() if isinstance(v, dict) else v) if x])
+                if n:
+                    days.add(d); items += n
+                    if isinstance(v, dict):
+                        cols.update(str(c).lower() for c, x in v.items() if x)
+    else:
+        rng = _range_of(rel, text)
+        head: list[str] | None = None
+        for line in text.splitlines():
+            if not line.strip().startswith("|"):
+                head = None if not line.strip() else head
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if head is None:
+                head = [c.lower() for c in cells]
+                continue
+            if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+                continue
+            if not head or not re.search(r"\b(date|day|when)\b", head[0]):
+                continue
+            d = _cell_date(cells[0], rng)
+            if not d:
+                continue
+            filled = [(head[i] if i < len(head) else "", c) for i, c in enumerate(cells) if i > 0 and c.lower() not in EMPTY_CELL]
+            if filled:
+                days.add(d); items += len(filled)
+                for h, c in filled:
+                    cols[h] += 1
+                    t = re.sub(r"^[A-Za-z]{1,3}\d{1,4}\s*[:\-]\s*", "", _clean(c, 160))     # "ED60: 25 of 25 studios..." keeps the sentence, not the id
+                    if len(t.split()) >= 3:
+                        topics.append((t, ""))
+    if not days or items == 0:
+        return None
+    return {"schedule": {"from": min(days).isoformat(), "to": max(days).isoformat(), "days": len(days), "items": items, "columns": [c for c, _ in cols.most_common(5) if c]}, "topics": topics}
+
+
+def ideas_from_json(text: str) -> list[tuple[str, str]]:
+    """Post ideas from a JSON idea bank: a list (or {'ideas': [...]}) of objects with a topic and hooks. The first hook is the idea, without markup."""
+    try:
+        j = json.loads(text)
+    except ValueError:
+        return []
+    arr = j.get("ideas") if isinstance(j, dict) else j
+    if isinstance(arr, dict):
+        arr = list(arr.values())
+    out: list[tuple[str, str]] = []
+    for it in (arr if isinstance(arr, list) else [])[:200]:
+        if not isinstance(it, dict):
+            continue
+        hooks = it.get("hooks") if isinstance(it.get("hooks"), list) else []
+        raw = str(hooks[0]) if hooks else str(it.get("topic") or it.get("title") or "")
+        t = _clean(re.sub(r"<[^>]+>", "", raw), 160)
+        if len(t.split()) >= 3:
+            out.append((t, ""))
+    return out[:12]
+
+
+def brand_files(root: Path) -> list[str]:
+    """The names (never the contents) of files in a brand, branding or logo folder: pictures and design files that cannot be read as text but show a brand exists."""
+    out: list[str] = []
+    root = root.resolve()
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = [d for d in sorted(dirnames) if d.lower() not in cf.FORBIDDEN_DIRS and not d.startswith(".") and not (Path(dirpath) / d).is_symlink() and cf.inside(root, Path(dirpath) / d)
+                       and len(Path(dirpath).relative_to(root).parts) < cf.MAX_DEPTH]
+        if BRAND_DIR.match(Path(dirpath).name):
+            for fn in sorted(filenames):
+                if Path(fn).suffix.lower() in IMAGE_EXT and not cf.SECRET_NAME.search(fn):
+                    out.append(f"{Path(dirpath).name}/{fn}")
+        if len(out) >= 12:
+            break
+    return out[:12]
+
+
 def read_file(rel: str, kind: str, text: str) -> dict:
     """What one file says about social media. Everything is short, redacted text; counts, not copies."""
     red = scrub(text)
-    f: dict = {"platforms": platform_counts(red), "handles": [], "cadence": [], "themes": [], "voice": [], "goals": [], "audience": [], "hashtags": Counter(), "topics": [], "drafts": 0, "others": []}
+    f: dict = {"platforms": platform_counts(red), "handles": [], "cadence": [], "themes": [], "voice": [], "goals": [], "audience": [], "hashtags": Counter(), "topics": [], "drafts": 0, "others": [], "schedule": None, "times": []}
     for m in PROFILE_URL.finditer(red):
         host = m.group(1).lower().replace("linkedin.com/in", "linkedin").replace("linkedin.com/company", "linkedin").replace("reddit.com/user", "reddit").replace("twitter", "x")
         if m.group(2).lower() not in NOT_HANDLES and not m.group(2).lower().startswith(("watch", "reel")):
@@ -211,6 +363,16 @@ def read_file(rel: str, kind: str, text: str) -> dict:
                 f["topics"].append((_clean(re.sub(r"\*\*|__", "", b.group(1)), 160), ""))
                 if len(f["topics"]) >= 12:
                     break
+    sch = schedule_from(rel, text, kind) if kind in ("text", "json", "doc") else None
+    if sch:
+        f["schedule"] = sch["schedule"]
+        f["topics"] = (sch["topics"][:12] + f["topics"])[:16]
+        f["drafts"] += sch["schedule"]["items"]
+    if kind == "json" and not sch:
+        f["topics"] += ideas_from_json(text)
+    for m in TIMES_LINE.finditer(red):
+        if CLOCK.search(m.group(1)):                  # only a line that really gives clock times, not any sentence with the word "time"
+            f["times"].append(_clean(m.group(1), 120))
     return f
 
 
@@ -221,9 +383,16 @@ def combine(per_file: list[tuple[str, int, dict]]) -> dict:
     plats: Counter = Counter()
     handles: dict[tuple[str, str], int] = {}
     cadence: list[str] = []; themes: list[str] = []; voice: list[str] = []; goals: list[str] = []; audience: list[str] = []; others: set[str] = set()
-    tags: Counter = Counter(); topics: list[dict] = []; drafts = 0
-    for rel, _score, f in per_file:
+    tags: Counter = Counter(); topics: list[dict] = []; drafts = 0; times: list[str] = []; sched: dict | None = None
+    for rel, _score, f in sorted(per_file, key=lambda x: 0 if x[2].get("schedule") else 1):      # scheduled items come first: they are what the person really planned
         plats.update(f["platforms"]); tags.update(f["hashtags"]); others.update(f["others"]); drafts += f["drafts"]
+        for tm in f.get("times", []):
+            if tm and tm.lower() not in (y.lower() for y in times):
+                times.append(tm)
+        sc = f.get("schedule")
+        if sc:
+            sched = dict(sc) if not sched else {"from": min(sched["from"], sc["from"]), "to": max(sched["to"], sc["to"]), "days": sched["days"] + sc["days"], "items": sched["items"] + sc["items"],
+                                                  "columns": list(dict.fromkeys(sched["columns"] + sc["columns"]))[:5]}
         for h in f["handles"]:
             handles[h] = handles.get(h, 0) + 1
         for key, dst in (("cadence", cadence), ("themes", themes), ("voice", voice), ("goals", goals), ("audience", audience)):
@@ -236,7 +405,7 @@ def combine(per_file: list[tuple[str, int, dict]]) -> dict:
     named = {h for (p, h) in handles if p}
     hs = [{"platform": p, "handle": h, "mentions": n} for (p, h), n in sorted(handles.items(), key=lambda kv: -kv[1]) if len(h) >= 3 and not h.lower().endswith((".com", ".org", ".net")) and (p or h not in named)]
     return {"platforms": [{"key": k, "mentions": n} for k, n in plats.most_common(6)], "handles": hs[:12], "cadence": cadence[:6], "themes": themes[:10], "voice": voice[:4], "goals": goals[:4],
-            "audience": audience[:4], "hashtags": [h for h, _ in tags.most_common(12)], "topics": topics[:24], "drafts": drafts, "others": sorted(others)}
+            "audience": audience[:4], "hashtags": [h for h, _ in tags.most_common(12)], "topics": topics[:24], "drafts": drafts, "others": sorted(others), "schedule": sched, "times": times[:3], "brand": []}
 
 
 def questions_for(findings: dict) -> list[dict]:
@@ -260,6 +429,20 @@ def questions_for(findings: dict) -> list[dict]:
     if findings.get("cadence"):
         q.append({"id": "cadence", "kind": "cadence", "text": f"Your plan said: \"{findings['cadence'][0]}\". Presence plans one post a day on weekdays by default. Keep your own rhythm in mind when you work through the week?",
                   "options": [{"value": "note", "label": "Yes, note it for this Function"}, {"value": "default", "label": "No, use Presence's rhythm"}]})
+    sch = findings.get("schedule")
+    if sch and sch.get("to", "") >= dt.date.today().isoformat():
+        last = dt.date.fromisoformat(sch["to"])
+        q.append({"id": "schedule", "kind": "schedule", "text": f"Your earlier plan already has {sch['items']} posts scheduled from {sch['from']} to {sch['to']}. Presence plans a post a day too, so the two would collide until {last.strftime('%d %b %Y')}. What should Presence do about those weeks?",
+                  "options": [{"value": "start_after", "label": f"Start Presence's plan the day after, {(last + dt.timedelta(days=1)).isoformat()}"}, {"value": "alongside", "label": "Run beside my schedule, I will keep both in mind"}, {"value": "ignore", "label": "Ignore it"}]})
+    elif sch:
+        q.append({"id": "schedule", "kind": "schedule", "text": f"Your earlier schedule ran {sch['from']} to {sch['to']} ({sch['items']} posts) and is over. Keep a note of it, so Presence builds on what you already published?",
+                  "options": [{"value": "note", "label": "Yes, keep a note"}, {"value": "ignore", "label": "No"}]})
+    if findings.get("times"):
+        q.append({"id": "times", "kind": "times", "text": f"Your plan says when to post: \"{findings['times'][0]}\". Keep that in your notes so Presence's reminders follow your times?",
+                  "options": [{"value": "note", "label": "Yes, keep it"}, {"value": "skip", "label": "No"}]})
+    if findings.get("brand"):
+        q.append({"id": "brand", "kind": "brand", "text": f"I found brand files ({', '.join(findings['brand'][:3])}). Pictures cannot be read as text, but your logo can go on every slide: put it in the toolkit's my-pictures folder. Note that for this Function?",
+                  "options": [{"value": "note", "label": "Yes, note it"}, {"value": "skip", "label": "No"}]})
     if findings.get("themes"):
         q.append({"id": "themes", "kind": "themes", "text": f"I found these content themes: {'; '.join(findings['themes'][:5])}. Bring them in as ideas to make content from (you can pick the pillar for each in Research)?",
                   "options": [{"value": "import", "label": "Yes, add them as ideas"}, {"value": "skip", "label": "No"}]})
@@ -379,6 +562,7 @@ def run_context(engine: str, out=print, today: dt.date | None = None, ai: bool =
         out(f"I looked through {scanned} files in {len(folders)} folder(s) of engine '{engine}' and found no social media plan or notes. If you have one, attach its folder: python dse.py context {engine} --add <folder>")
         return 0
     findings = combine([(r, s, f) for r, s, f, _ in keep])
+    findings["brand"] = [b for root in folders for b in brand_files(root)][:8]
     questions = questions_for(findings)
     reading = ai_read([(r, texts[r]) for r, _s, _f, _k in keep if r in texts][:6], chat=chat, installed=installed) if ai else None
     if reading:

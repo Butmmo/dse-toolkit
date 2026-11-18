@@ -157,6 +157,49 @@ payload = b"BT (hello social media plan) Tj ET " + b"0" * (120 * 1024 * 1024)
 bomb.write_bytes(b"%PDF-1.4\n1 0 obj\n<< /Filter /FlateDecode >>\nstream\n" + zlib.compress(payload, 9) + b"\nendstream\nendobj\n%%EOF")
 t0 = time.time(); txt = C.cf.read_doc(bomb); dt_ = time.time() - t0
 ok("review 2: a PDF stream that expands 1000 to 1 is cut at a limit: quick, and only a small piece is read", dt_ < 5 and len(txt) < 200_000)
+
+# ---- calendars, schedules, idea banks, posting times and brand files (a real plan looks like this)
+import datetime as dtm
+cal = td / "work" / "calendar-plan"; cal.mkdir(parents=True); (cal / "brand").mkdir()
+(cal / "brand" / "profile-picture.jpg").write_bytes(b"\xff\xd8")
+(cal / "brand" / "logo.svg").write_text("<svg/>", encoding="utf-8")
+(cal / "calendar-2026-12-10-to-2027-01-08.md").write_text("""# Studio content calendar 10 Dec - 08 Jan 2027
+
+Made by a script. Times: carousel 18:00 WAT (11am Dallas), post 21:00 WAT (2pm Dallas). Instagram and Facebook.
+
+| Date | Carousel | Single post | Question card |
+|---|---|---|---|
+| Thu 10 Dec | ED60: 25 of 25 studios I checked have no fast reply promise | ED59: Selective, not desperate. | - |
+| Fri 11 Dec | ED64: I asked ChatGPT for designers in 6 cities. Were you named? | ED66: Fewer visits. Bigger stakes today. | What do you wish clients did first? |
+| Fri 01 Jan | ED70: A new year, a kinder auto-reply for every inquiry | - | - |
+| Fri 08 Jan | ED71: What a good first call agenda looks like for you | ED72: Remind, do not chase them | - |
+""", encoding="utf-8")
+(cal / "schedule-2026-12-10.json").write_text(json.dumps({"_note": "scheduled posts", "2026-12-10": {"carousel": "ED60", "post": "ED59"}, "2026-12-11": {"carousel": "ED64", "post": "ED66"}, "2026-12-12": {"carousel": "ED58", "post": ""}}), encoding="utf-8")
+(cal / "ideas.json").write_text(json.dumps({"how_to_add": "x", "ideas": [{"id": "ED01", "topic": "late-night inquiries", "hooks": ["Your best client wrote to you <em>at 11pm.</em> Did anyone answer?"]}, {"id": "ED02", "topic": "x", "hooks": ["short"]}, {"id": "ED03", "topic": "Why portfolios do not close a sale without a reply", "hooks": []}]}), encoding="utf-8")
+rng = C._range_of("calendar-2026-12-10-to-2027-01-08.md", "")
+ok("a calendar file's range is read from its name, and from a title like '10 Dec - 08 Jan 2027'", rng == (dtm.date(2026, 12, 10), dtm.date(2027, 1, 8)) and C._range_of("x.md", "# Plan 10 Dec - 08 Jan 2027\n") == (dtm.date(2026, 12, 10), dtm.date(2027, 1, 8)) and C._range_of("x.md", "no dates here") is None)
+ok("a table date takes its year from that range: '10 Dec' is 2026 and '01 Jan' is 2027, and an ISO date stands as written", C._cell_date("Thu 10 Dec", rng) == dtm.date(2026, 12, 10) and C._cell_date("Fri 01 Jan", rng) == dtm.date(2027, 1, 1) and C._cell_date("2026-12-20", None) == dtm.date(2026, 12, 20) and C._cell_date("Mon 29 Feb", rng) is None and C._cell_date("whenever", rng) is None)
+sch = C.schedule_from("calendar-2026-12-10-to-2027-01-08.md", (cal / "calendar-2026-12-10-to-2027-01-08.md").read_text(encoding="utf-8"), "text")
+ok("a markdown calendar table gives the first and last day, the number of days and items, and the columns, counting only filled cells", sch and sch["schedule"]["from"] == "2026-12-10" and sch["schedule"]["to"] == "2027-01-08" and sch["schedule"]["days"] == 4 and sch["schedule"]["items"] == 8 and set(sch["schedule"]["columns"]) >= {"carousel", "single post"})
+ok("the scheduled sentences become post ideas with the ids (ED60:) removed, and one-or-two-word cells are dropped", any(t.startswith("25 of 25 studios") for t, _ in sch["topics"]) and not any(__import__("re").match(r"^ED\d", t) for t, _ in sch["topics"]) and any(t.startswith("Fewer visits") for t, _ in sch["topics"]) and not any(t in ("-", "") for t, _ in sch["topics"]))
+js = C.schedule_from("schedule-2026-12-10.json", (cal / "schedule-2026-12-10.json").read_text(encoding="utf-8"), "json")
+ok("a date-keyed JSON schedule gives its days and items (empty slots do not count)", js and js["schedule"]["days"] == 3 and js["schedule"]["items"] == 5 and js["schedule"]["from"] == "2026-12-10" and js["schedule"]["to"] == "2026-12-12")
+ok("a file with no dates, a plain list or broken JSON gives no schedule", C.schedule_from("a.md", "just words", "text") is None and C.schedule_from("a.json", "[1,2]", "json") is None and C.schedule_from("a.json", "{{", "json") is None and C.schedule_from("a.md", "| Name | Role |\n|---|---|\n| Ada | lead |\n", "text") is None)
+ib = C.ideas_from_json((cal / "ideas.json").read_text(encoding="utf-8"))
+ok("an idea bank gives the first hook without markup, and skips short hooks", ib and ib[0][0].startswith("Your best client wrote to you at 11pm.") and "<em>" not in ib[0][0] and len(ib) == 2 and ib[1][0].startswith("Why portfolios do not close"))
+ok("brand files are listed by name only (pictures and design files in a brand folder), nothing is read", sorted(C.brand_files(cal)) == ["brand/logo.svg", "brand/profile-picture.jpg"])
+ok("a time line must really give clock times: 'Times: carousel 18:00 ...' counts, 'one time zone split' does not", C.read_file("c.md", "text", "Made by a script. Times: carousel 18:00 WAT (11am Dallas), post 21:00 WAT.\n")["times"][0].startswith("carousel 18:00") and C.read_file("c.md", "text", "We use one time: it is a zone split in a sentence about nothing.\n")["times"] == [])
+# the whole run on this folder, as a Function's engine would inherit it
+(E.ENGINES / "calendar-eng").mkdir(); (E.ENGINES / "calendar-eng" / "engine.json").write_text(json.dumps({"context_folders": [{"path": str(cal)}]}), encoding="utf-8")
+outc = []
+C.run_context("calendar-eng", outc.append, today=dtm.date(2026, 11, 20))
+jc = json.loads((C.LISTS / "calendar-eng-presence-context.json").read_text(encoding="utf-8"))
+fc = jc["findings"]
+ok("the whole run finds the schedule across the calendar and the JSON, the posting times, the brand files, and puts the scheduled ideas first", fc["schedule"]["from"] == "2026-12-10" and fc["schedule"]["to"] == "2027-01-08" and fc["schedule"]["items"] >= 8 and any("18:00" in t for t in fc["times"]) and fc["brand"] == ["brand/logo.svg", "brand/profile-picture.jpg"] and fc["topics"][0]["text"].startswith("25 of 25 studios"))
+qc = {x["id"]: x for x in jc["questions"]}
+ok("it asks what to do about the weeks that are already scheduled, with the day after the last scheduled post offered as the start", qc["schedule"]["kind"] == "schedule" and [o["value"] for o in qc["schedule"]["options"]] == ["start_after", "alongside", "ignore"] and "2027-01-09" in qc["schedule"]["options"][0]["label"] and "2027-01-08" in qc["schedule"]["text"] and "times" in qc and "brand" in qc)
+past = C.questions_for({"schedule": {"from": "2020-01-01", "to": "2020-02-01", "items": 5, "days": 3, "columns": []}})
+ok("a schedule that is already over only offers to keep a note of it", past[0]["id"] == "schedule" and [o["value"] for o in past[0]["options"]] == ["note", "ignore"] and "is over" in past[0]["text"])
 src = Path(C.__file__).read_text(encoding="utf-8")
 ok("it only reads: one write (its own result file), no delete or move, and the only network call is to this PC's own Ollama", src.count(".write_text(") == 1 and "unlink" not in src and "rename" not in src and "shutil" not in src and "requests" not in src and src.count("urlopen(") == 1 and 'OLLAMA = "http://localhost:11434/api/chat"' in src and "api/tags" not in src)
 ok("no em dash in the file", chr(0x2014) not in src)
