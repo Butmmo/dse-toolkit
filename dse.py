@@ -111,10 +111,10 @@ def main():
     mp = sub.add_parser("mypack", help="make your own website check for any kind of business"); mp.add_argument("name")
     mp.add_argument("--sells", required=True); mp.add_argument("--checks", action="append", required=True, help="words to look for, comma separated => what to say if they are missing (repeat or one per line)")
     mp.add_argument("--opener", default=""); mp.add_argument("--pages", default="")
-    f = sub.add_parser("find"); f.add_argument("kind", help="a business type from the list, or type your own (like 'wedding photographers')"); f.add_argument("cities", nargs="?", default="", help="cities separated by ;  (or use --cities-file)")
+    f = sub.add_parser("find"); f.add_argument("kind", nargs="?", default="", help="a business type from the list, or type your own (like 'wedding photographers'); optional with --cities-file, which names its own"); f.add_argument("cities", nargs="?", default="", help="cities separated by ;  (or use --cities-file)")
     for p in (f,):
         p.add_argument("--miles", type=float, default=25.0); p.add_argument("--max", type=int, default=100)
-        p.add_argument("--country", default="US", help="one country code, like GB or AE (python dse.py countries); a group of several is refused")
+        p.add_argument("--country", default=None, help="one country code, like GB or AE (python dse.py countries); a group of several is refused (default US, or the country in the cities file's name)")
         p.add_argument("--source", default="foursquare", help="foursquare, overture (open data, no token) or both")
         p.add_argument("--cities-file", default="", dest="cities_file", help="a cities file made by: python dse.py cities (towns marked include = Y are searched)")
         p.add_argument("--tiers", default="", help="with --cities-file: search the towns in these tiers instead, like 1-3")
@@ -511,7 +511,7 @@ def main():
         print("Type any of these (or a plain word like 'photographer') as the business type in the lead tools: it is saved for you.")
         print("podcasts    The Broadcast Engine: python dse.py podcasts \"<topics>\"")
     elif a.cmd == "build":
-        places.build([k.strip() for k in a.kinds.split(",") if k.strip()], a.country, a.source)
+        places.build([places.resolve_kind(k.strip()) for k in a.kinds.split(",") if k.strip()], a.country, a.source)
     elif a.cmd == "cities":
         cities.suggest(a.kind, a.country, a.source, a.levels, a.refresh, a.cover, a.min_pool)
     elif a.cmd == "tech":
@@ -529,7 +529,13 @@ def main():
     elif a.cmd == "countries":
         print(chr(10).join(countries.listing()))
     elif a.cmd == "find":
-        places.find(a.kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip, a.country, a.source, a.cities_file, a.tiers)
+        kind, country = a.kind, a.country
+        inferred = cities.from_file_name(a.cities_file) if a.cities_file else None
+        if inferred:                                  # cities-gb-dentist.csv says it is for dentists in GB
+            country, kind = country or inferred[0], kind or inferred[1]
+        if not kind:
+            sys.exit("Give a business type, or a cities file made by: python dse.py cities <type> --country <code>")
+        places.find(kind, a.cities, a.miles, a.max, a.all, a.out, a.words, a.skip, country or "US", a.source, a.cities_file, a.tiers)
     elif a.cmd == "check":
         if a.target.lower().startswith(("http://", "https://", "www.")) or (a.target.count(".") and not a.target.lower().endswith(".csv")):
             chk.check_one(a.pack, a.target, render=not a.fast, result_line=a.result_line)

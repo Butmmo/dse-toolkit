@@ -116,6 +116,14 @@
         {
           "opt": "--skip",
           "field": "skip"
+        },
+        {
+          "opt": "--country",
+          "field": "country"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
         }
       ],
       "fields": [
@@ -209,6 +217,54 @@
           "max": 300,
           "pattern": "^[A-Za-z][A-Za-z0-9 .,;'&-]{2,299}$",
           "placeholder": "Tampa FL; Orlando FL"
+        },
+        {
+          "name": "country",
+          "label": "Country",
+          "type": "text",
+          "required": false,
+          "max": 2,
+          "pattern": "^[A-Za-z]{2}$",
+          "suggestions": [
+            "GB",
+            "IE",
+            "DE",
+            "FR",
+            "NL",
+            "ES",
+            "IT",
+            "AE",
+            "SA",
+            "IL",
+            "JP",
+            "KR",
+            "AU",
+            "NZ",
+            "SG",
+            "ZA"
+          ],
+          "default": "US"
+        },
+        {
+          "name": "source",
+          "label": "Data from",
+          "type": "choice",
+          "required": false,
+          "default": "foursquare",
+          "choices": [
+            {
+              "value": "foursquare",
+              "label": "Foursquare"
+            },
+            {
+              "value": "overture",
+              "label": "Overture"
+            },
+            {
+              "value": "both",
+              "label": "Both"
+            }
+          ]
         },
         {
           "name": "miles",
@@ -515,6 +571,14 @@
         {
           "opt": "--skip",
           "field": "skip"
+        },
+        {
+          "opt": "--country",
+          "field": "country"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
         }
       ],
       "fields": [
@@ -563,6 +627,54 @@
           "max": 300,
           "pattern": "^[A-Za-z][A-Za-z0-9 .,;'&-]{2,299}$",
           "placeholder": "Tampa FL; Orlando FL"
+        },
+        {
+          "name": "country",
+          "label": "Country",
+          "type": "text",
+          "required": false,
+          "max": 2,
+          "pattern": "^[A-Za-z]{2}$",
+          "suggestions": [
+            "GB",
+            "IE",
+            "DE",
+            "FR",
+            "NL",
+            "ES",
+            "IT",
+            "AE",
+            "SA",
+            "IL",
+            "JP",
+            "KR",
+            "AU",
+            "NZ",
+            "SG",
+            "ZA"
+          ],
+          "default": "US"
+        },
+        {
+          "name": "source",
+          "label": "Data from",
+          "type": "choice",
+          "required": false,
+          "default": "foursquare",
+          "choices": [
+            {
+              "value": "foursquare",
+              "label": "Foursquare"
+            },
+            {
+              "value": "overture",
+              "label": "Overture"
+            },
+            {
+              "value": "both",
+              "label": "Both"
+            }
+          ]
         },
         {
           "name": "miles",
@@ -682,6 +794,14 @@
         },
         {
           "field": "kinds"
+        },
+        {
+          "opt": "--country",
+          "field": "country"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
         }
       ],
       "fields": [
@@ -691,8 +811,59 @@
           "type": "text",
           "required": true,
           "max": 300,
-          "pattern": "^[a-z-]+(,[a-z-]+)*$",
-          "placeholder": "dentist,plumber"
+          "pattern": "^[A-Za-z][A-Za-z0-9 &'/-]*(,[A-Za-z][A-Za-z0-9 &'/-]*)*$",
+          "placeholder": "dentist,plumber,stump grinding"
+        },
+        {
+          "name": "country",
+          "label": "Country or group",
+          "type": "text",
+          "required": false,
+          "max": 40,
+          "pattern": "^[A-Za-z][A-Za-z-]{1,30}$",
+          "suggestions": [
+            "eu",
+            "gulf",
+            "uk",
+            "GB",
+            "IE",
+            "DE",
+            "FR",
+            "NL",
+            "ES",
+            "IT",
+            "AE",
+            "SA",
+            "IL",
+            "JP",
+            "KR",
+            "AU",
+            "NZ",
+            "SG",
+            "ZA"
+          ],
+          "default": "US"
+        },
+        {
+          "name": "source",
+          "label": "Data from",
+          "type": "choice",
+          "required": false,
+          "default": "foursquare",
+          "choices": [
+            {
+              "value": "foursquare",
+              "label": "Foursquare"
+            },
+            {
+              "value": "overture",
+              "label": "Overture"
+            },
+            {
+              "value": "both",
+              "label": "Both"
+            }
+          ]
         }
       ],
       "timeout_min": 90,
@@ -9000,6 +9171,329 @@
       "outputs": [
         {
           "glob": "my-lists/*-trends.json",
+          "upload": true
+        }
+      ]
+    },
+    "dse.cities": {
+      "label": "Rate the towns of a country (tiers)",
+      "group": "Find clients",
+      "help": "Rates towns by how many independent businesses with a website they hold (tier 1 = richest) and saves an editable list. Download the data first.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "cities"
+        },
+        {
+          "field": "kind"
+        },
+        {
+          "opt": "--country",
+          "field": "country"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        }
+      ],
+      "fields": [
+        {
+          "name": "kind",
+          "label": "Business type",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "[A-Za-z][A-Za-z0-9 &'/-]{2,59}"
+        },
+        {
+          "name": "country",
+          "label": "Country",
+          "type": "text",
+          "required": true,
+          "max": 2,
+          "pattern": "^[A-Za-z]{2}$",
+          "suggestions": [
+            "GB",
+            "IE",
+            "DE",
+            "FR",
+            "NL",
+            "ES",
+            "IT",
+            "AE",
+            "SA",
+            "IL",
+            "JP",
+            "KR",
+            "AU",
+            "NZ",
+            "SG",
+            "ZA"
+          ]
+        },
+        {
+          "name": "source",
+          "label": "Data from",
+          "type": "choice",
+          "required": false,
+          "default": "foursquare",
+          "choices": [
+            {
+              "value": "foursquare",
+              "label": "Foursquare"
+            },
+            {
+              "value": "overture",
+              "label": "Overture"
+            },
+            {
+              "value": "both",
+              "label": "Both"
+            }
+          ]
+        }
+      ],
+      "timeout_min": 20,
+      "outputs": [
+        {
+          "glob": "data/cities-*.csv",
+          "upload": true
+        }
+      ]
+    },
+    "dse.find_tiers": {
+      "label": "Leads from my best towns (tiers)",
+      "group": "Find clients",
+      "help": "Searches the towns in a cities list marked Y, or the tiers you give. Type and country come from the list's name.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "find"
+        },
+        {
+          "opt": "--cities-file",
+          "field": "cities_file"
+        },
+        {
+          "opt": "--source",
+          "field": "source"
+        },
+        {
+          "opt": "--tiers",
+          "field": "tiers"
+        },
+        {
+          "opt": "--max",
+          "field": "max"
+        }
+      ],
+      "fields": [
+        {
+          "name": "cities_file",
+          "label": "Cities list",
+          "type": "file",
+          "required": true,
+          "glob": "data/cities-*.csv"
+        },
+        {
+          "name": "source",
+          "label": "Data from",
+          "type": "choice",
+          "required": false,
+          "default": "foursquare",
+          "choices": [
+            {
+              "value": "foursquare",
+              "label": "Foursquare"
+            },
+            {
+              "value": "overture",
+              "label": "Overture"
+            },
+            {
+              "value": "both",
+              "label": "Both"
+            }
+          ]
+        },
+        {
+          "name": "tiers",
+          "label": "Only tiers (optional, like 1-3)",
+          "type": "text",
+          "required": false,
+          "max": 20,
+          "pattern": "^\\d{1,2}(-\\d{1,2})?(,\\d{1,2}(-\\d{1,2})?)*$"
+        },
+        {
+          "name": "max",
+          "label": "How many leads",
+          "type": "int",
+          "min": 5,
+          "max": 500,
+          "default": 100
+        }
+      ],
+      "timeout_min": 90,
+      "outputs": [
+        {
+          "glob": "my-lists/*.csv",
+          "upload": true
+        }
+      ]
+    },
+    "dse.registry_find": {
+      "label": "UK company register: find by town",
+      "group": "Find clients",
+      "help": "UK companies of one type by town, oldest first (Companies House). Download once at your PC: python dse.py registry build <type>.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "registry"
+        },
+        {
+          "lit": "find"
+        },
+        {
+          "field": "kind"
+        },
+        {
+          "field": "towns"
+        },
+        {
+          "opt": "--min-age",
+          "field": "min_age"
+        },
+        {
+          "opt": "--max",
+          "field": "max"
+        }
+      ],
+      "fields": [
+        {
+          "name": "kind",
+          "label": "Business type",
+          "type": "text",
+          "required": true,
+          "max": 60,
+          "pattern": "[A-Za-z][A-Za-z0-9 &'/-]{2,59}"
+        },
+        {
+          "name": "towns",
+          "label": "Towns",
+          "type": "text",
+          "required": true,
+          "max": 300,
+          "pattern": "^[A-Za-z][A-Za-z0-9 .,;'&-]{1,299}$",
+          "placeholder": "Leeds; Bradford"
+        },
+        {
+          "name": "min_age",
+          "label": "At least this many years old",
+          "type": "int",
+          "min": 0,
+          "max": 50,
+          "default": 1
+        },
+        {
+          "name": "max",
+          "label": "How many leads",
+          "type": "int",
+          "min": 5,
+          "max": 500,
+          "default": 100
+        }
+      ],
+      "timeout_min": 10,
+      "outputs": [
+        {
+          "glob": "my-lists/*.csv",
+          "upload": true
+        }
+      ]
+    },
+    "dse.tech_site": {
+      "label": "What a website is built with",
+      "group": "Check websites",
+      "help": "Reads one homepage: its platform, booking, chat, analytics and more, and what is not detected.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "tech"
+        },
+        {
+          "field": "site"
+        },
+        {
+          "flag": "--fast",
+          "field": "fast"
+        }
+      ],
+      "fields": [
+        {
+          "name": "site",
+          "label": "Website",
+          "type": "url",
+          "required": true
+        },
+        {
+          "name": "fast",
+          "label": "Fast (skip the hidden browser)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": []
+    },
+    "dse.tech": {
+      "label": "What every website on a list is built with",
+      "group": "Check websites",
+      "help": "Adds technology and what-is-missing columns to a lead list. One page per site.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "tech"
+        },
+        {
+          "field": "csv"
+        },
+        {
+          "opt": "--max",
+          "field": "max"
+        },
+        {
+          "flag": "--fast",
+          "field": "fast"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "List",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*.csv",
+          "exclude": "tech"
+        },
+        {
+          "name": "max",
+          "label": "Most sites in this run",
+          "type": "int",
+          "min": 1,
+          "max": 2000,
+          "default": 100
+        },
+        {
+          "name": "fast",
+          "label": "Fast (skip the hidden browser)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 120,
+      "outputs": [
+        {
+          "glob": "my-lists/*-tech-*.csv",
           "upload": true
         }
       ]

@@ -108,6 +108,12 @@ def file_for(kind: str, country: str) -> Path:
     return DATA / f"cities-{country.lower()}-{kind}.csv"
 
 
+def from_file_name(path: str) -> tuple[str, str] | None:
+    """('GB', 'dentist') from a cities file named cities-gb-dentist.csv (what `cities` writes), else None. Lets a search take its type and country from the file."""
+    m = re.fullmatch(r"cities-([a-z]{2})-(.+)\.csv", Path(path).name.lower())
+    return (m.group(1).upper(), m.group(2)) if m else None
+
+
 def summary(rows: list[dict]) -> list[str]:
     if not rows:
         return ["No towns with enough prospects."]
