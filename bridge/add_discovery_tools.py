@@ -21,7 +21,7 @@ from dse import countries as C  # noqa: E402
 p = HERE / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-NEW = ("dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech", "dse.audit_make", "dse.audit_score")
+NEW = ("dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech", "dse.audit_make", "dse.audit_score", "dse.research_run", "dse.research_history", "dse.research_leads")
 for k in [k for k in T if k in NEW + ("dse.registry_build", "dse.directories", "dse.countries")]:
     del T[k]
 
@@ -114,6 +114,27 @@ T["dse.audit_score"] = {"label": "Check a lead list: score the sheet you labelle
                         "script": "dse.py", "args": [{"lit": "audit"}, {"field": "csv"}, {"flag": "--score", "field": "go"}],
                         "fields": [{"name": "csv", "label": "Labelled sheet", "type": "file", "required": True, "glob": "my-lists/*audit*.csv"}, {"name": "go", "label": "Score it", "type": "bool", "default": True}],
                         "timeout_min": 2, "outputs": []}
+
+T["dse.research_run"] = {"label": "Research run: find, check, enrich and keep the leads", "group": "Find clients",
+                        "help": "Finds the businesses, reads each website once, adds technology and enrichment, scores them, and keeps every lead in one database. Run it again later with 'Only leads I have not had before' ticked.",
+                        "script": "dse.py", "args": [{"lit": "research"}, {"lit": "run"}, {"field": "kind"}, {"field": "cities"}, {"opt": "--country", "field": "country"}, {"opt": "--source", "field": "source"},
+                                                     {"opt": "--cap", "field": "max"}, {"opt": "--words", "field": "words"}, {"opt": "--skip", "field": "skip"}, {"flag": "--strict", "field": "strict"},
+                                                     {"flag": "--new-only", "field": "new_only"}, {"flag": "--no-enrich", "field": "no_enrich"}],
+                        "fields": [dict(KIND), {"name": "cities", "label": "Cities", "type": "text", "required": True, "max": 300, "pattern": r"^[A-Za-z][A-Za-z0-9 .,;'&-]{2,299}$", "placeholder": "Tampa FL; Orlando FL"},
+                                   country(), dict(SOURCE), dict(MAX), dict(WORDS), dict(SKIP), dict(STRICT),
+                                   {"name": "new_only", "label": "Only leads I have not had before", "type": "bool", "default": False},
+                                   {"name": "no_enrich", "label": "Skip the enrich step (faster)", "type": "bool", "default": False}],
+                        "timeout_min": 180, "outputs": [{"glob": "my-lists/*-research-*.csv", "upload": True}]}
+T["dse.research_history"] = {"label": "Research runs so far", "group": "Find clients",
+                             "help": "Every research run: when, what, how many leads, how many were new, and how many pages were reused instead of downloaded.",
+                             "script": "dse.py", "args": [{"lit": "research"}, {"lit": "history"}],
+                             "fields": [], "timeout_min": 1, "outputs": []}
+T["dse.research_leads"] = {"label": "My lead database: save the best as a list", "group": "Find clients",
+                           "help": "Every lead from every research run, best score first, saved as one list. Filter by a lowest score or a country.",
+                           "script": "dse.py", "args": [{"lit": "research"}, {"lit": "leads"}, {"opt": "--min-score", "field": "min_score"}, {"opt": "--country", "field": "country"}, {"lit": "--csv"}, {"lit": "my-lists/research-leads.csv"}],
+                           "fields": [{"name": "min_score", "label": "Lowest score", "type": "int", "min": 0, "max": 100, "default": 0},
+                                      {"name": "country", "label": "Only this country (optional)", "type": "text", "required": False, "max": 2, "pattern": r"^[A-Za-z]{2}$", "suggestions": list(SUGGEST)}],
+                           "timeout_min": 2, "outputs": [{"glob": "my-lists/research-leads.csv", "upload": True}]}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len([k for k in T if k in NEW]), "new tools,", len(T), "in all")
