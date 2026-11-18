@@ -182,6 +182,9 @@ check("the run reports how many names came from Companies House", "1 from Compan
 api2 = Api(rows)
 G.run("Leads", say=lambda m: None, api=api2, site=lambda w: SITES[w], companies_house=True, ch=client(), mx=lambda d: "no", guess=True)
 check("no guess when the domain does not receive mail", "c_n2" not in api2.cells["b"] and not any(v == "owen.hart@quiet.example" for v in api2.cells["b"].values()), str(api2.cells.get("b")))
+api2b = Api(rows)
+G.run("Leads", say=lambda m: None, api=api2b, site=lambda w: SITES[w], companies_house=True, ch=client(), mx=lambda d: "yes")
+check("without --guess the register's name never produces a guessed address", api2b.cells["b"].get({l: k for k, l in api2b.added}["First name"]) == "Owen" and not any("@" in str(v) for v in api2b.cells["b"].values()), str(api2b.cells.get("b")))
 api3 = Api(rows)
 G.run("Leads", say=lambda m: None, api=api3, site=lambda w: SITES[w], ch=client())
 check("without the option the register is not asked and there is no Name source column", "Name source" not in {l for _k, l in api3.added} and "b" not in api3.cells)
@@ -199,12 +202,12 @@ tool, gp = cat["tools"].get("dse.directors"), cat["tools"].get("dse.grid_people"
 check("the directors button is in Find clients, the list is chosen from your lists, and every field is used",
       tool and tool["group"] == "Find clients" and all(f["name"] in {a.get("field") for a in tool["args"]} for f in tool["fields"]) and all(a["field"] in {f["name"] for f in tool["fields"]} for a in tool["args"] if "field" in a))
 (ROOT / "my-lists").mkdir(exist_ok=True)
-(ROOT / "my-lists" / "zz-test-directors.csv").write_text("Company,City\nAcme,Leeds\n", encoding="utf-8")
+(ROOT / "my-lists" / "zz-test-leads.csv").write_text("Company,City\nAcme,Leeds\n", encoding="utf-8")
 try:
-    argv, _ = R.build_command(cat, "dse.directors", {"csv": "my-lists/zz-test-directors.csv", "company_column": "Company", "city_column": "City", "max": 50})
+    argv, _ = R.build_command(cat, "dse.directors", {"csv": "my-lists/zz-test-leads.csv", "company_column": "Company", "city_column": "City", "max": 50})
 finally:
-    (ROOT / "my-lists" / "zz-test-directors.csv").unlink()
-check("the directors button builds a command with the list, both columns and the limit", argv[argv.index("directors") + 1:] == ["my-lists/zz-test-directors.csv", "--company-column", "Company", "--city-column", "City", "--max", "50"], str(argv))
+    (ROOT / "my-lists" / "zz-test-leads.csv").unlink()
+check("the directors button builds a command with the list, both columns and the limit", argv[argv.index("directors") + 1:] == ["my-lists/zz-test-leads.csv", "--company-column", "Company", "--city-column", "City", "--max", "50"], str(argv))
 check("the grid button has the Companies House box, off by default", gp and any(f["name"] == "companies_house" and f["default"] is False for f in gp["fields"]) and any(a.get("flag") == "--companies-house" for a in gp["args"]))
 check("no em dash in the button text or the module", chr(0x2014) not in json.dumps([tool, gp]) and chr(0x2014) not in Path(CH.__file__).read_text(encoding="utf-8"))
 
