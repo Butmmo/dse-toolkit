@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install what the tests import
-        run: pip install -r requirements.txt openpyxl
+        run: pip install -r requirements.txt openpyxl pillow
       - name: Run every test file
         run: |
           fail=0

@@ -92,7 +92,10 @@ try:
     s2, path2 = P.find_list(str(path))
     check("a path to a list works and finds its engine", s2 == SLUG and path2 == path)
     check("a path outside send-lists is refused", "send-lists" in (raises(P.find_list, str(ROOT / "README.md")) or ""))
-    check("an engine with no lists is explained", "daily" in (raises(P.find_list, "web-development-work") or "daily"))
+    (ROOT / "engines" / "zz-pre-empty").mkdir(parents=True, exist_ok=True)
+    (ROOT / "engines" / "zz-pre-empty" / "engine.json").write_text(json.dumps({"name": "Empty", "path": "smb", "sender_name": "Bolu", "brand_name": "T Co", "archived": False}), encoding="utf-8")
+    check("an engine with no lists is explained", "daily" in (raises(P.find_list, "zz-pre-empty") or ""))
+    shutil.rmtree(ROOT / "engines" / "zz-pre-empty", ignore_errors=True)
     res = P.check_list(SLUG, path)
     iss = res["issues"]
     kinds = lambda i: " | ".join(t for _l, t in iss.get(i, []))  # noqa: E731
