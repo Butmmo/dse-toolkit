@@ -94,7 +94,7 @@ def scene_spec(text: str, kit: dict, size: tuple[int, int], frames: int, move: s
     if stat and stat[0]:
         big, rest = str(stat[0])[:14], str(stat[1] or "")[:110]
         bsize = 2.6 if len(big) <= 6 else 1.9 if len(big) <= 9 else 1.4
-        blocks.append({"text": big, "color": kit["accent"], "size": bsize, "y": 0.18 * frame_h, "font": head, "depth": 0.12})
+        blocks.append({"text": big, "color": kit["accent"], "size": bsize, "y": 0.18 * frame_h, "font": head, "depth": 0.12, "tilt": 14})
         if rest:
             per = 26
             blocks.append({"text": _wrap(rest, per), "color": kit["fg"], "size": 0.78, "y": -0.05 * frame_h - 0.2, "font": body_font, "depth": 0.05})
@@ -108,7 +108,8 @@ def scene_spec(text: str, kit: dict, size: tuple[int, int], frames: int, move: s
         lines = wrapped.count("\n") + 1
         blocks.append({"text": wrapped, "color": kit["fg"], "size": sz, "y": 0.0, "font": head, "depth": 0.1})
         bar = {"color": kit["accent"], "y": -(lines * sz * 0.62) - 0.7, "w": 1.1}
-    return {"width": W, "height": H, "frames": max(1, int(frames)), "fps": int(fps), "engine": "CYCLES", "samples": int(samples), "bg": kit["bg"], "blocks": blocks, "bar": bar,
+    n_frames = max(1, int(frames))
+    return {"width": W, "height": H, "frames": n_frames, "intro": 0 if n_frames < 8 or move == "still" else min(int(fps * 0.7), n_frames // 2), "fps": int(fps), "engine": "CYCLES", "samples": int(samples), "bg": kit["bg"], "blocks": blocks, "bar": bar,
             "move": move if move in MOVES else "dolly", "cam_z": 0}
 
 

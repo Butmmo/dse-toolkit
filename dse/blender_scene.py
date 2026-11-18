@@ -68,7 +68,34 @@ def font(path):
     return fonts[path]
 
 
-for b in spec["blocks"]:
+INTRO = max(0, min(int(spec.get("intro", 0)), FRAMES - 1))                                          # frames the pieces take to arrive; 0 means everything is there from the first frame
+
+
+def arrive(ob, index, base_z, final_scale):
+    """The piece rises a little and grows into place, one after another (index * 4 frames apart), so the scene builds instead of just being there."""
+    if INTRO < 2:
+        return
+    start = 1 + index * 4
+    end = min(FRAMES, start + INTRO)
+    ob.scale = (0.01, 0.01, 0.01)
+    ob.location.z = base_z - 0.5
+    ob.keyframe_insert("scale", frame=1)
+    ob.keyframe_insert("location", frame=1)
+    ob.scale = (0.01, 0.01, 0.01)
+    ob.keyframe_insert("scale", frame=start)
+    ob.location.z = base_z - 0.5
+    ob.keyframe_insert("location", frame=start)
+    ob.scale = final_scale
+    ob.location.z = base_z
+    ob.keyframe_insert("scale", frame=end)
+    ob.keyframe_insert("location", frame=end)
+    for fc in (ob.animation_data.action.fcurves if ob.animation_data and ob.animation_data.action else []):
+        for kp in fc.keyframe_points:
+            kp.interpolation = "BEZIER"
+            kp.handle_left_type = kp.handle_right_type = "AUTO_CLAMPED"
+
+
+for idx, b in enumerate(spec["blocks"]):
     cu = bpy.data.curves.new("t", "FONT")
     cu.body = b["text"]
     cu.size = float(b["size"])
@@ -86,6 +113,12 @@ for b in spec["blocks"]:
     ob.rotation_euler = (math.radians(90), 0, 0)                                                      # stand the text up so the camera, looking along +Y, reads it
     ob.location = (0, 0, float(b["y"]))
     ob.data.materials.append(material(b["color"]))
+    if b.get("tilt"):                                                                                 # a figure leans a little and settles, so the number feels solid
+        ob.rotation_euler = (math.radians(90), 0, math.radians(float(b["tilt"])))
+        ob.keyframe_insert("rotation_euler", frame=1)
+        ob.rotation_euler = (math.radians(90), 0, 0)
+        ob.keyframe_insert("rotation_euler", frame=max(2, min(FRAMES, 1 + INTRO + 6)))
+    arrive(ob, idx, float(b["y"]), (1, 1, 1))
 
 if spec.get("bar"):
     bar = spec["bar"]
@@ -93,6 +126,13 @@ if spec.get("bar"):
     o = bpy.context.object
     o.scale = (float(bar["w"]), 0.12, 0.09)
     o.data.materials.append(material(bar["color"]))
+    if INTRO >= 2:                                                                                    # the bar draws itself from the middle after the text has arrived
+        full = o.scale.copy()
+        o.scale = (0.001, full.y, full.z)
+        o.keyframe_insert("scale", frame=1)
+        o.keyframe_insert("scale", frame=min(FRAMES, 1 + len(spec["blocks"]) * 4 + 2))
+        o.scale = full
+        o.keyframe_insert("scale", frame=min(FRAMES, 1 + len(spec["blocks"]) * 4 + 2 + INTRO))
 
 # light: a soft key from the upper left and a wide fill, so the extrusion and the bevel catch the light
 for name, loc, energy, size in (("key", (-4, -7, 7), 900, 6), ("fill", (4, -5, -1), 300, 8)):

@@ -27,6 +27,8 @@ ok("long text is cut to 160 characters, wrapped to lines that fit the frame, and
 ok("odd input is harmless: empty text, a huge figure, an unknown move, zero frames", B.scene_spec("", kit, (540, 960), 0)["frames"] == 1 and B.scene_spec("x", kit, (540, 960), 5, move="spin")["move"] == "dolly" and len(B.scene_spec("x", kit, (540, 960), 5, stat=("1" * 40, "y"))["blocks"][0]["text"]) <= 14 and B.scene_spec(None, kit, (540, 960), 5)["blocks"][0]["text"].strip() == "")
 ok("the headline font follows the kit (serif is Georgia when this PC has it) and the body is always sans", all(b["font"].endswith(".ttf") or b["font"] == "" for b in sp["blocks"]))
 
+ok("a scene of 8 or more frames builds itself: the pieces arrive over about 0.7 s, a figure leans a little and settles, and a still or a very short scene has no intro", st["intro"] > 0 and st["intro"] <= st["frames"] // 2 and st["blocks"][0].get("tilt") and B.scene_spec("x", kit, (540, 960), 4)["intro"] == 0 and B.scene_spec("x", kit, (540, 960), 30, move="still")["intro"] == 0)
+
 # ---- finding Blender
 old = os.environ.get("BLENDER")
 fake = td / "myblender.exe"; fake.write_text("x")
