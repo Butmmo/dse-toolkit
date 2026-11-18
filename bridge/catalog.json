@@ -8517,6 +8517,43 @@
       ],
       "timeout_min": 240,
       "outputs": []
+    },
+    "dse.presence_insights": {
+      "label": "Presence: what to talk about, from a checked list",
+      "group": "Grow",
+      "help": "Reads a list your HQ tools built (Foursquare Open Source Places, then the website problem check and the enrichment) and works out what that whole market is like: how many have no online booking, no text or chat, an old website, and which social platforms they link to. Then it writes content ideas, each with the real numbers behind it and where they came from, so you can say '6 of 6 dentists I checked in Orlando cannot be texted from their website' and mean it. The result is counts only: no business name, address, phone or email is in it. A list of fewer than 10 is called a small sample. The file appears in Presence > Research. Nothing is posted or sent.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "presence"
+        },
+        {
+          "lit": "insights"
+        },
+        {
+          "field": "csv"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "List",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*.csv"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": [
+        {
+          "glob": "my-lists/*-insights.json",
+          "upload": true
+        },
+        {
+          "glob": "my-lists/*-insights.md",
+          "upload": true
+        }
+      ]
     }
   },
   "periodic": [

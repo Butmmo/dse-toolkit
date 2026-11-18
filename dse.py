@@ -18,6 +18,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
   python dse.py context <engine> [--add FOLDER] [--label L] [--scan] [--show] [--remove FOLDER] [--suggest] [--adopt LIST [--apply]]  read a folder of earlier work into the engine
+  python dse.py presence insights <list.csv>   Presence: what to talk about, from a checked list (counts only)
   python dse.py herald list|secret <address>|test <address|all>|forget <address>   Herald: your sending mailboxes (the password is typed here and stays on this PC)
   python dse.py grid list|push <csv> <grid>   HQ Tools into grids: send a list or a tool's result into a grid of your BPS Tables (see dse/gridpush.py)
   python dse.py outreach <engine|list> [--door review|inquiry] [--start DATE] [--name N] [--address A]  14-day touch plan and a mail-merge file (sends nothing)
@@ -52,7 +53,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -168,6 +169,7 @@ def main():
     cx.add_argument("--remove", default=""); cx.add_argument("--scan", action="store_true"); cx.add_argument("--show", action="store_true")
     cx.add_argument("--suggest", action="store_true"); cx.add_argument("--adopt", default=""); cx.add_argument("--apply", action="store_true")
     hd = sub.add_parser("herald", help="Herald: your sending mailboxes"); hd.add_argument("rest", nargs=argparse.REMAINDER)
+    pz = sub.add_parser("presence", help="Presence: research, graphics and video for your social content"); pz.add_argument("rest", nargs=argparse.REMAINDER)
     gp = sub.add_parser("grid", help="HQ Tools into grids: send a list into a grid of your BPS Tables"); gp.add_argument("rest", nargs=argparse.REMAINDER)
     op = sub.add_parser("outreach"); op.add_argument("target"); op.add_argument("--door", default=""); op.add_argument("--start", default="")
     op.add_argument("--name", default=""); op.add_argument("--address", default="")
@@ -267,6 +269,8 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "herald":
         sys.exit(herald.cli(a.rest))
+    elif a.cmd == "presence":
+        sys.exit(presence.cli(a.rest))
     elif a.cmd == "grid":
         from dse import gridpush
         sys.exit(gridpush.cli(a.rest))
