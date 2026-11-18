@@ -20,7 +20,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py context <engine> [--add FOLDER] [--label L] [--scan] [--show] [--remove FOLDER] [--suggest] [--adopt LIST [--apply]]  read a folder of earlier work into the engine
   python dse.py presence insights <list.csv>   Presence: what to talk about, from a checked list (counts only)
   python dse.py herald list|secret <address>|test <address|all>|forget <address>   Herald: your sending mailboxes (the password is typed here and stays on this PC)
-  python dse.py grid list|push <csv> <grid>   HQ Tools into grids: send a list or a tool's result into a grid of your BPS Tables (see dse/gridpush.py)
+  python dse.py grid list|push <csv> <grid>   HQ Tools into grids: send a list or a tool's result into a grid of your Ledgers (see dse/gridpush.py)
   python dse.py outreach <engine|list> [--door review|inquiry] [--start DATE] [--name N] [--address A]  14-day touch plan and a mail-merge file (sends nothing)
   python dse.py proposal <engine> --client "Acme" --problem "..." --offer "..." --price 1500 --deliverables "a; b"  a one-page proposal, cover email and follow-up (it sends nothing)
   python dse.py client won <engine> --proposal NAME   the Client Desk: from a won proposal to onboarding, invoices, delivery and payments (client list|show|done|invoice|paid)
@@ -99,7 +99,7 @@ def main():
     rs = sub.add_parser("research", help="one research run (find, read each site once, tech, enrich, score) with a lead database and history")
     rs.add_argument("action", choices=["run", "history", "leads"])
     rs.add_argument("kind", nargs="?", default="", help="run: the business type"); rs.add_argument("cities", nargs="?", default="", help="run: cities separated by ;  (or --cities-file)")
-    rs.add_argument("--country", default="US"); rs.add_argument("--cities-file", default=""); rs.add_argument("--tiers", default=""); rs.add_argument("--source", default="foursquare")
+    rs.add_argument("--country", default="", help="run: the country (default US); leads: only this country"); rs.add_argument("--cities-file", default=""); rs.add_argument("--tiers", default=""); rs.add_argument("--source", default="foursquare")
     rs.add_argument("--cap", type=int, default=100); rs.add_argument("--max", type=int, default=100); rs.add_argument("--strict", action="store_true"); rs.add_argument("--new-only", action="store_true", help="keep only leads not in the database yet")
     rs.add_argument("--no-enrich", action="store_true"); rs.add_argument("--icp", default=""); rs.add_argument("--words", default=""); rs.add_argument("--skip", default="")
     rs.add_argument("--min-score", type=int, default=0, help="leads: only this score or higher"); rs.add_argument("--csv", default="", help="leads: save to a CSV instead of printing")
@@ -135,7 +135,7 @@ def main():
         p.add_argument("--skip", default="", help="your own words that put a business out when they are in its name")
     c = sub.add_parser("check"); c.add_argument("pack"); c.add_argument("target", help="a CSV with a website column, or one web address")
     c.add_argument("--fast", action="store_true", help="skip the hidden browser (quicker, misses JavaScript-built sites)")
-    c.add_argument("--result-line", action="store_true", dest="result_line", help="with one web address: also print one RESULT line a BPS Table workflow reads")
+    c.add_argument("--result-line", action="store_true", dest="result_line", help="with one web address: also print one RESULT line a Ledger workflow reads")
     c.add_argument("--out", default="")
     l = sub.add_parser("list"); l.add_argument("pack"); l.add_argument("kind"); l.add_argument("cities", nargs="?", default="")
     l.add_argument("--miles", type=float, default=25.0); l.add_argument("--max", type=int, default=40); l.add_argument("--country", default="US"); l.add_argument("--source", default="foursquare"); l.add_argument("--cities-file", default="", dest="cities_file"); l.add_argument("--tiers", default="")
@@ -207,7 +207,7 @@ def main():
     cx.add_argument("--suggest", action="store_true"); cx.add_argument("--adopt", default=""); cx.add_argument("--apply", action="store_true")
     hd = sub.add_parser("herald", help="Herald: your sending mailboxes"); hd.add_argument("rest", nargs=argparse.REMAINDER)
     pz = sub.add_parser("presence", help="Presence: research, graphics and video for your social content"); pz.add_argument("rest", nargs=argparse.REMAINDER)
-    gp = sub.add_parser("grid", help="HQ Tools into grids: send a list into a grid of your BPS Tables"); gp.add_argument("rest", nargs=argparse.REMAINDER)
+    gp = sub.add_parser("grid", help="HQ Tools into grids: send a list into a grid of your Ledgers"); gp.add_argument("rest", nargs=argparse.REMAINDER)
     op = sub.add_parser("outreach"); op.add_argument("target"); op.add_argument("--door", default=""); op.add_argument("--start", default="")
     op.add_argument("--name", default=""); op.add_argument("--address", default="")
     rp = sub.add_parser("reply"); rp.add_argument("engine"); rp.add_argument("--text", required=True); rp.add_argument("--name", default=""); rp.add_argument("--source", default="")
@@ -215,7 +215,7 @@ def main():
     dn = sub.add_parser("dnc"); dn.add_argument("engine")
     en = sub.add_parser("enrich"); en.add_argument("source", nargs="?", default="", help="a CSV with a website or domain column"); en.add_argument("--site", default="", help="look at one website instead")
     en.add_argument("--icp", default="", help="words you want to find on their site, comma separated"); en.add_argument("--engine", default="", help="also save an import-ready copy in this engine")
-    en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser"); en.add_argument("--result-line", action="store_true", dest="result_line", help="with --site: also print one RESULT line a BPS Table workflow reads")
+    en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser"); en.add_argument("--result-line", action="store_true", dest="result_line", help="with --site: also print one RESULT line a Ledger workflow reads")
     en.add_argument("--provider", default="", help="optional: your own paid provider, set up with --add-provider"); en.add_argument("--budget", type=int, default=enrich_providers.DEFAULT_BUDGET)
     en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
     gl = sub.add_parser("goal"); gl.add_argument("engine"); gl.add_argument("--month", default=""); gl.add_argument("--stretch", type=float, default=goals.STRETCH_DEFAULT)
@@ -536,11 +536,11 @@ def main():
         if a.action == "run":
             if not (a.kind or a.cities_file):
                 sys.exit("Give a business type and cities, or --cities-file.")
-            research.run(a.kind, a.cities, a.country, a.cities_file, a.tiers, a.cap, a.strict, a.new_only, not a.no_enrich, a.icp, a.words, a.skip, a.source, a.max)
+            research.run(a.kind, a.cities, a.country or "US", a.cities_file, a.tiers, a.cap, a.strict, a.new_only, not a.no_enrich, a.icp, a.words, a.skip, a.source, a.max)
         elif a.action == "history":
             print(research.history())
         else:
-            print(research.leads(a.kind, a.min_score, a.country if a.country != "US" else "", a.csv))
+            print(research.leads(a.kind, a.min_score, a.country, a.csv))
     elif a.cmd == "audit":
         if a.score:
             audit.score(a.target)

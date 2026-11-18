@@ -9,7 +9,7 @@ T.pop("dse.grid_run", None)
 
 T["dse.grid_run"] = {
     "label": "Grids: run a column (ask Claude, or read a website, for each row)", "group": "Grow",
-    "help": "Fills one column of a grid of your BPS Tables, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: "
+    "help": "Fills one column of a grid of your Ledgers, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: "
             "ask Claude a question about each row (uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). "
             "A column can have several sources tried in order for each row (for example the free website reading first, then Claude only for the rows it found nothing for): the first answer that fits wins. "
             "A run leaves a small fingerprint on each row it fills or tries, so 'Empty or out-of-date rows' re-runs only rows whose inputs or sources changed (values typed by hand are never touched). "
@@ -17,7 +17,7 @@ T["dse.grid_run"] = {
             "It writes only into that one column of your own grid, through this PC's own connection to your account.",
     "script": "dse.py", "args": [{"lit": "grid"}, {"lit": "run"}, {"field": "grid"}, {"field": "column"}, {"opt": "--mode", "field": "mode"}, {"opt": "--limit", "field": "limit"}],
     "fields": [
-        {"name": "grid", "label": "Grid (its id, its name, or BPS Table/grid name)", "type": "text", "required": True, "max": 120},
+        {"name": "grid", "label": "Grid (its id, its name, or Ledger/grid name)", "type": "text", "required": True, "max": 120},
         {"name": "column", "label": "Column (its name or key)", "type": "text", "required": True, "max": 60},
         {"name": "mode", "label": "Which rows", "type": "choice", "required": False, "default": "empty",
          "choices": [{"value": "empty", "label": "Empty rows only"}, {"value": "stale", "label": "Empty or out-of-date rows (inputs or sources changed since the last run)"}, {"value": "all", "label": "Every row (replaces what is there)"}]},

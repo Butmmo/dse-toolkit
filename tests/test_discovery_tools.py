@@ -22,7 +22,7 @@ def check(name, cond, extra=""):
 
 cat = R.load_catalog(base_only=True)
 T = cat["tools"]
-NEW = ["dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech", "dse.audit_make", "dse.audit_score"]
+NEW = ["dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "dse.tech", "dse.audit_make", "dse.audit_score", "dse.research_run", "dse.research_history", "dse.research_leads"]
 CHANGED = ["dse.find", "dse.list", "dse.build"]
 ALL = NEW + CHANGED
 
@@ -105,6 +105,9 @@ try:
         "dse.find": {"kind": "stump grinding", "cities": "Leeds", "country": "GB", "source": "both", "strict": True},
         "dse.audit_make": {"csv": "my-lists/zz-test-leads.csv", "sample": 10},
         "dse.audit_score": {"csv": "my-lists/zz-test-audit.csv"},
+        "dse.research_run": {"kind": "stump grinding", "cities": "Leeds; Hull", "country": "GB", "source": "both", "max": 60, "words": "stump", "skip": "chain", "strict": True, "new_only": True, "no_enrich": True},
+        "dse.research_history": {},
+        "dse.research_leads": {"min_score": 60, "country": "GB"},
         "dse.list": {"pack": "smb", "kind": "dentist", "cities": "Leeds", "country": "GB", "source": "overture"},
         "dse.build": {"kinds": "dentist,stump grinding", "country": "eu", "source": "overture"},
         "dse.cities": {"kind": "dentist", "country": "GB", "source": "both"},
@@ -127,6 +130,14 @@ try:
         check("find: the strict box reaches the command, and is off by default", ns["dse.find"].strict is True and ns["dse.find_tiers"].strict is False)
         check("audit: make takes a list and a sample size, score takes the labelled sheet", ns["dse.audit_make"].target == "my-lists/zz-test-leads.csv" and ns["dse.audit_make"].sample == 10 and not ns["dse.audit_make"].score
               and ns["dse.audit_score"].target == "my-lists/zz-test-audit.csv" and ns["dse.audit_score"].score)
+        rr = ns["dse.research_run"]
+        check("research run: type, towns, country, source, size, words and the three boxes reach the command", rr.action == "run" and rr.kind == "stump grinding" and rr.cities == "Leeds; Hull" and rr.country == "GB" and rr.source == "both"
+              and rr.cap == 60 and rr.words == "stump" and rr.skip == "chain" and rr.strict and rr.new_only and rr.no_enrich, str(rr))
+        rd = R.build_command(cat, "dse.research_run", {"kind": "dentist", "cities": "Tampa FL"})[0][3:]
+        rdn = parse(rd)
+        check("research run: strict, new only and skip-enrich are all off unless ticked", rdn is not None and not (rdn.strict or rdn.new_only or rdn.no_enrich) and rdn.country == "US", str(rdn))
+        check("research history and the lead database buttons build their commands (the database list is always saved to one file, to upload)", ns["dse.research_history"].action == "history"
+              and ns["dse.research_leads"].action == "leads" and ns["dse.research_leads"].min_score == 60 and ns["dse.research_leads"].country == "GB" and ns["dse.research_leads"].csv == "my-lists/research-leads.csv")
         check("list: country and source reach the command", ns["dse.list"].country == "GB" and ns["dse.list"].source == "overture")
         check("build: a group, a source and niche names reach the command", ns["dse.build"].country == "eu" and ns["dse.build"].source == "overture" and ns["dse.build"].kinds == "dentist,stump grinding")
         check("cities: type, country and source reach the command", ns["dse.cities"].kind == "dentist" and ns["dse.cities"].country == "GB" and ns["dse.cities"].source == "both")

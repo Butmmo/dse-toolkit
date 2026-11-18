@@ -1,14 +1,14 @@
-"""HQ Tools into grids: send a list (a lead list, or a tool's result such as an enriched list) into a grid of one of your BPS Tables.
+"""HQ Tools into grids: send a list (a lead list, or a tool's result such as an enriched list) into a grid of one of your Ledgers.
 
-    python dse.py grid list                                       your grids: BPS Table, grid name, how many columns, and which are keys
+    python dse.py grid list                                       your grids: Ledger, grid name, how many columns, and which are keys
     python dse.py grid push <csv> <grid> [--key <column>] [--no-new-columns] [--overwrite] [--only a,b,c] [--dry]
 
-<grid> is the grid's name (or "BPS Table/grid name", or its id). What happens:
+<grid> is the grid's name (or "Ledger/grid name", or its id). What happens:
   * the CSV's headers are matched to the grid's columns by name (and by the usual other names: Website = URL = Domain, Email = Work email, Company = Business name ...);
   * a header the grid has no column for becomes a NEW column (text, email, link, number, date or yes/no, guessed from its values) unless you say --no-new-columns; --only lists the headers to bring;
   * with a KEY (default: the Email column, else the website) a lead is added once: sending it again fills the cells that are empty and keeps what you typed; --overwrite replaces cells instead;
   * --dry shows exactly what would happen and sends nothing.
-Rows are marked as coming from a tool. Workflows of that BPS Table start for the rows it adds, like for rows you type. Needs this PC to be connected to Citadel and the database file
+Rows are marked as coming from a tool. Workflows of that Ledger start for the rows it adds, like for rows you type. Needs this PC to be connected to Citadel and the database file
 20261213090000_hq_grids.sql. Nothing leaves your account; the CSV is never changed.
 """
 from __future__ import annotations
@@ -92,8 +92,8 @@ def resolve_grid(grids: list[dict], ref: str) -> dict:
     if len(named) == 1:
         return named[0]
     if len(named) > 1:
-        raise ValueError("More than one grid is called that. Say which BPS Table too, like: " + ", ".join(f'"{g.get("workbook", "")}/{g["name"]}"' for g in named[:4]))
-    have = ", ".join(f'"{g.get("workbook", "")}/{g["name"]}"' for g in grids[:8]) or "none yet (make one in Citadel: BPS Tables)"
+        raise ValueError("More than one grid is called that. Say which Ledger too, like: " + ", ".join(f'"{g.get("workbook", "")}/{g["name"]}"' for g in named[:4]))
+    have = ", ".join(f'"{g.get("workbook", "")}/{g["name"]}"' for g in grids[:8]) or "none yet (make one in Citadel: Ledgers)"
     raise ValueError(f"I do not know a grid '{ref}'. Your grids: {have}.")
 
 
@@ -202,7 +202,7 @@ def list_grids(api=None) -> str:
         return "This PC is not connected to Citadel yet (run the HQ Tools setup first).\n"
     gs = _grids(api)
     if not gs:
-        return "You have no grids yet. In Citadel open BPS Tables, make a BPS Table and add a grid; it appears here.\n"
+        return "You have no grids yet. In Citadel open Ledgers, make a Ledger and add a grid; it appears here.\n"
     out = []
     for g in gs:
         cols = columns_of(g.get("doc"))
