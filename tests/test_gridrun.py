@@ -232,6 +232,63 @@ try:
 except RuntimeError as e:
     check("a refusal is raised in plain words and never shows the key", "Claude says" in str(e) and "sk-ant-secretkey1234567890" not in str(e))
 
+# ---- sources in order (a waterfall)
+S_SITE = {"kind": "site", "from": "Website", "field": "email"}
+S_AI = {"kind": "ai", "prompt": "Guess the best email for {Company}", "model": "haiku"}
+WF = {**S_SITE, "then": [S_AI]}
+wf_grid = {**GRID, "doc": doc(run_site=WF)}
+
+
+def wf_api(rows):
+    return Api(rows, grid=wf_grid)
+
+
+wf_rows = [{"id": "w1", "data": {"c_website": "acme.com", "c_company": "Acme"}},
+           {"id": "w2", "data": {"c_website": "bright.co.uk", "c_company": "Bright"}},
+           {"id": "w3", "data": {"c_company": "Cee Ltd"}},
+           {"id": "w4", "data": {}}]
+check("a setting with several sources: the first is the setting, the others follow, junk is dropped, at most four more, a nested chain is ignored", (lambda a, many: [s["kind"] for s in R.steps_of(a)] == ["site", "ai", "ai"] and len(R.steps_of(many)) == 5 and R.steps_of(a)[2].get("then") is None and R.clean_run({**S_SITE, "then": "no"}).get("then") is None and R.clean_run({"kind": "x", "then": [S_SITE]}) is None and R.steps_of(None) == [])(
+    R.clean_run({**S_SITE, "then": [S_AI, {"kind": "x"}, {"kind": "ai", "prompt": " "}, {**S_AI, "then": [S_SITE]}]}), R.clean_run({**S_SITE, "then": [S_AI] * 9})))
+wcols = R.parse_columns(wf_grid["doc"])
+wcol = [c for c in wcols if c["label"] == "Email found"][0]
+check("a source that cannot work is named by its place when there are several (and plainly when there is one)", R.problem(wcol, wcols) == "" and R.problem({**wcol, "run": {**S_SITE, "then": [{**S_AI, "prompt": "x {Nope}"}]}}, wcols).startswith("Source 2: The question uses a column the grid does not have") and R.problem({**wcol, "run": {**S_SITE, "from": "Nope"}}, wcols).startswith("The website column"))
+check("a row can run when ANY source has something to read", R.has_inputs(WF, wcols, {"c_website": "a.com"}) and R.has_inputs(WF, wcols, {"c_company": "X"}) and not R.has_inputs(WF, wcols, {"c_city": "York"}))
+api = wf_api(wf_rows)
+asked = []
+fetched = []
+out, lines = run(api, col="Email found", ask=lambda p, t: (asked.append(p) or "info@" + p.split()[-1].lower() + ".com", 5, 2, "claude-haiku-5-5"), site=lambda w: fetched.append(w) or ({"emails": [{"email": "hi@acme.com"}]} if w == "acme.com" else {}))
+check("the free source is tried first and Claude is only asked for rows it found nothing for", asked == ["Guess the best email for Bright", "Guess the best email for Cee Ltd"] and fetched == ["acme.com", "bright.co.uk"])
+check("each row gets the answer of the first source that gave one, and the row with nothing to read is skipped", api.saved == {"w1": {"c_found": "hi@acme.com"}, "w2": {"c_found": "info@bright.com"}, "w3": {"c_found": "info@ltd.com"}} and "1 skipped" in out)
+check("the end line says how many each source supplied", "FINISHED 3 filled, 0 failed, 1 skipped, 0 no answer, by source: 1st 1, 2nd 2" in out, out)
+api = wf_api(wf_rows[:1])
+run(api, col="Email found", ask=lambda p, t: (_ for _ in ()).throw(AssertionError("asked although the website answered")), site=lambda w: {"emails": [{"email": "hi@acme.com"}]})
+check("a paid source is never asked when an earlier source answered", api.saved == {"w1": {"c_found": "hi@acme.com"}})
+api = wf_api([wf_rows[1]])
+out, _ = run(api, col="Email found", ask=lambda p, t: ("no idea", 1, 1, "m"), site=lambda w: {})
+check("an answer that does not fit the column type is not stored, and the row is counted as not fitting", not api.saved and "did not fit the column type" in out)
+chain = {"kind": "ai", "prompt": "Guess the email for {Company}", "model": "haiku", "then": [S_SITE]}
+api = Api([{"id": "m1", "data": {"c_company": "Bright", "c_website": "bright.co.uk"}}], grid={**GRID, "doc": doc(run_site=chain)})
+out, _ = run(api, col="Email found", ask=lambda p, t: ("not an email", 1, 1, "m"), site=lambda w: {"emails": [{"email": "found@bright.co.uk"}]})
+check("when the first source's answer does not fit, the next source is tried", api.saved == {"m1": {"c_found": "found@bright.co.uk"}} and "by source: 1st 0, 2nd 1" in out)
+api = Api([{"id": "e1", "data": {"c_company": "Bright", "c_website": "bright.co.uk"}}], grid={**GRID, "doc": doc(run_site={**S_SITE, "then": [S_AI]})})
+out, _ = run(api, col="Email found", ask=lambda p, t: ("ok@bright.co.uk", 1, 1, "m"), site=lambda w: (_ for _ in ()).throw(RuntimeError("timed out")))
+check("a source that fails does not fail the row: the next source is still tried", api.saved == {"e1": {"c_found": "ok@bright.co.uk"}} and "0 failed" in out)
+api = Api([{"id": f"f{i}", "data": {"c_company": f"Co{i}", "c_website": f"s{i}.com"}} for i in range(9)], grid=wf_grid)
+calls = {"n": 0}
+out, _ = run(api, col="Email found", ask=lambda p, t: (_ for _ in ()).throw(RuntimeError("credit balance is too low")), site=lambda w: calls.__setitem__("n", calls["n"] + 1) or (_ for _ in ()).throw(RuntimeError("offline")))
+check("a row where every source failed is a failed row, and five in a row stop the run with the last reason", "STOPPED" in out and "5 failed" in out and calls["n"] == 5, out)
+seen = []
+two_site = {**S_SITE, "then": [{"kind": "site", "from": "Website", "field": "phone"}]}
+api = Api([{"id": "s1", "data": {"c_website": "same.com"}}], grid={**GRID, "doc": doc(run_site=two_site)})
+run(api, col="Email found", site=lambda w: seen.append(w) or {"phones": ["555 1234"]})
+check("two website sources on one row read the website once", seen == ["same.com"] and not api.saved)
+api = wf_api([wf_rows[0], wf_rows[2]])
+cost = Cost(limit_after=0)
+out, _ = run(api, col="Email found", cost=cost, site=lambda w: {"emails": [{"email": "hi@acme.com"}]}, ask=lambda p, t: (_ for _ in ()).throw(AssertionError("asked over the limit")))
+check("with a free source first, a run over the Claude limit still fills what the website answers, then stops with how to raise it at the first row that needs Claude", api.saved == {"w1": {"c_found": "hi@acme.com"}} and "STOPPED" in out and "claude limit" in out, out)
+run_src = (ROOT / "dse" / "gridrun.py").read_text(encoding="utf-8")
+check("the module says several sources are tried in order and the first answer wins", "SEVERAL sources" in run_src and "MAX_STEPS = 5" in run_src)
+
 # ---- the tool and the command
 cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))
 t = cat["tools"]["dse.grid_run"]

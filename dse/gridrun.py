@@ -8,6 +8,8 @@ The column has a RUN SETTING, made in Citadel (column menu > Run settings), one 
                   with only the cell's value, or UNKNOWN when it cannot tell (the cell is then left as it is).
   read a website  one fact (best email, phone, decision maker, social link ...) read from the business's OWN public website in another column: the same free, polite reader as Lead enrichment.
 What a run does:
+  * a column can have SEVERAL sources, tried in order for each row (a waterfall): the first that gives an answer that fits the column fills the cell, so a paid Claude answer is only asked for
+    when the free website reading found nothing. Up to five.
   * mode empty (the default) works only on rows whose cell is empty; mode all ("force") redoes every row. --limit N takes only the first N (test on a few before running them all).
   * a row with nothing to read (no website, or every column named in the question empty) is skipped and counted.
   * answers are saved in small batches while it works, so Stop (or a crash) keeps everything done so far; it only ever writes into THIS column of rows of YOUR grid, through this PC's own connection.
@@ -29,6 +31,7 @@ from pathlib import Path
 from . import gridpush
 
 MAX_ROWS = 5000
+MAX_STEPS = 5
 READ_PAGE = 500
 BATCH = 10
 MAX_CELL = {"text": 500, "longtext": 2000}
@@ -62,9 +65,9 @@ def parse_columns(doc_text: str | None) -> list[dict]:
     return out
 
 
-def clean_run(run: dict | None) -> dict | None:
-    """The same rules as the grid (src/lib/crm-grid.ts cleanRun): anything incomplete or odd is no run setting at all."""
-    if not run:
+def clean_step(run: dict | None) -> dict | None:
+    """One source. The same rules as the grid (src/lib/crm-grid.ts cleanRunStep): anything incomplete or odd is no source at all."""
+    if not isinstance(run, dict):
         return None
     if run.get("kind") == "ai":
         prompt = re.sub(r"[ \t]+", " ", str(run.get("prompt") or "")).strip()[:1000]
@@ -73,6 +76,23 @@ def clean_run(run: dict | None) -> dict | None:
         frm, field = re.sub(r"\s+", " ", str(run.get("from") or "")).strip()[:40], str(run.get("field") or "")
         return {"kind": "site", "from": frm, "field": field} if frm and field in SITE_FIELDS else None
     return None
+
+
+def clean_run(run: dict | None) -> dict | None:
+    """A run setting: a first source and, optionally, more tried in order after it (src/lib/crm-grid.ts cleanRun). Returned as {first source..., "then": [more]}."""
+    first = clean_step(run)
+    if not first:
+        return None
+    more = run.get("then") if isinstance(run.get("then"), list) else []
+    then = [x for x in (clean_step(m) for m in more) if x][: MAX_STEPS - 1]
+    return {**first, "then": then} if then else first
+
+
+def steps_of(run: dict | None) -> list[dict]:
+    """The sources in the order they are tried."""
+    if not run:
+        return []
+    return [{k: v for k, v in run.items() if k != "then"}] + list(run.get("then") or [])
 
 
 def find_column(columns: list[dict], ref: str) -> dict:
@@ -114,20 +134,21 @@ def build_prompt(prompt: str, columns: list[dict], data: dict) -> str:
     return re.sub(r"\{([^{}]{1,40})\}", lambda m: cell_text(by[norm(m.group(1))], data) if norm(m.group(1)) in by else "", prompt)
 
 
-def has_inputs(run: dict, columns: list[dict], data: dict) -> bool:
+def step_has_inputs(step: dict, columns: list[dict], data: dict) -> bool:
     by = {norm(c["label"]): c for c in columns}
-    names = prompt_refs(run["prompt"]) if run["kind"] == "ai" else [run["from"]]
+    names = prompt_refs(step["prompt"]) if step["kind"] == "ai" else [step["from"]]
     return any(norm(n) in by and cell_text(by[norm(n)], data) != "" for n in names)
 
 
-def problem(col: dict, columns: list[dict]) -> str:
-    """Why this column cannot be run (empty text: it can). Mirrors the grid's own check."""
-    run = col["run"]
-    if not run:
-        return "That column has no run setting yet. In Citadel open its column menu and choose Run settings."
+def has_inputs(run: dict, columns: list[dict], data: dict) -> bool:
+    """A row can run when ANY source has something to read."""
+    return any(step_has_inputs(st, columns, data) for st in steps_of(run))
+
+
+def step_problem(step: dict, col: dict, columns: list[dict]) -> str:
     by = {norm(c["label"]): c for c in columns}
-    if run["kind"] == "ai":
-        refs = prompt_refs(run["prompt"])
+    if step["kind"] == "ai":
+        refs = prompt_refs(step["prompt"])
         if not refs:
             return "The question names no column. Put a column name in { }, for example {Company}."
         missing = [r for r in refs if norm(r) not in by]
@@ -136,11 +157,23 @@ def problem(col: dict, columns: list[dict]) -> str:
         if any(by[norm(r)]["key"] == col["key"] for r in refs):
             return "The question cannot use the column it fills."
         return ""
-    src = by.get(norm(run["from"]))
+    src = by.get(norm(step["from"]))
     if not src:
-        return f"The website column '{run['from']}' is not in the grid."
+        return f"The website column '{step['from']}' is not in the grid."
     if src["key"] == col["key"]:
         return "The website column cannot be the column being filled."
+    return ""
+
+
+def problem(col: dict, columns: list[dict]) -> str:
+    """Why this column cannot be run (empty text: it can). Mirrors the grid's own check; with several sources the message says which."""
+    if not col["run"]:
+        return "That column has no run setting yet. In Citadel open its column menu and choose Run settings."
+    steps = steps_of(col["run"])
+    for i, st in enumerate(steps):
+        bad = step_problem(st, col, columns)
+        if bad:
+            return f"Source {i + 1}: {bad}" if len(steps) > 1 else bad
     return ""
 
 
@@ -299,23 +332,25 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
     why = problem(col, columns)
     if why:
         raise ValueError(why)
-    run_cfg = col["run"]
+    steps = steps_of(col["run"])
     rows = read_rows(api, grid["id"])
     pick = pick_rows(rows, col, columns, mode, limit)
     todo = pick["rows"]
-    kind = "asks Claude" if run_cfg["kind"] == "ai" else "reads the website"
+    kind = f"tries {len(steps)} sources in order" if len(steps) > 1 else "asks Claude" if steps[0]["kind"] == "ai" else "reads the website"
     head = f"{grid.get('workbook', '')}/{grid['name']}: column '{col['label']}' {kind} for {len(todo)} of {pick['total']} rows ({'every row' if mode == 'all' else 'empty rows only'}{f', first {limit}' if limit else ''}); {pick['skipped']} skipped (nothing to read)."
     if dry or not todo:
         return head + ("\nDry run: nothing was asked and nothing was saved.\n" if dry else "\nNothing to run.\n")
     say(head)
-    if run_cfg["kind"] == "ai":
+    uses_ai = any(st["kind"] == "ai" for st in steps)
+    uses_site = any(st["kind"] == "site" for st in steps)
+    if uses_ai:
         if not (key_present() if key_present else claude_key()):
             raise RuntimeError("Claude is not connected on this PC. Run: python dse.py claude setup")
         cost = cost or _cost()
         ask = ask or (lambda p, tier: ask_claude(p, tier))
-        if cost.over_limit():
+        if cost.over_limit() and not uses_site:
             raise RuntimeError(f"Today's Claude limit ({cost.limit():,} tokens, set by you) is used up. Raise it with: python dse.py claude limit <tokens>")
-    else:
+    if uses_site:
         site = site or read_site
     by = {norm(c["label"]): c for c in columns}
     total = len(todo)
@@ -323,7 +358,8 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
     skipped = pick["skipped"]
     streak = 0
     pending: list[dict] = []
-    cache: dict[str, str] = {}
+    site_cache: dict[str, dict] = {}
+    by_source = [0] * len(steps)
     note = ""
 
     def flush() -> None:
@@ -344,37 +380,61 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
 
     for r in todo:
         data = r.get("data") or {}
-        value = None
-        try:
-            if run_cfg["kind"] == "ai":
-                if cost.over_limit():
-                    note = f"STOPPED: today's Claude limit ({cost.limit():,} tokens) was reached. Raise it with: python dse.py claude limit <tokens>"
-                    break
-                text, tin, tout, model = ask(build_prompt(run_cfg["prompt"], columns, data), run_cfg["model"])
-                try:
-                    cost.record(model, tin, tout)
-                except Exception:
-                    pass
-            else:
-                src = cell_text(by[norm(run_cfg["from"])], data)
-                if src not in cache:
-                    cache[src] = site_value(site(src), run_cfg["field"])
-                text = cache[src]
-            streak = 0
+        value, used = None, None
+        attempted = errored = 0
+        fitted = ai_blocked = False
+        last_err = ""
+        for si, st in enumerate(steps):               # the waterfall: the first source that gives an answer that fits wins
+            if not step_has_inputs(st, columns, data):
+                continue
+            if st["kind"] == "ai" and cost.over_limit():
+                ai_blocked = True
+                continue
+            try:
+                if st["kind"] == "ai":
+                    text, tin, tout, model = ask(build_prompt(st["prompt"], columns, data), st["model"])
+                    try:
+                        cost.record(model, tin, tout)
+                    except Exception:
+                        pass
+                else:
+                    src = cell_text(by[norm(st["from"])], data)
+                    if src not in site_cache:
+                        site_cache[src] = site(src)
+                    text = site_value(site_cache[src], st["field"])
+            except Exception as e:                    # this source failed for this row: the next one is still tried
+                errored += 1
+                last_err = str(e)
+                continue
+            attempted += 1
             if not (text or "").strip() or text.strip().upper() == "UNKNOWN":
-                no_answer += 1
-            else:
-                value = coerce(col, text)
-                if value is None:
-                    misfit += 1
-        except Exception as e:           # a failed row: counted, and a run of failures in a row stops it
+                continue
+            v = coerce(col, text)
+            if v is None:
+                fitted = True                         # an answer came but did not fit the column type
+                continue
+            value, used = v, si
+            break
+        if value is None and ai_blocked:
+            note = f"STOPPED: today's Claude limit ({cost.limit():,} tokens) was reached. Raise it with: python dse.py claude limit <tokens>"
+            break
+        if value is not None:
+            streak = 0
+            by_source[used] += 1
+            pending.append({"id": r["id"], "cells": {col["key"]: value}})
+        elif attempted == 0 and errored > 0:          # every source that was tried failed: a failed row, and a run of them in a row stops it
             failed += 1
             streak += 1
             if streak >= STOP_AFTER_FAILS:
-                note = f"STOPPED: {streak} rows in a row failed. Last problem: {str(e)[:160]}"
+                note = f"STOPPED: {streak} rows in a row failed. Last problem: {last_err[:160]}"
+                done += 1
                 break
-        if value is not None:
-            pending.append({"id": r["id"], "cells": {col["key"]: value}})
+        else:
+            streak = 0
+            if fitted:
+                misfit += 1
+            else:
+                no_answer += 1
         done += 1
         if len(pending) >= BATCH:
             flush()
@@ -382,7 +442,9 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
             say(f"PROGRESS {done}/{total} failed {failed} skipped {skipped}")
     flush()
     say(f"PROGRESS {done}/{total} failed {failed} skipped {skipped}")
-    out = f"FINISHED {filled} filled, {failed} failed, {skipped} skipped, {no_answer} no answer" + (f", {misfit} did not fit the column type" if misfit else "")
+    order = ("1st", "2nd", "3rd", "4th", "5th")
+    out = (f"FINISHED {filled} filled, {failed} failed, {skipped} skipped, {no_answer} no answer" + (f", {misfit} did not fit the column type" if misfit else "")
+           + (", by source: " + ", ".join(f"{order[i]} {n}" for i, n in enumerate(by_source)) if len(steps) > 1 else ""))
     return (note + "\n" if note else "") + out + "\n"
 
 

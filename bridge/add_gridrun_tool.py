@@ -11,6 +11,7 @@ T["dse.grid_run"] = {
     "label": "Grids: run a column (ask Claude, or read a website, for each row)", "group": "Grow",
     "help": "Fills one column of a grid of your BPS Tables, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: "
             "ask Claude a question about each row (uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). "
+            "A column can have several sources tried in order for each row (for example the free website reading first, then Claude only for the rows it found nothing for): the first answer that fits wins. "
             "It works on empty rows unless you ask for every row, and 'first N rows' lets you test on a few before running them all. Answers are saved in small batches, so Stop keeps what is done. "
             "It writes only into that one column of your own grid, through this PC's own connection to your account.",
     "script": "dse.py", "args": [{"lit": "grid"}, {"lit": "run"}, {"field": "grid"}, {"field": "column"}, {"opt": "--mode", "field": "mode"}, {"opt": "--limit", "field": "limit"}],
