@@ -24,6 +24,7 @@ import requests
 from . import countries as C
 from . import niches as NI
 from . import overture as OV
+from . import pagecache
 from .common import DATA, DEAD_TEXT, UA, log, out_path, write_csv
 
 HF = "hf://datasets/foursquare/fsq-os-places"
@@ -377,7 +378,7 @@ def site_live(url: str, words: str = "") -> str:
     'blocked' (the site blocks scripts: the check reads it with Edge), or 'unchecked' (no words to look for). A non-empty answer means live, so old callers that
     only want a yes or no still work."""
     try:
-        r = requests.get(url, timeout=12, headers=UA, allow_redirects=True)
+        r = pagecache.get(url, timeout=12)
     except Exception:
         return ""
     if r.status_code in (403, 429):

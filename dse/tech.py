@@ -23,6 +23,7 @@ from pathlib import Path
 
 import requests
 
+from . import pagecache
 from .common import UA, log, norm_url, out_path, read_csv, render_dom, write_csv
 
 RULES = json.loads(Path(__file__).with_name("tech_rules.json").read_text(encoding="utf-8"))
@@ -148,7 +149,7 @@ def scan(website: str, render: bool = True, today: date | None = None) -> tuple[
     except Exception:                                  # robots check is a courtesy: never the reason a scan fails
         pass
     try:
-        r = requests.get(url, headers=UA, timeout=15, allow_redirects=True)
+        r = pagecache.get(url, timeout=15)
     except Exception:
         return empty_columns("unreachable", today), {}
     html = r.text if "text" in r.headers.get("content-type", "text") else ""
