@@ -102,8 +102,8 @@ try:
         "dse.list": {"pack": "smb", "kind": "dentist", "cities": "Leeds", "country": "GB", "source": "overture"},
         "dse.build": {"kinds": "dentist,stump grinding", "country": "eu", "source": "overture"},
         "dse.cities": {"kind": "dentist", "country": "GB", "source": "both"},
-        "dse.find_tiers": {"source": "both", "cities_file": "data/cities-gb-dentist.csv", "tiers": "1-3", "max": 40},
-        "dse.registry_find": {"kind": "dentist", "towns": "Leeds; Bradford", "min_age": 2, "max": 50},
+        "dse.find_tiers": {"source": "both", "cities_file": "data/cities-gb-dentist.csv", "tiers": "1-3"},
+        "dse.registry_find": {"kind": "dentist", "towns": "Leeds; Bradford", "min_age": 2},
         "dse.tech_site": {"site": "https://smile.example", "fast": True},
         "dse.tech": {"csv": "my-lists/zz-test-leads.csv", "max": 50, "fast": True},
     }
@@ -122,7 +122,7 @@ try:
         check("build: a group, a source and niche names reach the command", ns["dse.build"].country == "eu" and ns["dse.build"].source == "overture" and ns["dse.build"].kinds == "dentist,stump grinding")
         check("cities: type, country and source reach the command", ns["dse.cities"].kind == "dentist" and ns["dse.cities"].country == "GB" and ns["dse.cities"].source == "both")
         ft = ns["dse.find_tiers"]
-        check("find by tiers: only the file, tiers, source and count are sent (type and country come from the file name)", ft.kind == "" and ft.cities == "" and ft.country is None and ft.cities_file == "data/cities-gb-dentist.csv" and ft.tiers == "1-3" and ft.max == 40 and ft.source == "both")
+        check("find by tiers: only the file, tiers and source are sent (type and country come from the file name)", ft.kind == "" and ft.cities == "" and ft.country is None and ft.cities_file == "data/cities-gb-dentist.csv" and ft.tiers == "1-3" and ft.source == "both")
         check("registry: find reaches the command", ns["dse.registry_find"].action == "find" and ns["dse.registry_find"].min_age == 2 and ns["dse.registry_find"].towns == "Leeds; Bradford")
         check("tech: one site or a list, fast mode", ns["dse.tech_site"].target == "https://smile.example" and ns["dse.tech_site"].fast and ns["dse.tech"].target == "my-lists/zz-test-leads.csv" and ns["dse.tech"].max == 50)
     # defaults: leaving the new boxes empty still gives a valid command and keeps the old behaviour

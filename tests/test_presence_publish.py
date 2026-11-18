@@ -68,15 +68,15 @@ ok("a bad token, a bad webhook, a bad account name and an unknown platform are n
     P.connect("linkedin", "orlando-linkedin", "short", store=st, http=fake), P.connect("discord", "my-server", "https://evil.example/hook", store=st, http=fake),
     P.connect("linkedin", "Bad Name", TOKEN, store=st, http=fake), P.connect("tiktok", "my-account", TOKEN, store=st, http=fake))) and st.d == {})
 r = P.connect("linkedin", "Orlando-LinkedIn", TOKEN, store=st, http=fake)
-ok("a LinkedIn token is checked, the member id is read from LinkedIn, the secret goes to this PC's settings only, and the reply shows only its last four characters", r.startswith("Connected") and st.d.get("PRESENCE_LINKEDIN_ORLANDO_LINKEDIN") == TOKEN and TOKEN not in r and r.count("kkkk") == 1 and any("userinfo" in c[1] for c in calls)
+ok("a LinkedIn token is checked, the member id is read from LinkedIn, the secret goes to this PC's settings only, and the reply shows no part of it", r.startswith("Connected") and st.d.get("PRESENCE_SECRET_LINKEDIN_ORLANDO_LINKEDIN") == TOKEN and TOKEN not in r and "kkkk" not in r and any("userinfo" in c[1] for c in calls)
    and json.loads(P.ACCOUNTS.read_text())["accounts"][0] == {"platform": "linkedin", "account": "orlando-linkedin", "person": "782bbtaQ", "added": dt.date.today().isoformat()} and TOKEN not in P.ACCOUNTS.read_text())
 ok("when LinkedIn will not say who the member is, nothing is saved", (lambda s2: "Not saved" in P.connect("linkedin", "second-acct", TOKEN, store=s2, http=lambda *a, **k: (401, {}, "")) and s2.d == {})(Store()))
 r2 = P.connect("discord", "my-server", HOOK, store=st, http=fake)
-ok("a Discord webhook is kept on this PC and never written to the accounts file", r2.startswith("Connected") and st.d["PRESENCE_DISCORD_MY_SERVER"] == HOOK and HOOK not in P.ACCOUNTS.read_text() and HOOK not in r2)
+ok("a Discord webhook is kept on this PC and never written to the accounts file", r2.startswith("Connected") and st.d["PRESENCE_SECRET_DISCORD_MY_SERVER"] == HOOK and HOOK not in P.ACCOUNTS.read_text() and HOOK not in r2)
 ok("the accounts report lists names only", (lambda rep: "orlando-linkedin" in rep and "my-server" in rep and TOKEN not in rep and HOOK not in rep and "a" * 30 not in rep)(P.accounts_report(st)))
 
 # ---- previewing and posting
-os.environ.pop("PRESENCE_LINKEDIN_ORLANDO_LINKEDIN", None)
+os.environ.pop("PRESENCE_SECRET_LINKEDIN_ORLANDO_LINKEDIN", None)
 f = P.POSTS / "why-patients.json"; f.write_text(json.dumps(good), encoding="utf-8")
 out = []; calls.clear()
 code = P.post_file(f, "", now, st, fake, out.append)
@@ -118,12 +118,34 @@ for c, words in ((401, "expired"), (403, "w_member_social"), (0, "internet"), (4
     ok(f"LinkedIn answering {c} is explained in plain words and nothing is recorded", (lambda r: (not r[0]) and words in r[1])(P.post_linkedin("hello world", TOKEN, "abc12345", failing(c))))
 ok("Discord answering 404 says the webhook is gone", (lambda r: (not r[0]) and "no longer exists" in r[1])(P.post_discord("hello", HOOK, failing(404))))
 P.LOG.unlink(); out = []
-ok("a platform failure is not logged as a post", P.post_file(f, "POST", now, st, failing(401), out.append) == 1 and not P.LOG.exists() and "Not posted" in out[0])
+ok("a platform failure is not logged as a post", P.post_file(f, "POST", now, st, failing(401), out.append) == 1 and P.read_log() == [] and "Not posted" in out[0])
 ok("a post for an account that is not connected on this PC says so, and asks to connect first", (lambda o: P.post_file(f, "POST", now, Store(), fake, o.append) == 1 and "connect" in o[0].lower())([]))
 
 # ---- removing
 P.remove("linkedin", "orlando-linkedin", st)
-ok("removing forgets the secret and the account name on this PC", "PRESENCE_LINKEDIN_ORLANDO_LINKEDIN" not in st.d and all(a["account"] != "orlando-linkedin" for a in P.read_accounts()))
+ok("removing forgets the secret and the account name on this PC", "PRESENCE_SECRET_LINKEDIN_ORLANDO_LINKEDIN" not in st.d and all(a["account"] != "orlando-linkedin" for a in P.read_accounts()))
+
+
+# ---- review fixes
+ok("review fix: no account name can land on a setting: even 'version' is kept apart from the LinkedIn API version setting", P.secret_name("linkedin", "version") == "PRESENCE_SECRET_LINKEDIN_VERSION" and P.secret_name("linkedin", "version") != "PRESENCE_LINKEDIN_VERSION" and all(P.secret_name("linkedin", a).startswith("PRESENCE_SECRET_") for a in ("a-b", "x1", "version", "api-version")))
+ok("review fix: a post file whose platform is a list, a number or missing is refused in words, never a crash", all(P.check_post({**good, "platform": v}) for v in ([], {}, 5, None, ["linkedin"])))
+st2 = Store(); st2.d["PRESENCE_SECRET_LINKEDIN_KEEP_ME"] = "x"; st2.d["PRESENCE_LINKEDIN_VERSION"] = "202610"; st2.d["PRESENCE_OTHER_THING"] = "y"
+ok("review fix: remove only touches a platform and an account name this tool can have made", "Choose" in P.remove("version", "x", st2) and "Choose" in P.remove("linkedin", "Bad Name", st2) and st2.d["PRESENCE_LINKEDIN_VERSION"] == "202610" and st2.d["PRESENCE_OTHER_THING"] == "y")
+P.LOG.unlink(missing_ok=True)
+conn = Store(); P.write_accounts([]); P.connect("linkedin", "acct-two", TOKEN, store=conn, http=fake); f3 = P.POSTS / "third.json"
+f3.write_text(json.dumps({**good, "account": "acct-two", "text": "A fresh post about patients who message first. What do you do?"}), encoding="utf-8")
+def silent(m, u, h, b=None, timeout=30): return 0, {}, ""
+out = []
+rc = P.post_file(f3, "POST", now, conn, silent, out.append)
+ok("review fix: when the platform never answers, the attempt is written BEFORE sending, the words say it may have gone out, and the same text is blocked", rc == 1 and len(P.read_log()) == 1 and P.read_log()[0]["state"] == "attempt" and "may still have gone out" in out[0])
+out = []; calls.clear()
+ok("review fix: trying the same file again after a silent failure sends nothing and says to look at the account first", P.post_file(f3, "POST", now + dt.timedelta(hours=1), conn, fake, out.append) == 1 and not any("rest/posts" in c[1] for c in calls) and "Look at your account first" in out[0])
+out = []; calls.clear()
+ok("review fix: a day later the text may be tried again, and a success settles its own attempt so one post is one entry (the old unanswered attempt stays on record)", P.post_file(f3, "POST", now + dt.timedelta(hours=25), conn, fake, out.append) == 0 and [e["state"] for e in P.read_log()] == ["attempt", "posted"])
+f4 = P.POSTS / "fourth.json"; f4.write_text(json.dumps({**good, "account": "acct-two", "text": "Yet another different post, about reminders that work. Do you use them?"}), encoding="utf-8")
+out = []
+ok("review fix: when the platform answers with a refusal, nothing went out, so the attempt is cancelled and the text can be tried again", P.post_file(f4, "POST", now + dt.timedelta(days=2), conn, failing(401), out.append) == 1 and not any(e.get("sha") == P.text_sha("linkedin", "acct-two", g4t) for e in P.read_log()) if (g4t := "Yet another different post, about reminders that work. Do you use them?") else False)
+ok("review fix: three real posts a day is still the most, with attempts counted too", "3 a day" in P.rate_problem("linkedin", "acct-two", "zz", now, [{**ent(40), "account": "acct-two", "state": "posted"}, {**ent(90), "account": "acct-two", "state": "attempt"}, {**ent(150), "account": "acct-two", "state": "posted"}]))
 
 # ---- routing and honesty
 r = subprocess.run([sys.executable, str(ROOT / "dse.py"), "presence", "publish", "accounts"], capture_output=True, text=True)

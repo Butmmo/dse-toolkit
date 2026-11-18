@@ -227,21 +227,11 @@
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
             "GB",
-            "IE",
             "DE",
             "FR",
-            "NL",
-            "ES",
-            "IT",
             "AE",
-            "SA",
             "IL",
-            "JP",
-            "KR",
-            "AU",
-            "NZ",
-            "SG",
-            "ZA"
+            "JP"
           ],
           "default": "US"
         },
@@ -637,21 +627,11 @@
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
             "GB",
-            "IE",
             "DE",
             "FR",
-            "NL",
-            "ES",
-            "IT",
             "AE",
-            "SA",
             "IL",
-            "JP",
-            "KR",
-            "AU",
-            "NZ",
-            "SG",
-            "ZA"
+            "JP"
           ],
           "default": "US"
         },
@@ -826,21 +806,11 @@
             "gulf",
             "uk",
             "GB",
-            "IE",
             "DE",
             "FR",
-            "NL",
-            "ES",
-            "IT",
             "AE",
-            "SA",
             "IL",
-            "JP",
-            "KR",
-            "AU",
-            "NZ",
-            "SG",
-            "ZA"
+            "JP"
           ],
           "default": "US"
         },
@@ -9175,10 +9145,44 @@
         }
       ]
     },
+    "dse.presence_context": {
+      "label": "Presence: find the social media plan already in an engine's folder",
+      "group": "Grow",
+      "help": "A Presence Function linked to an engine inherits that engine's folders. This reads them (read-only, with the same safety rules as the engine context folders: never keys, the vault, .env or password files, never archives or encrypted files; anything that looks like a secret is hidden) and looks for what you may already have for social media: a content plan or calendar, posting schedule, brand voice notes, hashtags, post ideas and drafts, notes from an AI chat. It keeps short findings only (platforms, account handles, the rhythm, themes, voice, hashtags, goals, ideas with the file they came from) and writes questions for you in Presence > Earlier plan: how to bring each finding in. It changes nothing and decides nothing.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "presence"
+        },
+        {
+          "lit": "context"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine",
+          "type": "choice",
+          "required": true,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": [
+        {
+          "glob": "my-lists/*-presence-context.json",
+          "upload": true
+        }
+      ]
+    },
     "dse.cities": {
       "label": "Rate the towns of a country (tiers)",
       "group": "Find clients",
-      "help": "Rates towns by how many independent businesses with a website they hold (tier 1 = richest) and saves an editable list. Download the data first.",
+      "help": "Rates towns by how many independent businesses with a website they hold (tier 1 = richest). Download the data first.",
       "script": "dse.py",
       "args": [
         {
@@ -9214,21 +9218,11 @@
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
             "GB",
-            "IE",
             "DE",
             "FR",
-            "NL",
-            "ES",
-            "IT",
             "AE",
-            "SA",
             "IL",
-            "JP",
-            "KR",
-            "AU",
-            "NZ",
-            "SG",
-            "ZA"
+            "JP"
           ]
         },
         {
@@ -9264,7 +9258,7 @@
     "dse.find_tiers": {
       "label": "Leads from my best towns (tiers)",
       "group": "Find clients",
-      "help": "Searches the towns in a cities list marked Y, or the tiers you give. Type and country come from the list's name.",
+      "help": "Searches the towns in a cities list marked Y, or the tiers you give.",
       "script": "dse.py",
       "args": [
         {
@@ -9281,10 +9275,6 @@
         {
           "opt": "--tiers",
           "field": "tiers"
-        },
-        {
-          "opt": "--max",
-          "field": "max"
         }
       ],
       "fields": [
@@ -9318,19 +9308,11 @@
         },
         {
           "name": "tiers",
-          "label": "Only tiers (optional, like 1-3)",
+          "label": "Only tiers (like 1-3)",
           "type": "text",
           "required": false,
           "max": 20,
           "pattern": "^\\d{1,2}(-\\d{1,2})?(,\\d{1,2}(-\\d{1,2})?)*$"
-        },
-        {
-          "name": "max",
-          "label": "How many leads",
-          "type": "int",
-          "min": 5,
-          "max": 500,
-          "default": 100
         }
       ],
       "timeout_min": 90,
@@ -9344,7 +9326,7 @@
     "dse.registry_find": {
       "label": "UK company register: find by town",
       "group": "Find clients",
-      "help": "UK companies of one type by town, oldest first (Companies House). Download once at your PC: python dse.py registry build <type>.",
+      "help": "UK companies by town, oldest first (Companies House). Download once: python dse.py registry build <type>.",
       "script": "dse.py",
       "args": [
         {
@@ -9362,10 +9344,6 @@
         {
           "opt": "--min-age",
           "field": "min_age"
-        },
-        {
-          "opt": "--max",
-          "field": "max"
         }
       ],
       "fields": [
@@ -9383,8 +9361,7 @@
           "type": "text",
           "required": true,
           "max": 300,
-          "pattern": "^[A-Za-z][A-Za-z0-9 .,;'&-]{1,299}$",
-          "placeholder": "Leeds; Bradford"
+          "pattern": "^[A-Za-z][A-Za-z0-9 .,;'&-]{1,299}$"
         },
         {
           "name": "min_age",
@@ -9393,14 +9370,6 @@
           "min": 0,
           "max": 50,
           "default": 1
-        },
-        {
-          "name": "max",
-          "label": "How many leads",
-          "type": "int",
-          "min": 5,
-          "max": 500,
-          "default": 100
         }
       ],
       "timeout_min": 10,
@@ -9414,7 +9383,7 @@
     "dse.tech_site": {
       "label": "What a website is built with",
       "group": "Check websites",
-      "help": "Reads one homepage: its platform, booking, chat, analytics and more, and what is not detected.",
+      "help": "Reads one homepage: platform, booking, chat, analytics and what is not detected.",
       "script": "dse.py",
       "args": [
         {
@@ -9448,7 +9417,7 @@
     "dse.tech": {
       "label": "What every website on a list is built with",
       "group": "Check websites",
-      "help": "Adds technology and what-is-missing columns to a lead list. One page per site.",
+      "help": "Adds technology and what-is-missing columns to a lead list.",
       "script": "dse.py",
       "args": [
         {

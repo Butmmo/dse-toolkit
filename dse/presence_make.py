@@ -235,7 +235,7 @@ def parse_project(raw: object) -> dict:
         if not isinstance(s, dict):
             continue
         text, voice = str(s.get("text") or "").strip()[:300], str(s.get("voice") or "").strip()[:600]
-        if not text and not s.get("image"):
+        if not text and not voice and not s.get("image"):
             continue
         try:
             sec = float(s.get("seconds") or 0)
@@ -388,14 +388,14 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                 cmd += ["-i", str(wav)]
             else:
                 cmd += ["-f", "lavfi", "-t", str(s["seconds"]), "-i", "anullsrc=r=44100:cl=mono"]
-            cmd += ["-vf", f"scale={W * 2}:{H * 2},{zoom},format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-ar", "44100", "-ac", "1", "-shortest", "-t", str(s["seconds"]), str(clip)]
+            cmd += ["-vf", f"scale={W * 2}:{H * 2},{zoom},format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-af", "apad", "-c:a", "aac", "-ar", "44100", "-ac", "1", "-t", str(s["seconds"]), str(clip)]
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode != 0:
                 raise RuntimeError(f"ffmpeg stopped on scene {i}: {r.stderr.strip()[-300:]}")
             clips.append(clip)
             say(f"Scene {i} of {len(P['scenes'])}: {s['seconds']:.1f}s")
         lst = td / "list.txt"
-        lst.write_text("".join(f"file '{c.as_posix()}'\n" for c in clips), encoding="utf-8")
+        lst.write_text("".join("file '" + c.as_posix().replace("'", "'\\''") + "'\n" for c in clips), encoding="utf-8")
         r = subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(out)], capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError(f"ffmpeg could not join the scenes: {r.stderr.strip()[-300:]}")

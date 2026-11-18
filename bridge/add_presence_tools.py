@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends", "dse.presence_context"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -104,6 +104,16 @@ T["dse.presence_trends"] = {
     "fields": [{"name": "query", "label": "Your market in a few words (for example: dentists marketing)", "type": "text", "required": True, "max": 80, "pattern": r"[A-Za-z0-9 ,.'&/-]{3,80}"},
                {"name": "region", "label": "News region", "type": "choice", "required": True, "default": "us", "choices": [{"value": "us", "label": "United States"}, {"value": "uk", "label": "United Kingdom"}, {"value": "ca", "label": "Canada"}, {"value": "au", "label": "Australia"}]}],
     "timeout_min": 2, "outputs": [{"glob": "my-lists/*-trends.json", "upload": True}]}
+
+T["dse.presence_context"] = {
+    "label": "Presence: find the social media plan already in an engine's folder", "group": "Grow",
+    "help": ("A Presence Function linked to an engine inherits that engine's folders. This reads them (read-only, with the same safety rules as the engine context folders: never keys, the vault, .env or password files, "
+             "never archives or encrypted files; anything that looks like a secret is hidden) and looks for what you may already have for social media: a content plan or calendar, posting schedule, brand voice notes, "
+             "hashtags, post ideas and drafts, notes from an AI chat. It keeps short findings only (platforms, account handles, the rhythm, themes, voice, hashtags, goals, ideas with the file they came from) and writes "
+             "questions for you in Presence > Earlier plan: how to bring each finding in. It changes nothing and decides nothing."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "context"}, {"field": "engine"}],
+    "fields": [{"name": "engine", "label": "Engine", "type": "choice", "required": True, "choices_from": "engines", "choices": []}],
+    "timeout_min": 5, "outputs": [{"glob": "my-lists/*-presence-context.json", "upload": True}]}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("presence tools:", sum(1 for k in T if k.startswith("dse.presence")), "tools:", len(T))

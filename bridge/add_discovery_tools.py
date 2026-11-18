@@ -25,7 +25,7 @@ NEW = ("dse.cities", "dse.find_tiers", "dse.registry_find", "dse.tech_site", "ds
 for k in [k for k in T if k in NEW + ("dse.registry_build", "dse.directories", "dse.countries")]:
     del T[k]
 
-SUGGEST = ["GB", "IE", "DE", "FR", "NL", "ES", "IT", "AE", "SA", "IL", "JP", "KR", "AU", "NZ", "SG", "ZA"]      # any two-letter code in python dse.py countries works
+SUGGEST = ["GB", "DE", "FR", "AE", "IL", "JP"]      # any two-letter code in python dse.py countries works
 GROUPS = ["eu", "gulf", "uk"]
 KIND = {"name": "kind", "label": "Business type", "type": "text", "required": True, "max": 60, "pattern": r"[A-Za-z][A-Za-z0-9 &'/-]{2,59}"}
 SOURCE = {"name": "source", "label": "Data from", "type": "choice", "required": False, "default": "foursquare",
@@ -66,32 +66,32 @@ T["dse.build"]["args"] = [{"lit": "build"}, {"field": "kinds"}, {"opt": "--count
 
 T["dse.cities"] = {
     "label": "Rate the towns of a country (tiers)", "group": "Find clients",
-    "help": "Rates towns by how many independent businesses with a website they hold (tier 1 = richest) and saves an editable list. Download the data first.",
+    "help": "Rates towns by how many independent businesses with a website they hold (tier 1 = richest). Download the data first.",
     "script": "dse.py", "args": [{"lit": "cities"}, {"field": "kind"}, {"opt": "--country", "field": "country"}, {"opt": "--source", "field": "source"}],
     "fields": [dict(KIND), country(required=True), dict(SOURCE)],
     "timeout_min": 20, "outputs": [{"glob": "data/cities-*.csv", "upload": True}]}
 T["dse.find_tiers"] = {
     "label": "Leads from my best towns (tiers)", "group": "Find clients",
-    "help": "Searches the towns in a cities list marked Y, or the tiers you give. Type and country come from the list's name.",
-    "script": "dse.py", "args": [{"lit": "find"}, {"opt": "--cities-file", "field": "cities_file"}, {"opt": "--source", "field": "source"}, {"opt": "--tiers", "field": "tiers"}, {"opt": "--max", "field": "max"}],
+    "help": "Searches the towns in a cities list marked Y, or the tiers you give.",
+    "script": "dse.py", "args": [{"lit": "find"}, {"opt": "--cities-file", "field": "cities_file"}, {"opt": "--source", "field": "source"}, {"opt": "--tiers", "field": "tiers"}],
     "fields": [{"name": "cities_file", "label": "Cities list", "type": "file", "required": True, "glob": "data/cities-*.csv"}, dict(SOURCE),
-               {"name": "tiers", "label": "Only tiers (optional, like 1-3)", "type": "text", "required": False, "max": 20, "pattern": r"^\d{1,2}(-\d{1,2})?(,\d{1,2}(-\d{1,2})?)*$"}, dict(MAX)],
+               {"name": "tiers", "label": "Only tiers (like 1-3)", "type": "text", "required": False, "max": 20, "pattern": r"^\d{1,2}(-\d{1,2})?(,\d{1,2}(-\d{1,2})?)*$"}],
     "timeout_min": 90, "outputs": list(LISTS)}
 
 T["dse.registry_find"] = {
     "label": "UK company register: find by town", "group": "Find clients",
-    "help": "UK companies of one type by town, oldest first (Companies House). Download once at your PC: python dse.py registry build <type>.",
-    "script": "dse.py", "args": [{"lit": "registry"}, {"lit": "find"}, {"field": "kind"}, {"field": "towns"}, {"opt": "--min-age", "field": "min_age"}, {"opt": "--max", "field": "max"}],
-    "fields": [dict(KIND), {"name": "towns", "label": "Towns", "type": "text", "required": True, "max": 300, "pattern": r"^[A-Za-z][A-Za-z0-9 .,;'&-]{1,299}$", "placeholder": "Leeds; Bradford"},
-               {"name": "min_age", "label": "At least this many years old", "type": "int", "min": 0, "max": 50, "default": 1}, dict(MAX)],
+    "help": "UK companies by town, oldest first (Companies House). Download once: python dse.py registry build <type>.",
+    "script": "dse.py", "args": [{"lit": "registry"}, {"lit": "find"}, {"field": "kind"}, {"field": "towns"}, {"opt": "--min-age", "field": "min_age"}],
+    "fields": [dict(KIND), {"name": "towns", "label": "Towns", "type": "text", "required": True, "max": 300, "pattern": r"^[A-Za-z][A-Za-z0-9 .,;'&-]{1,299}$"},
+               {"name": "min_age", "label": "At least this many years old", "type": "int", "min": 0, "max": 50, "default": 1}],
     "timeout_min": 10, "outputs": list(LISTS)}
 
 T["dse.tech_site"] = {"label": "What a website is built with", "group": "Check websites",
-                      "help": "Reads one homepage: its platform, booking, chat, analytics and more, and what is not detected.",
+                      "help": "Reads one homepage: platform, booking, chat, analytics and what is not detected.",
                       "script": "dse.py", "args": [{"lit": "tech"}, {"field": "site"}, {"flag": "--fast", "field": "fast"}],
                       "fields": [{"name": "site", "label": "Website", "type": "url", "required": True}, dict(FAST)], "timeout_min": 5, "outputs": []}
 T["dse.tech"] = {"label": "What every website on a list is built with", "group": "Check websites",
-                 "help": "Adds technology and what-is-missing columns to a lead list. One page per site.",
+                 "help": "Adds technology and what-is-missing columns to a lead list.",
                  "script": "dse.py", "args": [{"lit": "tech"}, {"field": "csv"}, {"opt": "--max", "field": "max"}, {"flag": "--fast", "field": "fast"}],
                  "fields": [{"name": "csv", "label": "List", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "tech"},
                             {"name": "max", "label": "Most sites in this run", "type": "int", "min": 1, "max": 2000, "default": 100}, dict(FAST)],
