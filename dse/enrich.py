@@ -642,7 +642,7 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
 
 
 def result_json(s: dict, sc: int | None = None) -> str:
-    """One line a BPS Table workflow can read: RESULT {json}. Plain values only (text, numbers); an empty value means it was not found."""
+    """One line a Ledger workflow can read: RESULT {json}. Plain values only (text, numbers); an empty value means it was not found."""
     em = s["emails"][0] if s["emails"] else {}
     pe = s["people"][0] if s["people"] else {}
     out = {"status": s["status"] or "", "domain": s["domain"] or "", "email": em.get("email", "") or (s["guesses"][0] if s["guesses"] else ""), "email_kind": em.get("kind", "") if em else ("guess" if s["guesses"] else ""),

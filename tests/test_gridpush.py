@@ -74,7 +74,7 @@ try:
     cols = G.columns_of(GRID["doc"])
     check("a grid's columns come from its stored document; formula columns and bad keys are not filled", [c["key"] for c in cols] == ["c_company", "c_email", "c_website", "c_score", "c_when", "c_vip"] and G.columns_of(doc(("c_x", "X", "formula"), ("bad key", "B", "text"))) == [] and G.columns_of("not json") == [] and G.columns_of(None) == [])
     gs = [GRID, GRID2]
-    check("a grid is found by id, by 'BPS Table/grid', or by name when only one has it", G.resolve_grid(gs, GRID["id"]) is GRID and G.resolve_grid(gs, "plumbers/leads") is GRID2 and G.resolve_grid([GRID], "leads") is GRID)
+    check("a grid is found by id, by 'Ledger/grid', or by name when only one has it", G.resolve_grid(gs, GRID["id"]) is GRID and G.resolve_grid(gs, "plumbers/leads") is GRID2 and G.resolve_grid([GRID], "leads") is GRID)
     msgs = []
     for ref in ("", "Leads", "nope"):
         try:
@@ -137,7 +137,7 @@ try:
     except ValueError as e:
         nm = str(e)
     check("a file whose headers match nothing (with new columns off) is refused and the grid's columns are listed", "None of the file's headers" in nm and "Company" in nm)
-    check("listing grids shows the BPS Table, the grid and its columns, and tells a new member what to do first", "Dentists UK / Leads" in G.list_grids(Api()) and "Plumbers / Leads" in G.list_grids(Api()) and "BPS Tables" in G.list_grids(Api(grids=[])))
+    check("listing grids shows the Ledger, the grid and its columns, and tells a new member what to do first", "Dentists UK / Leads" in G.list_grids(Api()) and "Plumbers / Leads" in G.list_grids(Api()) and "Ledgers" in G.list_grids(Api(grids=[])))
     check("the original file is never changed", f1.read_bytes().startswith(b"\xef\xbb\xbfCompany") and big.read_text(encoding="utf-8").startswith("Company,Email,Hobby,Score"))
     res_errs = Api()
     res_errs.rpc = lambda name, body, tries=3: {"added": 1, "updated": 0, "unchanged": 0, "skipped": 0, "invalid": 1, "error": "A grid can hold up to 20,000 rows."} if name == "hq_grid_push" else (GRID and [GRID])
@@ -155,6 +155,7 @@ check("the list tool takes no input and is in the catalog", cat["tools"]["dse.gr
 src = {n: (ROOT / n).read_text(encoding="utf-8") for n in ("dse.py", "dse/gridpush.py", "bridge/add_grid_tools.py")}
 check("dse.py has the grid command", 'sub.add_parser("grid"' in src["dse.py"] and "gridpush.cli(a.rest)" in src["dse.py"])
 check("nothing in the module prints a token, a key or the file's contents beyond the summary", "token" not in src["dse/gridpush.py"].lower().replace("mobile", "") and "HQ_RUNNER_TOKEN" not in src["dse/gridpush.py"])
+check("the tool texts, the grid messages and the published catalog say Ledger, never the old name BPS Table", all("BPS Table" not in s for s in [*src.values(), (ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"), (ROOT / "bridge" / "add_gridrun_tool.py").read_text(encoding="utf-8"), (ROOT / "bridge" / "add_row_tools.py").read_text(encoding="utf-8")]))
 check("no em dash", DASH not in src["dse/gridpush.py"] + src["bridge/add_grid_tools.py"] + Path(__file__).read_text(encoding="utf-8"))
 print(f"\n{'ALL PASS' if not fails else str(len(fails)) + ' FAILED: ' + ', '.join(fails)}")
 sys.exit(1 if fails else 0)
