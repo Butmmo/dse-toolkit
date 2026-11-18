@@ -162,7 +162,10 @@ def cli(args: list[str]) -> int:
             print("python dse.py presence insights <list.csv>")
             return 1
         return run_insights(rest[0])
-    print(f"Unknown command '{cmd}'. Try: insights")
+    if cmd in ("graphic", "video"):
+        from . import presence_make
+        return presence_make.cli([cmd] + rest)
+    print(f"Unknown command '{cmd}'. Try: insights, graphic, video")
     return 1
 
 

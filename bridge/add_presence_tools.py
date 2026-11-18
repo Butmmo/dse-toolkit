@@ -18,5 +18,39 @@ T["dse.presence_insights"] = {
     "fields": [{"name": "csv", "label": "List", "type": "file", "required": True, "glob": "my-lists/*.csv"}],
     "timeout_min": 3, "outputs": [{"glob": "my-lists/*-insights.json", "upload": True}, {"glob": "my-lists/*-insights.md", "upload": True}]}
 
+LINE = r"[^\x00-\x1f-][^\x00-\x1f]*"
+T["dse.presence_graphic"] = {
+    "label": "Presence: make a picture for a post", "group": "Grow",
+    "help": ("Makes one finished picture in the Citadel colours (ink, cream or gold) from your words: a quote, a big number or phrase (stat), a tip or a carousel cover, in post, square, story, landscape or "
+             "thumbnail size. You can put your own picture behind the words (it is darkened so the words stay readable) and your logo top left: put them in the my-pictures folder first. The words are "
+             "fitted so nothing runs off the edge. The PNG appears in Presence > Studio under 'Made by your PC', and in the my-graphics folder. Nothing is posted: you post it yourself."),
+    "script": "dse.py",
+    "args": [{"lit": "presence"}, {"lit": "graphic"}, {"opt": "--layout", "field": "layout"}, {"opt": "--headline", "field": "headline"}, {"opt": "--body", "field": "body"}, {"opt": "--kicker", "field": "kicker"},
+             {"opt": "--footer", "field": "footer"}, {"opt": "--size", "field": "size"}, {"opt": "--theme", "field": "theme"}, {"opt": "--picture", "field": "picture"}, {"opt": "--logo", "field": "logo"}],
+    "fields": [
+        {"name": "layout", "label": "Layout", "type": "choice", "required": True, "default": "quote", "choices": [
+            {"value": "quote", "label": "Quote or statement"}, {"value": "stat", "label": "Big number or phrase (stat)"}, {"value": "tip", "label": "Tip"}, {"value": "cover", "label": "Carousel cover"}]},
+        {"name": "headline", "label": "The main words (a number for a stat)", "type": "text", "required": True, "max": 200, "pattern": LINE},
+        {"name": "body", "label": "Smaller words under it (optional)", "type": "text", "required": False, "max": 300, "pattern": LINE},
+        {"name": "kicker", "label": "Small label above (optional, for example: What I found)", "type": "text", "required": False, "max": 40, "pattern": LINE},
+        {"name": "footer", "label": "Your name or handle (optional)", "type": "text", "required": False, "max": 60, "pattern": LINE},
+        {"name": "size", "label": "Size", "type": "choice", "required": True, "default": "post", "choices": [
+            {"value": "post", "label": "Post or carousel slide, portrait 1080x1350"}, {"value": "square", "label": "Square 1080x1080"}, {"value": "story", "label": "Story or reel cover 1080x1920"},
+            {"value": "landscape", "label": "Landscape 1920x1080"}, {"value": "thumb", "label": "Video thumbnail 1280x720"}]},
+        {"name": "theme", "label": "Colours", "type": "choice", "required": True, "default": "ink", "choices": [
+            {"value": "ink", "label": "Ink (dark with gold)"}, {"value": "cream", "label": "Cream (light)"}, {"value": "gold", "label": "Gold"}]},
+        {"name": "picture", "label": "Your picture behind the words (optional)", "type": "file", "required": False, "glob": "my-pictures/*"},
+        {"name": "logo", "label": "Your logo (optional)", "type": "file", "required": False, "glob": "my-pictures/*"}],
+    "timeout_min": 2, "outputs": [{"glob": "my-graphics/*.png", "upload": True}]}
+
+T["dse.presence_video"] = {
+    "label": "Presence: make a video from a project file", "group": "Grow",
+    "help": ("Turns a video project file into an MP4 with ffmpeg. The project (made in Presence > Studio, 'Download video project', then put in the my-video folder) lists scenes: the words on screen, your "
+             "own picture if you have one, a voiceover line and the seconds. Each scene becomes a card that moves slowly, the voiceover is spoken with the Windows voice if the project asks for it, and "
+             "the scenes are joined into one video with a captions file (.srt) next to it. Find both in the my-video folder, check them, and upload them yourself. Nothing is posted."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "video"}, {"field": "project"}],
+    "fields": [{"name": "project", "label": "Video project", "type": "file", "required": True, "glob": "my-video/*.json"}],
+    "timeout_min": 20, "outputs": [{"glob": "my-video/*.srt", "upload": True}]}
+
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("presence tools:", sum(1 for k in T if k.startswith("dse.presence")), "tools:", len(T))
