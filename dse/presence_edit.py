@@ -22,6 +22,8 @@ from . import presence_make as PM
 PRESETS = {"reels": (1080, 1920), "tiktok": (1080, 1920), "shorts": (1080, 1920), "square": (1080, 1080), "landscape": (1920, 1080)}
 MAX_SECONDS, MAX_CLIPS, MAX_TEXTS, MAX_AUDIO = 90.0, 12, 60, 4
 MIN_CLIP, MIN_TEXT, MAX_PICTURE = 0.2, 0.3, 30.0
+SPEEDS = (0.5, 0.75, 1, 1.25, 1.5, 2)   # a video clip plays at one of these (1 = normal); the same list as the editor
+MAX_FADE = 1.0
 FPS = 30
 FONTS = ("sans", "serif", "mono")
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -69,11 +71,15 @@ def parse_edit(raw: object) -> dict:
         room = _r3(MAX_SECONDS - total)
         if room < MIN_CLIP:
             break
-        if out - inn > room:
-            out = inn + room
+        speed = c.get("speed") if kind == "video" and c.get("speed") in SPEEDS else 1
+        if (out - inn) / speed > room:
+            out = inn + room * speed
         name = _clean(c.get("name"), 60) or kind
-        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f")})
-        total = _r3(total + (clips[-1]["out"] - clips[-1]["in"]))
+        length = _r3((_r3(out) - _r3(inn)) / speed)
+        fi = _r3(min(MAX_FADE, _num(c.get("fadeIn"), 0, MAX_FADE, 0), length))
+        fo = _r3(min(MAX_FADE, _num(c.get("fadeOut"), 0, MAX_FADE, 0), length - fi))
+        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f"), "speed": speed, "fadeIn": fi, "fadeOut": fo, "seconds": length})
+        total = _r3(total + length)
     if not clips:
         raise ValueError("The project has no clips.")
     texts = []
@@ -188,13 +194,20 @@ def _has_audio(ff: str, path: Path) -> bool:
 
 
 def _segment(ff: str, c: dict, path_of: dict, W: int, H: int, out: Path, crf: str, preset: str) -> None:
-    length = _r3(c["out"] - c["in"])
-    vf = f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps={FPS},format=yuv420p"
+    length = c["seconds"]                      # how long it plays on the timeline (the file's stretch divided by the speed)
+    taken = _r3(c["out"] - c["in"])            # how much of the file it uses
+    speed = c["speed"]
+    vf = (f"setpts=PTS/{speed}," if speed != 1 else "") + f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps={FPS}"
+    if c["fadeIn"] > 0:
+        vf += f",fade=t=in:st=0:d={c['fadeIn']}"
+    if c["fadeOut"] > 0:
+        vf += f",fade=t=out:st={_r3(length - c['fadeOut'])}:d={c['fadeOut']}"
+    vf += ",format=yuv420p"
     cmd = [ff, "-y", "-loglevel", "error"]
     audio_from = None
     if c["kind"] == "video":
         src = path_of[c["name"]]
-        cmd += ["-ss", str(c["in"]), "-t", str(length), "-i", str(src)]
+        cmd += ["-ss", str(c["in"]), "-t", str(taken), "-i", str(src)]
         if not c["muted"] and _has_audio(ff, src):
             audio_from = "0:a:0"
     elif c["kind"] == "picture":
@@ -205,7 +218,12 @@ def _segment(ff: str, c: dict, path_of: dict, W: int, H: int, out: Path, crf: st
         cmd += ["-f", "lavfi", "-t", str(length), "-i", "anullsrc=r=48000:cl=stereo"]
         amap, af = "1:a:0", "aformat=sample_fmts=fltp:channel_layouts=stereo"
     else:
-        amap, af = audio_from, f"aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur={length}"
+        amap, af = audio_from, "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo" + (f",atempo={speed}" if speed != 1 else "")
+        if c["fadeIn"] > 0:
+            af += f",afade=t=in:st=0:d={c['fadeIn']}"
+        if c["fadeOut"] > 0:
+            af += f",afade=t=out:st={_r3(length - c['fadeOut'])}:d={c['fadeOut']}"
+        af += f",apad=whole_dur={length}"
     cmd += ["-map", "0:v:0", "-map", amap, "-vf", vf, "-af", af, "-c:v", "libx264", "-preset", preset, "-crf", crf, "-c:a", "aac", "-ar", "48000", "-ac", "2", "-t", str(length), str(out)]
     _run(cmd, f"the clip {c['name']}")
 
