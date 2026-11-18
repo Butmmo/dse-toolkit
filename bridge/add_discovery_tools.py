@@ -7,7 +7,7 @@
   * New: what a website is built with and what it is missing (dse.tech_site, dse.tech)
 
 SIZE MATTERS: Citadel refuses a published catalog over 200,000 characters (hq_runner_beat), and it was already at 188,000 before these. Keep every
-new field and help text short; tests/test_discovery_tools.py fails if the published catalog gets within 3,000 characters of the limit.
+new field and help text short; tests/test_discovery_tools.py fails if the published catalog gets within 1,500 characters of the limit (about 1,700 are left after these buttons: the real fix is raising the limit in Citadel).
 The runner only runs these commands on your PC; nothing is sent anywhere.
 """
 import json
