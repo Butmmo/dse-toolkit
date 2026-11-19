@@ -296,6 +296,25 @@ t = cat["dse.presence_edit_render"]; names = {f["name"] for f in t["fields"]}
 ok("the HQ tool is in the catalog, in the Grow group, and every argument points at a real field", t["group"] == "Grow" and all(a["field"] in names for a in t["args"] if "field" in a) and t["script"] == "dse.py")
 ok("the tool asks for the edit file from my-video and offers a quick draft", any(f["name"] == "project" and f["glob"] == "my-video/*.edit.json" and f["required"] for f in t["fields"]) and any(f["name"] == "draft" and f["type"] == "bool" for f in t["fields"]) and {"flag": "--draft", "field": "draft"} in t["args"])
 
+# ---- slow zoom (the Ken Burns push in or pull out)
+lp = E.parse_edit({"v": 1, "clips": [{"kind": "color", "name": "c", "out": 2, "zoom": "in"}, {"kind": "color", "name": "d", "out": 2, "zoom": "spin"}]})
+ok("a clip can have a zoom (none, in, out); anything unknown means none", lp["clips"][0]["zoom"] == "in" and lp["clips"][1]["zoom"] == "none")
+if E.PM.find_ffmpeg():
+    import subprocess as _sp
+    _ff = E.PM.find_ffmpeg(); _d = Path(tempfile.mkdtemp()); _src = _d / "src.mp4"
+    _sp.run([_ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=3", "-f", "lavfi", "-i", "anullsrc", "-t", "3", "-shortest", str(_src)], check=True)
+    def _frame(look, zoom, t):
+        o = E.render_edit({"v": 1, "title": "fx", "preset": "reels", "clips": [{"kind": "video", "name": "src.mp4", "srcSeconds": 3, "in": 0, "out": 3, "zoom": zoom}]}, out_path=_d / f"{zoom}.mp4", draft=True, extra=_d, say=lambda m: None)
+        r = _sp.run([_ff, "-v", "error", "-ss", str(t), "-i", str(o), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True)
+        return r.stdout
+    def _diff(a, b): return sum(1 for x, y in zip(a, b) if abs(x - y) > 30) / max(1, len(a))
+    p0, p1 = _frame("none", "none", 0.05), _frame("none", "none", 2.9)
+    zi0, zi1, zo0 = _frame("none", "in", 0.05), _frame("none", "in", 2.9), _frame("none", "out", 0.05)
+    ok("a push in starts like the plain clip and ends magnified (the picture at the end is clearly different)", _diff(zi0, p0) < 0.02 and _diff(zi1, p1) > 0.05)
+    ok("a pull out starts magnified instead", _diff(zo0, p0) > 0.05)
+else:
+    print("SKIP  looks and zoom picture checks (ffmpeg is not installed here)")
+
 src = (Path(__file__).resolve().parents[1] / "dse" / "presence_edit.py").read_text(encoding="utf-8")
 ok("no em dash in the module", chr(0x2014) not in src)
 sys.exit(1 if fails else 0)

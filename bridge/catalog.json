@@ -9683,6 +9683,10 @@
         {
           "flag": "--no-enrich",
           "field": "no_enrich"
+        },
+        {
+          "flag": "--owners",
+          "field": "owners"
         }
       ],
       "fields": [
@@ -9783,6 +9787,13 @@
           "label": "Skip the enrich step (faster)",
           "type": "bool",
           "default": false
+        },
+        {
+          "name": "owners",
+          "label": "Also find each owner's first and last name (UK only)",
+          "type": "bool",
+          "default": false,
+          "hint": "Takes the name from the business's own website, else from Companies House (exact company name, same postcode area). Needs your free Companies House key and country GB."
         }
       ],
       "timeout_min": 180,

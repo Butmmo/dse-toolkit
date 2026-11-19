@@ -172,4 +172,83 @@ enriched_for.clear()
 R.run("stump grinding", "Leeds", country="GB", db=TMP / "run3.sqlite", enrich=False, today="2026-11-18")
 check("--no-enrich skips the enrich step", enriched_for == [])
 
+# ---------------------------------------------------------------- research run with owner names (19 Nov 2026)
+import contextlib  # noqa: E402
+import io  # noqa: E402
+from dse import chdirectors as CH  # noqa: E402
+
+REG = []
+
+
+def register(path, params):
+    REG.append(path)
+    if path == "/search/companies":
+        q = params["q"].lower()
+        if q == "tree co 0":
+            return 200, {"items": [{"title": "TREE CO 0 LIMITED", "company_number": "000", "company_status": "active", "address_snippet": "1 St, Leeds, LS1 1AA"}]}
+        if q == "tree co 1":
+            return 200, {"items": [{"title": "TREE CO 1 LIMITED", "company_number": "111", "company_status": "active", "address_snippet": "5 St, Leeds, LS2 1AA"}]}
+        if q == "tree co 2":
+            return 200, {"items": [{"title": "TREE CO 2 LIMITED", "company_number": "222", "company_status": "active", "address_snippet": "9 Quay, Hull, HU1 1AA"}]}
+        if q == "tree co 3":
+            return 200, {"items": [{"title": "TREE CO 3 LIMITED", "company_number": "333", "company_status": "active", "address_snippet": "2 St, Leeds, LS1 1AB"}]}
+        return 200, {"items": []}
+    boss = {"000": "HART, Owen", "111": "KING, Ann", "333": "ELSE, Someone"}[path.split("/")[2]]
+    return 200, {"items": [{"name": boss, "officer_role": "director", "appointed_on": "2010-01-01"}]}
+
+
+def enrich_named(src, icp="", engine="", max_rows=100, **k):
+    rows = list(csv.DictReader(open(src, encoding="utf-8-sig")))
+    out = TMP / "lists" / "enriched-owners.csv"
+    CM.write_csv(out, [dict(r, best_email="hi@" + r["website"].split("//")[1], lead_score="60", decision_maker="Sam Rowe" if r["business"] == "Tree Co 3" else "") for r in rows])
+    return "Saved: " + str(out.relative_to(TMP)).replace("\\", "/")
+
+
+EN.enrich_file = enrich_named
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    fin = R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners.sqlite", today="2026-11-19", owners=True, ch_client=CH.Client("k", http=register, sleep=lambda s: None))
+orows = {r["business"]: __import__("collections").defaultdict(str, r) for r in csv.DictReader(open(fin, encoding="utf-8-sig"))}
+check("owners: a name from the register is added with its source", (orows["Tree Co 0"]["owner_first"], orows["Tree Co 0"]["owner_last"], orows["Tree Co 0"]["owner_source"]) == ("Owen", "Hart", "Companies House"), str(orows["Tree Co 0"]))
+check("owners: the business's own website wins over the register", (orows["Tree Co 3"]["owner_first"], orows["Tree Co 3"]["owner_last"], orows["Tree Co 3"]["owner_source"]) == ("Sam", "Rowe", "website"), str(orows["Tree Co 3"]))
+check("owners: every row is looked up (not only the first), and a company registered in another town leaves the owner empty", (orows["Tree Co 1"]["owner_first"], orows["Tree Co 1"]["owner_last"]) == ("Ann", "King") and orows["Tree Co 2"]["owner_first"] == "" and orows["Tree Co 2"]["owner_source"] == "", str((orows["Tree Co 1"], orows["Tree Co 2"])))
+check("owners: the owner columns come first in the list, with the director columns kept", "owner_first" in next(csv.reader(open(fin, encoding="utf-8-sig")))[:12] and "director_first" in orows["Tree Co 0"] and "ch_match" in orows["Tree Co 0"], str(next(csv.reader(open(fin, encoding="utf-8-sig")))[:14]))
+check("owners: the run says how many owners it named and where from", "Owners named: 3 of 4 (1 from the business's own website, 2 from Companies House)" in buf.getvalue(), buf.getvalue())
+REG.clear()
+n_find = len(calls)
+R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners2.sqlite", today="2026-11-19")
+check("without the owners option the register is never asked and the list has no owner columns", REG == [] and "owner_first" not in next(iter(csv.DictReader(open(list((TMP / "lists").glob("*-research-*.csv"))[-1], encoding="utf-8-sig")))), str(REG))
+searched = []
+real_find = P.find
+P.find = lambda *a, **k: (searched.append(1), real_find(*a, **k))[1]
+err = None
+try:
+    R.run("stump grinding", "Leeds", country="US", db=TMP / "owners3.sqlite", today="2026-11-19", owners=True, ch_client=CH.Client("k", http=register, sleep=lambda s: None))
+except Exception as e:  # noqa: BLE001
+    err = str(e)
+check("owners outside the UK is refused at once, before anything is searched", err is not None and "UK searches only" in err and searched == [], str((err, searched)))
+real_key = CH.api_key
+CH.api_key = lambda: ""
+err = None
+try:
+    R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners4.sqlite", today="2026-11-19", owners=True)
+except Exception as e:  # noqa: BLE001
+    err = str(e)
+CH.api_key = real_key
+P.find = real_find
+check("owners with no Companies House key says how to get one, before a long run starts", err is not None and "setx" in err and searched == [], str((err, searched)))
+CLI = """import sys, importlib.util
+sys.argv = ["dse.py", "research", "run", "stump grinding", "Leeds", "--country", "GB"] + sys.argv[1:]
+from dse import research
+research.run = lambda *a, **k: print("OWNERS", k.get("owners"))
+spec = importlib.util.spec_from_file_location("dsecli", "dse.py")
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m.main()
+"""
+sp = __import__("subprocess")
+with_flag = sp.run([sys.executable, "-c", CLI, "--owners"], capture_output=True, text=True, cwd=str(ROOT))
+without = sp.run([sys.executable, "-c", CLI], capture_output=True, text=True, cwd=str(ROOT))
+check("the command line option --owners reaches the run, and is off without it", "OWNERS True" in with_flag.stdout and "OWNERS False" in without.stdout, with_flag.stdout + with_flag.stderr + without.stdout + without.stderr)
+
 sys.exit(1 if fails else 0)
