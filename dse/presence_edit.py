@@ -24,6 +24,7 @@ MAX_SECONDS, MAX_CLIPS, MAX_TEXTS, MAX_AUDIO = 90.0, 12, 60, 4
 MIN_CLIP, MIN_TEXT, MAX_PICTURE = 0.2, 0.3, 30.0
 SPEEDS = (0.5, 0.75, 1, 1.25, 1.5, 2)   # a video clip plays at one of these (1 = normal); the same list as the editor
 MAX_FADE = 1.0
+LOOK_RANGE = {"bright": (0.5, 1.5), "contrast": (0.5, 1.5), "sat": (0.0, 2.0)}   # a clip's colours: brightness and contrast 0.5 to 1.5, colour strength 0 to 2; 1 = unchanged (the editor's ranges)
 MAX_MIX = 1.0   # seconds a clip may blend (a crossfade) with the one before it, at most half of either clip
 FPS = 30
 FONTS = ("sans", "serif", "mono")
@@ -54,6 +55,13 @@ def _num(v, lo: float, hi: float, d: float) -> float:
     if n != n or n in (float("inf"), float("-inf")):
         return d
     return min(hi, max(lo, n))
+
+
+def _look(c: dict, key: str) -> float:
+    """A clip's brightness, contrast or colour strength inside its range; missing, empty or null means 1, so an empty colour strength is never read as 0 (black and white)."""
+    v = c.get(key)
+    lo, hi = LOOK_RANGE[key]
+    return 1.0 if v is None or v == "" or isinstance(v, bool) else _r3(_num(v, lo, hi, 1.0))
 
 
 def _r3(n: float) -> float:
@@ -104,7 +112,8 @@ def parse_edit(raw: object) -> dict:
         fi = _r3(min(MAX_FADE, _num(c.get("fadeIn"), 0, MAX_FADE, 0), length))
         fo = _r3(min(MAX_FADE, _num(c.get("fadeOut"), 0, MAX_FADE, 0), length - fi))
         start = _r3(max(0.0, total - mix)) if clips else 0.0
-        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f"), "speed": speed, "fadeIn": fi, "fadeOut": fo, "mix": mix, "start": start, "look": c.get("look") if c.get("look") in LOOKS else "none", "zoom": c.get("zoom") if c.get("zoom") in ZOOMS else "none", "seconds": length})
+        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f"), "speed": speed, "fadeIn": fi, "fadeOut": fo, "mix": mix, "start": start, "seconds": length, "look": c.get("look") if c.get("look") in LOOKS else "none", "zoom": c.get("zoom") if c.get("zoom") in ZOOMS else "none",
+                      "bright": _look(c, "bright"), "contrast": _look(c, "contrast"), "sat": _look(c, "sat")})
         total = _r3(start + length)
     if not clips:
         raise ValueError("The project has no clips.")
@@ -230,6 +239,11 @@ def _segment(ff: str, c: dict, path_of: dict, W: int, H: int, out: Path, crf: st
         vf += f",scale=w='trunc({W}*{k}/2)*2':h='trunc({H}*{k}/2)*2':eval=frame,crop={W}:{H}"
     if c.get("look", "none") in LOOKS:
         vf += "," + LOOKS[c["look"]]
+    # the clip's look comes before its fades (so a fade to black stays black): brightness, then contrast, then colour strength, as in the editor
+    if c["bright"] != 1:
+        vf += f",colorchannelmixer=rr={c['bright']}:gg={c['bright']}:bb={c['bright']}"
+    if c["contrast"] != 1 or c["sat"] != 1:
+        vf += f",eq=contrast={c['contrast']}:saturation={c['sat']}"
     if c["fadeIn"] > 0:
         vf += f",fade=t=in:st=0:d={c['fadeIn']}"
     if c["fadeOut"] > 0:

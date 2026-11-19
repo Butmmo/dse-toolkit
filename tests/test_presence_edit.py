@@ -33,6 +33,10 @@ ok("the video is never longer than 90 seconds: five 30 second pictures give thre
 ok("a last clip that would run over is shortened, not dropped", L2["seconds"] == 90 and len(L2["clips"]) == 3 and L2["clips"][2]["out"] - L2["clips"][2]["in"] == 30)
 MV = E.parse_edit({"v": 1, "clips": [{"kind": "color", "out": 3}], "texts": [{"text": "a", "motion": "rise"}, {"text": "b", "motion": "spin"}, {"text": "c"}, {"text": "d", "motion": "slide"}]})
 ok("a text's move is read (rise, drop, slide); anything else, or none given, stays still", [t["motion"] for t in MV["texts"]] == ["rise", "none", "none", "slide"])
+LK = E.parse_edit({"v": 1, "clips": [{"kind": "color", "out": 1, "bright": 9, "contrast": 0, "sat": 5}, {"kind": "color", "out": 1, "bright": None, "contrast": "", "sat": None}, {"kind": "color", "out": 1, "bright": True, "contrast": False, "sat": "x"}, {"kind": "color", "out": 1, "bright": "1.2", "contrast": 0.9, "sat": 0}, {"kind": "color", "out": 1}]})
+ok("a look is kept inside its range (brightness 1.5, contrast 0.5, colour strength 2 at most/least)", [LK["clips"][0][k] for k in ("bright", "contrast", "sat")] == [1.5, 0.5, 2.0])
+ok("a missing, empty, null, true or unreadable look value means 1 (unchanged), never 0", all(LK["clips"][i][k] == 1.0 for i in (1, 2, 4) for k in ("bright", "contrast", "sat")))
+ok("a good look is read as written (a number as text counts; colour strength 0 is allowed)", LK["clips"][3]["bright"] == 1.2 and LK["clips"][3]["contrast"] == 0.9 and LK["clips"][3]["sat"] == 0.0)
 ok("at most 12 clips and 60 texts and 4 sounds are read, however many there are", len(E.parse_edit({"v": 1, "clips": pics(20, 1)})["clips"]) == 12
    and len(E.parse_edit({"v": 1, "clips": pics(1, 5), "texts": [{"text": "q", "start": 0, "end": 1}] * 80})["texts"]) == 60
    and len(E.parse_edit({"v": 1, "clips": pics(1, 5), "audio": [{"name": f"s{i}", "srcSeconds": 5} for i in range(9)]})["audio"]) == 4)
@@ -211,6 +215,28 @@ else:
     vv = blend([{"kind": "video", "name": "bright.mp4", "srcSeconds": 4, "in": 0, "out": 3}, {"kind": "video", "name": "clip.mp4", "srcSeconds": 4, "in": 0, "out": 3, "mix": 1}], "xfade-video")
     ok("two real video clips blended: 3 + 3 - 1 = 5 seconds with sound all the way through", abs(length_of(vv) - 5.0) < 0.2 and level_of(vv, 0.2, 0.6) > -40 and level_of(vv, 4.2, 0.6) > -40)
     ok("the sound crosses over in the blend: it never drops out in the middle of it", level_of(vv, 1.8, 0.4) > -45)
+    # ---- a clip's look (brightness, contrast, colour strength)
+    def rgb_mean(path, t):
+        fpng = td / f"rgb{abs(hash((str(path), t)))}.png"
+        run("-ss", str(t), "-i", str(path), "-frames:v", "1", str(fpng))
+        im = Image.open(fpng).convert("RGB"); n = im.size[0] * im.size[1]
+        return tuple(sum(px[i] for px in im.getdata()) / n for i in range(3))
+    def looked(color, title, **look):
+        return blend([dict(solid("a", 1, color), **look)], title)
+    base_grey = looked("#808080", "look-none")
+    ok("with no look a grey clip stays grey (about 128)", abs(luma(base_grey, 0.5) - 128) < 8)
+    ok("brighter: a mid grey at brightness 1.5 is about 192 (0.5 x 1.5)", abs(luma(looked("#808080", "look-b15", bright=1.5), 0.5) - 192) < 10)
+    ok("darker: a mid grey at brightness 0.5 is about 64", abs(luma(looked("#808080", "look-b05", bright=0.5), 0.5) - 64) < 10)
+    ok("more contrast pushes a light grey lighter (192 to about 224 at 1.5)", luma(looked("#c0c0c0", "look-c15", contrast=1.5), 0.5) > 214)
+    ok("less contrast pulls a light grey towards the middle (192 to about 160 at 0.5)", 145 < luma(looked("#c0c0c0", "look-c05", contrast=0.5), 0.5) < 175)
+    r0, g0, b0 = rgb_mean(looked("#c04040", "look-s1"), 0.5)
+    r1, g1, b1 = rgb_mean(looked("#c04040", "look-s0", sat=0), 0.5)
+    r2, g2, b2 = rgb_mean(looked("#c04040", "look-s2", sat=2), 0.5)
+    ok("colour strength 0 makes a red clip grey (red, green and blue within 6 of each other), 1 leaves it red", max(r1, g1, b1) - min(r1, g1, b1) < 6 and r0 - g0 > 60)
+    ok("colour strength 2 makes the red stronger than it was", (r2 - g2) > (r0 - g0) + 15)
+    ok("the look is on the picture only: a fade in from black still starts black, even with brightness 1.5", luma(looked("#808080", "look-fade", bright=1.5, fadeIn=1), 0.02) < 25)
+    two = blend([dict(solid("a", 1, "#808080"), bright=1.5), solid("b", 1, "#808080")], "look-two")
+    ok("a look belongs to its own clip: the next clip, with none, stays grey", luma(two, 0.5) > 175 and abs(luma(two, 1.5) - 128) < 8)
     muted = dict(proj, clips=[dict(proj["clips"][0], muted=True)] + proj["clips"][1:])
     out2 = E.render_edit(muted, draft=True, out_path=td / "muted.mp4", say=lambda *_: None)
     out_keep, out = out, out2
