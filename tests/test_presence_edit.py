@@ -31,6 +31,8 @@ L1 = E.parse_edit({"v": 1, "clips": pics(5, 30)})
 L2 = E.parse_edit({"v": 1, "clips": pics(2, 30) + [{"kind": "video", "name": "v.mp4", "srcSeconds": 100, "out": 100}]})
 ok("the video is never longer than 90 seconds: five 30 second pictures give three clips", L1["seconds"] == 90 and len(L1["clips"]) == 3)
 ok("a last clip that would run over is shortened, not dropped", L2["seconds"] == 90 and len(L2["clips"]) == 3 and L2["clips"][2]["out"] - L2["clips"][2]["in"] == 30)
+MV = E.parse_edit({"v": 1, "clips": [{"kind": "color", "out": 3}], "texts": [{"text": "a", "motion": "rise"}, {"text": "b", "motion": "spin"}, {"text": "c"}, {"text": "d", "motion": "slide"}]})
+ok("a text's move is read (rise, drop, slide); anything else, or none given, stays still", [t["motion"] for t in MV["texts"]] == ["rise", "none", "none", "slide"])
 ok("at most 12 clips and 60 texts and 4 sounds are read, however many there are", len(E.parse_edit({"v": 1, "clips": pics(20, 1)})["clips"]) == 12
    and len(E.parse_edit({"v": 1, "clips": pics(1, 5), "texts": [{"text": "q", "start": 0, "end": 1}] * 80})["texts"]) == 60
    and len(E.parse_edit({"v": 1, "clips": pics(1, 5), "audio": [{"name": f"s{i}", "srcSeconds": 5} for i in range(9)]})["audio"]) == 4)
@@ -133,6 +135,25 @@ else:
     early, mid = bright(0.55), bright(1.0)
     ok("a fading text is faint at the start of its time and full in the middle", mid > 300 and early < mid * 0.6)
     out = out_keep
+    def ink_box(path, t):
+        f = td / f"m{path.stem}{t}.png"
+        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(t), "-i", str(path), "-frames:v", "1", str(f)], check=True)
+        g = Image.open(f).convert("L").point(lambda v: 255 if v > 200 else 0)
+        return g.getbbox()
+    def moving(motion):
+        pr = {"v": 1, "title": "move-" + motion, "preset": "reels", "clips": [{"kind": "color", "out": 3, "color": "#101030"}], "texts": [{"role": "text", "text": "MOVE", "start": 0.5, "end": 2.5, "y": 0.5, "size": 0.09, "fade": False, "motion": motion}]}
+        return E.render_edit(pr, draft=True, say=lambda *_: None)
+    rise, drop, slide, still = moving("rise"), moving("drop"), moving("slide"), moving("none")
+    r0, r1 = ink_box(rise, 0.55), ink_box(rise, 1.6)
+    d0, d1 = ink_box(drop, 0.55), ink_box(drop, 1.6)
+    s0, s1 = ink_box(slide, 0.55), ink_box(slide, 1.6)
+    n0, n1 = ink_box(still, 0.55), ink_box(still, 1.6)
+    ok("a rising text starts lower and ends in place (0.06 of the height is 58 px of 960; 0.15 s in, the ink is about 39 px lower than at rest)", r0 and r1 and 33 < r0[1] - r1[1] < 45 and abs(r0[0] - r1[0]) < 3)
+    rm = ink_box(rise, 0.7)
+    ok("the move eases out: half way through its 0.4 s it has covered most of the way (about 7 px left, a straight line would leave 29)", rm and r1 and 2 <= rm[1] - r1[1] <= 14)
+    ok("a dropping text starts higher and ends in place", d0 and d1 and 33 < d1[1] - d0[1] < 45)
+    ok("a sliding text starts to the left of where it ends and stays on the same line (0.3 of the width is 162 px of 540; 0.15 s in, about 108 px to the left)", s0 and s1 and 95 < s1[0] - s0[0] < 122 and abs(s0[1] - s1[1]) < 3)
+    ok("a still text does not move at all", n0 and n1 and n0 == n1)
     def project_with_volume(v): return {"v": 1, "title": f"vol{int(v * 100)}", "preset": "square", "clips": [{"kind": "color", "out": 2}], "audio": [{"name": "song.wav", "srcSeconds": 6, "start": 0, "volume": v}]}
     loud = E.render_edit(project_with_volume(1.0), draft=True, say=lambda *_: None); quiet = E.render_edit(project_with_volume(0.25), draft=True, say=lambda *_: None)
     out_keep, out = out, loud; lv_loud = level(0.2, 1.5); out = quiet; lv_quiet = level(0.2, 1.5); out = out_keep

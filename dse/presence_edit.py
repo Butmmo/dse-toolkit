@@ -27,6 +27,9 @@ MAX_FADE = 1.0
 MAX_MIX = 1.0   # seconds a clip may blend (a crossfade) with the one before it, at most half of either clip
 FPS = 30
 FONTS = ("sans", "serif", "mono")
+MOTIONS = ("none", "rise", "drop", "slide")
+MOTION_S = 0.4      # seconds a text takes to move into place (at most half of its time on screen)
+MOVE_Y, MOVE_SLIDE = 0.06, 0.3   # how far it travels: share of the picture height (rise, drop) or width (slide)
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 # folders searched for the named files, in this order
 def _folders() -> list[Path]:
@@ -105,7 +108,8 @@ def parse_edit(raw: object) -> dict:
         end = min(end, max(total, start + MIN_TEXT))
         texts.append({"role": role, "text": _clean(t.get("text"), 120), "start": start, "end": end, "x": _r3(_num(t.get("x"), 0, 1, 0.5)), "y": _r3(_num(t.get("y"), 0, 1, 0.74 if role == "caption" else 0.45)),
                       "size": _r3(_num(t.get("size"), 0.02, 0.12, 0.045 if role == "caption" else 0.07)), "color": _hex(t.get("color"), "#ffffff"), "bold": t.get("bold") is not False,
-                      "font": t.get("font") if t.get("font") in FONTS else "sans", "fade": t.get("fade") is not False})
+                      "font": t.get("font") if t.get("font") in FONTS else "sans", "fade": t.get("fade") is not False,
+                      "motion": t.get("motion") if t.get("motion") in MOTIONS else "none"})
     audio = []
     for a in (raw.get("audio") if isinstance(raw.get("audio"), list) else [])[:MAX_AUDIO]:
         if not isinstance(a, dict):
@@ -303,7 +307,15 @@ def render_edit(project: dict, ffmpeg: str | None = None, out_path: str | Path |
                 edge = min(0.25, (t["end"] - t["start"]) / 2)
                 fade = f",fade=t=in:st={t['start']}:d={edge}:alpha=1,fade=t=out:st={_r3(t['end'] - edge)}:d={edge}:alpha=1" if t["fade"] and edge > 0 else ""
                 chains.append(f"[{k}:v]format=rgba{fade}[t{k}]")
-                chains.append(f"{vlast}[t{k}]overlay=enable='between(t,{t['start']},{t['end']})':eof_action=pass[v{k}]")
+                move = ""
+                d = _r3(min(MOTION_S, (t["end"] - t["start"]) / 2))
+                if t["motion"] != "none" and d > 0:
+                    rest = f"pow(1-min(1,max(0,(t-{t['start']})/{d})),3)"   # 1 at the start, 0 in place (ease out)
+                    if t["motion"] == "slide":
+                        move = f":x='-{MOVE_SLIDE}*W*{rest}'"
+                    else:
+                        move = f":y='{'' if t['motion'] == 'rise' else '-'}{MOVE_Y}*H*{rest}'"
+                chains.append(f"{vlast}[t{k}]overlay=enable='between(t,{t['start']},{t['end']})'{move}:eof_action=pass[v{k}]")
                 vlast = f"[v{k}]"
             n_in = 1 + len(texts)
             alast = "[0:a]"
