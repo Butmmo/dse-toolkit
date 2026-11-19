@@ -10154,6 +10154,40 @@
           "upload": true
         }
       ]
+    },
+    "dse.presence_brand": {
+      "label": "Presence: find my brand art (logos, icons, fonts, colours)",
+      "group": "Grow",
+      "help": "Looks, read-only, in the my-brand folder of this toolkit (put your logo files there) and, if you choose an engine, in that engine's folders (files in a folder called brand, logo or identity, and pictures or fonts named like a logo, icon, avatar, profile or wordmark) with the same safety rules as the engine context folders: never keys, the vault, .env or password files, never archives or encrypted files. It keeps SVG files as text, pictures shrunk to 640 px, font names (and small font files), the brand colours and fonts named in brand notes, and lines about where the logo goes. Presence > Brand kit then adds what is new, updates what changed, and never changes what you set by hand. Nothing is changed, moved, deleted or posted.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "presence"
+        },
+        {
+          "lit": "brand"
+        },
+        {
+          "field": "engine"
+        }
+      ],
+      "fields": [
+        {
+          "name": "engine",
+          "label": "Engine (leave empty to look only in the my-brand folder)",
+          "type": "choice",
+          "required": false,
+          "choices_from": "engines",
+          "choices": []
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": [
+        {
+          "glob": "my-lists/*-presence-brand.json",
+          "upload": true
+        }
+      ]
     }
   },
   "periodic": [

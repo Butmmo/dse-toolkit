@@ -174,13 +174,16 @@ def cli(args: list[str]) -> int:
     if cmd == "context":
         from . import presence_context
         return presence_context.cli(rest)
+    if cmd == "brand":
+        from . import presence_brand
+        return presence_brand.cli(rest)
     if cmd == "trends":
         from . import presence_trends
         return presence_trends.cli(rest)
     if cmd == "publish":
         from . import publish
         return publish.run_cli(rest)
-    print(f"Unknown command '{cmd}'. Try: insights, trends, context, graphic, video, carousel, voice-setup, publish")
+    print(f"Unknown command '{cmd}'. Try: insights, trends, context, brand, graphic, video, carousel, voice-setup, publish")
     return 1
 
 

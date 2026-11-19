@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_blender_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends", "dse.presence_context"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_blender_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends", "dse.presence_context", "dse.presence_brand"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -125,6 +125,16 @@ T["dse.presence_context"] = {
     "fields": [{"name": "engine", "label": "Engine", "type": "choice", "required": True, "choices_from": "engines", "choices": []},
                {"name": "ai", "label": "Also let my PC's own AI (Ollama, free, nothing leaves the PC) read it and ask its own questions", "type": "bool", "required": False, "default": True}],
     "timeout_min": 5, "outputs": [{"glob": "my-lists/*-presence-context.json", "upload": True}]}
+
+T["dse.presence_brand"] = {
+    "label": "Presence: find my brand art (logos, icons, fonts, colours)", "group": "Grow",
+    "help": ("Looks, read-only, in the my-brand folder of this toolkit (put your logo files there) and, if you choose an engine, in that engine's folders (files in a folder called brand, logo or identity, and pictures "
+             "or fonts named like a logo, icon, avatar, profile or wordmark) with the same safety rules as the engine context folders: never keys, the vault, .env or password files, never archives or encrypted files. "
+             "It keeps SVG files as text, pictures shrunk to 640 px, font names (and small font files), the brand colours and fonts named in brand notes, and lines about where the logo goes. "
+             "Presence > Brand kit then adds what is new, updates what changed, and never changes what you set by hand. Nothing is changed, moved, deleted or posted."),
+    "script": "dse.py", "args": [{"lit": "presence"}, {"lit": "brand"}, {"field": "engine"}],
+    "fields": [{"name": "engine", "label": "Engine (leave empty to look only in the my-brand folder)", "type": "choice", "required": False, "choices_from": "engines", "choices": []}],
+    "timeout_min": 5, "outputs": [{"glob": "my-lists/*-presence-brand.json", "upload": True}]}
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("presence tools:", sum(1 for k in T if k.startswith("dse.presence")), "tools:", len(T))
