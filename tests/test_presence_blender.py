@@ -39,6 +39,8 @@ def _spy(*a, **k):
     seen["samples"] = a[5] if len(a) > 5 else k.get("samples")
     return _orig(*a, **k)
 
+ok("a scene can ask for pieces that fly in from the sides; anything else rises", B.scene_spec("x", kit, (540, 960), 24, arrive="fly")["arrive"] == "fly" and B.scene_spec("x", kit, (540, 960), 24, arrive="spin")["arrive"] == "rise" and M.parse_project({"scenes": [{"text": "x scene text"}], "arrive": "fly"})["arrive"] == "fly" and M.parse_project({"scenes": [{"text": "x scene text"}]})["arrive"] == "rise")
+
 # ---- finding Blender
 old = os.environ.get("BLENDER")
 fake = td / "myblender.exe"; fake.write_text("x")

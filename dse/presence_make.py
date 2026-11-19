@@ -437,7 +437,7 @@ def parse_project(raw: object) -> dict:
     if not scenes:
         raise ValueError("Every scene is empty.")
     return {"title": str(raw.get("title") or "video")[:80], "size": size, "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink", "kit": raw.get("kit") if isinstance(raw.get("kit"), dict) else None,
-            "engine": "blender" if raw.get("engine") == "blender" else "cards", "quality": "high" if raw.get("quality") == "high" else "draft", "move": raw.get("move") if raw.get("move") in ("dolly", "drift", "still") else "dolly",
+            "engine": "blender" if raw.get("engine") == "blender" else "cards", "quality": "high" if raw.get("quality") == "high" else "draft", "arrive": "fly" if raw.get("arrive") == "fly" else "rise", "move": raw.get("move") if raw.get("move") in ("dolly", "drift", "still") else "dolly",
             "voice": raw.get("voice") if raw.get("voice") in ("windows", "own", "kokoro") else "none", "kokoro_voice": raw.get("kokoro_voice") if KOKORO_VOICE.match(str(raw.get("kokoro_voice") or "")) else DEFAULT_KOKORO_VOICE, "captions": raw.get("captions") is not False, "footer": str(raw.get("footer") or "")[:60], "scenes": scenes}
 
 
@@ -582,7 +582,7 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                     if not any_3d:
                         say(f"Blender draws every scene in 3D: about {max(20, int(min(120, int(s['seconds'] * (B.FPS if P['quality'] == 'high' else 12))) * (6 if P['quality'] == 'high' else 0.8)))} seconds a scene on a typical PC. Please wait.")
                         any_3d = True
-                    spec = B.scene_spec(s["text"] or P["title"], kit, q, min(120, int(s["seconds"] * fps_in)), P["move"], B.SAMPLES[P["quality"]], st, fps_in)
+                    spec = B.scene_spec(s["text"] or P["title"], kit, q, min(120, int(s["seconds"] * fps_in)), P["move"], B.SAMPLES[P["quality"]], st, fps_in, P["arrive"])
                     frames = B.render_scene(spec, td / f"bl{i}")
                     bl_clip = B.frames_to_clip(ff, frames, s["seconds"], (W, H), td / f"bl{i}.mp4", fps_in)
                     say(f"Scene {i}: drawn in 3D with Blender ({len(frames)} frames).")

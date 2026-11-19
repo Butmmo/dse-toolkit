@@ -79,15 +79,20 @@ def arrive(ob, index, base_z, final_scale):
         return
     start = 1 + index * 4
     end = min(FRAMES, start + INTRO)
-    ob.scale = (0.01, 0.01, 0.01)
-    ob.location.z = base_z - 0.5
+    fly = spec.get("arrive") == "fly"                                                                 # "fly": slides in from the left or right edge, alternating, instead of rising
+    x0 = (-7.0 if index % 2 == 0 else 7.0) if fly else 0.0
+    base_x = ob.location.x
+    z0 = base_z if fly else base_z - 0.5
+    s0 = (1, 1, 1) if fly else (0.01, 0.01, 0.01)
+    ob.scale = s0
+    ob.location.x = base_x + x0
+    ob.location.z = z0
     ob.keyframe_insert("scale", frame=1)
     ob.keyframe_insert("location", frame=1)
-    ob.scale = (0.01, 0.01, 0.01)
     ob.keyframe_insert("scale", frame=start)
-    ob.location.z = base_z - 0.5
     ob.keyframe_insert("location", frame=start)
     ob.scale = final_scale
+    ob.location.x = base_x
     ob.location.z = base_z
     ob.keyframe_insert("scale", frame=end)
     ob.keyframe_insert("location", frame=end)

@@ -82,7 +82,7 @@ def _wrap(text: str, per_line: int) -> str:
     return "\n".join(out)
 
 
-def scene_spec(text: str, kit: dict, size: tuple[int, int], frames: int, move: str = "dolly", samples: int = 24, stat=None, fps: int = FPS) -> dict:
+def scene_spec(text: str, kit: dict, size: tuple[int, int], frames: int, move: str = "dolly", samples: int = 24, stat=None, fps: int = FPS, arrive: str = "rise") -> dict:
     """The scene as Blender needs it: blocks of text with a size, a colour and a height, the page colour and a small bar. Pure: tested without Blender.
     `stat` is (big figure, rest) when the scene leads with a number: then the figure is drawn very large in the accent colour and the rest under it."""
     W, H = size
@@ -111,7 +111,7 @@ def scene_spec(text: str, kit: dict, size: tuple[int, int], frames: int, move: s
         blocks.append({"text": wrapped, "color": kit["fg"], "size": sz, "y": 0.0, "font": head, "depth": 0.1})
         bar = {"color": kit["accent"], "y": -(lines * sz * 0.62) - 0.7, "w": 1.1}
     n_frames = max(1, int(frames))
-    return {"width": W, "height": H, "frames": n_frames, "intro": 0 if n_frames < 8 or move == "still" else min(int(fps * 0.7), n_frames // 2), "fps": int(fps), "engine": "CYCLES", "samples": int(samples), "bg": kit["bg"], "blocks": blocks, "bar": bar,
+    return {"width": W, "height": H, "frames": n_frames, "intro": 0 if n_frames < 8 or move == "still" else min(int(fps * 0.7), n_frames // 2), "arrive": "fly" if arrive == "fly" else "rise", "fps": int(fps), "engine": "CYCLES", "samples": int(samples), "bg": kit["bg"], "blocks": blocks, "bar": bar,
             "move": move if move in MOVES else "dolly", "cam_z": 0}
 
 
