@@ -65,6 +65,15 @@ def tz_of(name: str):
         return None
 
 
+TZ_MISSING = "no time zone data for"
+
+
+def tz_warning(name) -> str:
+    """The loud line for the runner log: with no time zone data NOTHING is sent (19 Nov 2026: a whole day of emails was silently held)."""
+    return (f"!!! HERALD WARNING: this PC has no time zone data for '{name}', so Herald is HOLDING EVERY EMAIL for it and sending nothing. "
+            "Fix: run  python -m pip install tzdata  (bridge/start-runner.ps1 and requirements.txt now include it), then restart the runner.")
+
+
 def _hm(s: str) -> dt.time:
     h, m = s.split(":")
     return dt.time(int(h), int(m))
@@ -96,7 +105,7 @@ def decide(item: dict, now: dt.datetime, sent_today: dict, last_sent: dict, used
         return False, "no password set on this PC for this mailbox"
     tz = tz_of(m.get("timezone", "UTC"))
     if tz is None:
-        return False, f"no time zone data for {m.get('timezone')} on this PC (run: pip install tzdata)"
+        return False, f"{TZ_MISSING} {m.get('timezone')} on this PC (run: pip install tzdata)"
     local = now.astimezone(tz)
     day = local.date()
     sched_day = dt.date.fromisoformat(str(item["scheduled_day"])[:10])
@@ -454,6 +463,7 @@ def _run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp
         due = []
     used: set = set()
     bad_login: set = set()
+    tz_warned = False
     results = []
     for it in due:
         mid = it["mailbox"]["id"]
@@ -465,6 +475,9 @@ def _run_pass(api, now: dt.datetime | None = None, dry: bool = False, send=_smtp
         ok, why = decide(it, now, sent_today, last_sent, used, bool(secrets.get(mid)))
         if not ok:
             summary["held"][why] = summary["held"].get(why, 0) + 1
+            if why.startswith(TZ_MISSING) and not tz_warned:
+                tz_warned = True
+                out(tz_warning(it["mailbox"].get("timezone")))
             continue
         if dry:
             out(f"WOULD SEND to {it['to_email']} (step {it['step']}) from {it['mailbox']['email']}: {it['subject'][:60]}")

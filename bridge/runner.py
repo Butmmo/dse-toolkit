@@ -504,8 +504,26 @@ def norm_outputs(specs) -> list[dict]:
     return [s if isinstance(s, dict) else {"glob": str(s), "upload": True} for s in (specs or [])]
 
 
+RESTART_EXIT = 75          # start-runner.ps1 knows this code: a deliberate restart, not a crash
+RESTART_REQUESTED = False
+
+
 def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
+    global RESTART_REQUESTED
     job_id, tool_key = job["id"], job["tool"]
+    if cat["tools"].get(tool_key, {}).get("builtin") == "restart":      # runner.restart: no script; the loop exits after this job is reported
+        if job.get("params"):
+            if api:
+                api.finish(job_id, "failed", None, "", "Refused by the PC runner: this tool takes no values.", [])
+            return {"status": "failed", "error": "this tool takes no values"}
+        if dry:
+            print("(restart the runner)")
+            return {"status": "dry"}
+        say(f"job {job_id}: restart requested; the runner will exit and start-runner.ps1 starts it again in about 30 s")
+        if api:
+            api.finish(job_id, "done", 0, "The runner is restarting now. It is back with fresh code in about 30 seconds.", None, [])
+        RESTART_REQUESTED = True
+        return {"status": "done", "exit": 0, "outputs": []}
     LOG_DIR.mkdir(exist_ok=True)
     log_path = LOG_DIR / f"{dt.datetime.now():%Y-%m-%d-%H%M%S}-{tool_key}-{str(job_id)[:8]}.log"
     lines: collections.deque[str] = collections.deque(maxlen=400)
@@ -793,6 +811,9 @@ def loop(once=False):
             job = api.claim()
             if job:
                 run_job_safely(api, cat, job)
+                if RESTART_REQUESTED:
+                    say(f"restarting: exiting with code {RESTART_EXIT}")
+                    sys.exit(RESTART_EXIT)
                 last_full = 0                              # outputs may have added files: resend
                 if once:
                     return

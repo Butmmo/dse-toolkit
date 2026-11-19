@@ -4,6 +4,10 @@
   you log on (and starts it now). Remove it any time with:
       Unregister-ScheduledTask -TaskName 'DSE Toolkit runner' -Confirm:$false
 #>
+# Packages the tools need, tzdata included (Windows has no time zone data; without it Herald holds every email). Free.
+$req = Join-Path (Split-Path $PSScriptRoot -Parent) 'requirements.txt'
+if (Test-Path $req) { python -m pip install --quiet -r $req }
+else { python -m pip install --quiet requests beautifulsoup4 tzdata }
 $script = Join-Path $PSScriptRoot 'start-runner.ps1'
 $action  = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME

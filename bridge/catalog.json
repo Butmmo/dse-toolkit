@@ -10188,6 +10188,17 @@
           "upload": true
         }
       ]
+    },
+    "runner.restart": {
+      "label": "Restart the HQ runner",
+      "group": "HQ runner",
+      "help": "Reports done, then the runner on this PC stops and its keeper script starts it again with the latest code in about 30 seconds. Jobs you queue meanwhile wait.",
+      "builtin": "restart",
+      "script": "",
+      "args": [],
+      "fields": [],
+      "timeout_min": 1,
+      "outputs": []
     }
   },
   "periodic": [
