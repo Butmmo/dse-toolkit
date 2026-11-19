@@ -96,6 +96,25 @@ check("no company means no second request and a reason", CH.director_for(client(
 check("a server error is a reason, not a crash, and a refused key is explained with how to get one", "HTTP 500" in CH.director_for(client(), "Broken Co")["why"] and "free API key" in str(_try(lambda: CH.director_for(client(), "Denied Co"))))
 check("an empty name is not searched", CH.director_for(client(), "  ").get("why") == "no business name")
 
+
+# ---------------------------------------------------------------- where the company is registered (19 Nov 2026)
+def at(title, number, snippet):
+    return {"title": title, "company_number": number, "company_status": "active", "address_snippet": snippet}
+
+
+check("a postcode gives its area: LS8 -> LS, B63 -> B, SW1A -> SW, none -> empty", CH.postcode_area("Roundhay, Leeds LS8 2SG") == "LS" and CH.postcode_area("Halesowen B63 1BT") == "B" and CH.postcode_area("1 Mall, SW1A 1AA") == "SW" and CH.postcode_area("no code") == "")
+HAL = at("TREE DOCTORS LIMITED", "9", "14 Hollybank Grove, Halesowen, West Midlands, United Kingdom, B63 1BT")
+check("the same name in a different postcode area is not the lead's company (Tree Doctors, Leeds vs Halesowen)", CH.choose_company([HAL], "Tree Doctors", "Leeds", "Roundhay, Leeds, West Yorkshire LS8 2SG") == (None, "a company of that name is registered elsewhere"))
+check("the same postcode area matches even in the next town (Evesham WR11, Droitwich WR9)", CH.choose_company([at("ACW TREES LIMITED", "8", "Victoria Square, Droitwich Spa, Worcestershire, WR9 8DS")], "ACW Trees", "Evesham", "Place, Evesham, WR11 3FD")[1] == "exact")
+check("with no postcode the lead's town must be in the company's address", CH.choose_company([at("ACE TREES LTD", "7", "2 Mill Lane, Hull, HU1 1AA")], "Ace Trees", "Hull")[1] == "exact" and CH.choose_company([at("ACE TREES LTD", "7", "2 Mill Lane, Hull, HU1 1AA")], "Ace Trees", "York")[0] is None)
+check("a lead with no town and no address is still looked up (nothing to compare)", CH.choose_company([HAL], "Tree Doctors")[1] == "exact")
+two = [HAL, at("TREE DOCTORS LIMITED", "10", "5 Roundhay Road, Leeds, LS8 4AA")]
+check("two companies of the same name: the one in the lead's area is chosen", CH.choose_company(two, "Tree Doctors", "Leeds", "Roundhay, Leeds LS8 2SG")[0]["company_number"] == "10")
+check("a postcode on the lead but none on the company is not a match; no postcode and no town on the lead means nothing to compare",
+      CH.place_ok(at("X LTD", "1", "3 High St"), "Leeds LS8 2SG", "") is False and CH.place_ok(at("X LTD", "1", "3 High St"), "Leeds", "") is None)
+check("an address with no postcode and no town does not rule a company out", CH.choose_company([HAL], "Tree Doctors", "", "Roundhay Leeds")[1] == "exact")
+check("a lead with an address but no postcode in either place falls back to the town", CH.place_ok(at("X LTD", "1", "3 High St, Leeds"), "3 High St, Leeds", "Leeds") is True and CH.place_ok(at("X LTD", "1", "3 High St, Hull"), "3 High St, Leeds", "Leeds") is False)
+
 # pacing and slow-down
 slept = []
 c = CH.Client("k", http=fake_http, sleep=slept.append)
@@ -140,6 +159,19 @@ check("the list gets the director columns, the original columns are kept, rows w
       and rows[1]["ch_match"] == "no company of that name" and rows[2]["director_first"] == "" and len(rows) == 4, str(rows))
 check("--max stops the lookups: the fourth row is not looked up", rows[3]["ch_match"].startswith("not looked up") and len([1 for p, _ in REQ if p == "/search/companies"]) == 2, str(REQ))
 check("a list without a business name column is explained", "business name column" in str(_try(lambda: CH.file(str(TMP / "none.csv"), client=client()) if CM.write_csv(TMP / "none.csv", [{"x": "1"}]) is None else None)))
+
+def addr_http(path, params):
+    if path == "/search/companies":
+        return 200, {"items": [at("ACME TREE SERVICES LTD", "01234567", "1 High St, Newport, Isle of Wight, PO30 1AA")]}
+    return 200, {"items": [{"name": "HART, Owen", "officer_role": "director", "appointed_on": "2010-01-01"}]}
+
+
+src2 = TMP / "addr.csv"
+CM.write_csv(src2, [{"Company": "Acme Tree Services Ltd", "City": "Newport", "Address": "Caerau Rd, Newport NP20 4HH"}, {"Company": "Acme Tree Services Ltd", "City": "Newport", "Address": "Quay St, Newport PO30 2AA"}])
+dst2 = CH.file(str(src2), out=str(TMP / "addr-out.csv"), client=CH.Client("k", http=addr_http, sleep=lambda s: None))
+rows2 = list(csv.DictReader(open(dst2, encoding="utf-8-sig")))
+check("a list's Address column is used: the Newport (Wales) lead is not given the Newport (Isle of Wight) company's director, the Isle of Wight lead is",
+      rows2[0]["director_first"] == "" and rows2[0]["ch_match"] == "a company of that name is registered elsewhere" and rows2[1]["director_first"] == "Owen", str(rows2))
 
 # ---------------------------------------------------------------- grid people with Companies House
 def doc(extra=()):
@@ -215,5 +247,14 @@ finally:
 check("the directors button builds a command with the list, both columns and the limit", argv[argv.index("directors") + 1:] == ["my-lists/zz-test-leads.csv", "--company-column", "Company", "--city-column", "City", "--max", "50"], str(argv))
 check("the grid button has the Companies House box, off by default", gp and any(f["name"] == "companies_house" and f["default"] is False for f in gp["fields"]) and any(a.get("flag") == "--companies-house" for a in gp["args"]))
 check("no em dash in the button text or the module", chr(0x2014) not in json.dumps([tool, gp]) and chr(0x2014) not in Path(CH.__file__).read_text(encoding="utf-8"))
+
+GRID_A = dict(GRID, doc=doc([{"key": "c_addr", "label": "Address", "type": "text"}]))
+rows_a = [{"id": "x", "data": {"c_company": "Acme Tree Services Ltd", "c_site": "quiet.example", "c_city": "Newport", "c_addr": "Caerau Rd, Newport NP20 4HH"}},
+          {"id": "y", "data": {"c_company": "Acme Tree Services Ltd", "c_site": "quiet.example", "c_city": "Newport", "c_addr": "Quay St, Newport PO30 2AA"}}]
+api_a = Api(rows_a, GRID_A)
+G.run("Leads", say=lambda m: None, api=api_a, site=lambda w: SITES[w], companies_house=True, ch=CH.Client("k", http=addr_http, sleep=lambda s: None), mx=lambda d: "yes")
+first_key = {l: k for k, l in api_a.added}["First name"]
+check("on a grid, the Address column keeps a same-named company in another area from naming the wrong owner",
+      api_a.cells.get("x", {}).get(first_key, "") == "" and api_a.cells.get("y", {}).get(first_key) == "Owen", str(api_a.cells))
 
 sys.exit(1 if fails else 0)

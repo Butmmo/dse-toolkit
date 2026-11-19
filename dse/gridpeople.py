@@ -37,6 +37,7 @@ TYPE_NAMES = {"email type", "email kind", "work email type"}
 SOURCE_NAMES = {"name source", "source of name", "name found by"}
 COMPANY_NAMES = {"company", "business", "business name", "company name", "name", "organisation", "organization"}
 CITY_NAMES = {"city", "town", "search city", "location"}
+ADDRESS_NAMES = {"address", "full address", "street address"}
 NEW = (("first", "First name", "text", FIRST_NAMES), ("last", "Last name", "text", LAST_NAMES), ("email", "Work email", "email", EMAIL_NAMES), ("type", "Email type", "text", TYPE_NAMES))
 
 
@@ -123,6 +124,7 @@ def find_columns(columns: list[dict], from_ref: str = "") -> dict:
     by["source"] = next((c for c in columns if gridpush.norm(c["label"]) in SOURCE_NAMES), None)
     by["company"] = next((c for c in columns if gridpush.norm(c["label"]) in COMPANY_NAMES and c["key"] != by["website"]["key"]), None)
     by["city"] = next((c for c in columns if gridpush.norm(c["label"]) in CITY_NAMES), None)
+    by["address"] = next((c for c in columns if gridpush.norm(c["label"]) in ADDRESS_NAMES), None)
     return by
 
 
@@ -222,7 +224,7 @@ def run(grid_ref: str, from_ref: str = "", mode: str = "empty", limit: int = 0, 
             if companies_house and not (first and last) and not (cell(cols["first"], d) and cell(cols["last"], d)):
                 from . import chdirectors
                 try:
-                    res = chdirectors.director_for(ch, cell(cols["company"], d), cell(cols["city"], d))
+                    res = chdirectors.director_for(ch, cell(cols["company"], d), cell(cols["city"], d), cell(cols.get("address"), d))
                 except RuntimeError:
                     raise
                 except Exception as e:                # one failed lookup must not stop the run
