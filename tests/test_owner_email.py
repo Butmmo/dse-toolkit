@@ -83,4 +83,22 @@ finally:
 check("by default: first rows, nothing guessed, not a dry run", seen["args"][:6] == ("Leads", "", "empty", 0, False, False), str(seen))
 check("the button text uses no em dash", chr(0x2014) not in str(tool))
 
+# ---------------------------------------------------------------- "owned by Name": the owner named in a sentence (19 Nov 2026)
+def sentence(t):
+    return [(p["name"], p["title"]) for p in E.extract_people("<html><body><p>" + t + "</p></body></html>")]
+
+
+check("'Owned by Wayne Hargreaves and based in Leeds' gives the owner", sentence("Owned by Wayne Hargreaves and based in Leeds, Stump Co cover a large area.") == [("Wayne Hargreaves", "Owner")], str(sentence("Owned by Wayne Hargreaves and based in Leeds")))
+check("'owned and run by' with a middle initial and a full stop gives the owner", sentence("A family firm, owned and run by Dave A. Brown.") == [("Dave A. Brown", "Owner")], str(sentence("owned and run by Dave A. Brown.")))
+check("'Founded by' gives a founder", sentence("Founded by John Smith in 1999, we have grown.") == [("John Smith", "Founder")], str(sentence("Founded by John Smith in 1999")))
+check("a first name alone ('Run by Ollie', 'owner Adam') is not kept: no last name, no email", sentence("Run by Ollie") == [] and sentence("After the army owner Adam gained experience") == [])
+check("software, hosts and councils are not owners", sentence("Managed by Google Analytics") == [] and sentence("Website run by Leeds City Council") == [] and sentence("Powered by Wix Hosting") == [] and sentence("Hosted and managed by Acme Hosting") == [])
+check("a business name after 'run by' is not a person", sentence("This is run by Dave Smith Tree Services") == [], str(sentence("This is run by Dave Smith Tree Services")))
+check("'rerun by' and 'overrun by' do not count", sentence("The match was rerun by Tom Jones") == [] and sentence("The garden was overrun by Tom Jones") == [])
+check("the owner sentence reaches the first name and last name columns", G.person_of({"people": E.extract_people("<p>Owned by Wayne Hargreaves and based in Leeds</p>")}) == ("Wayne", "Hargreaves"))
+both = E.extract_people("<p>Ian Clark, Managing Director</p><p>Owned by Wayne Hargreaves.</p>")
+check("a real title still ranks above an 'owned by' sentence when both are on the page", both and both[0]["name"] in ("Ian Clark", "Wayne Hargreaves") and {p["name"] for p in both} == {"Ian Clark", "Wayne Hargreaves"}, str(both))
+LONG = "We have been trimming, felling and grinding for many years across Leeds and the surrounding villages. " * 5 + "The firm is owned by Wayne Hargreaves, who still works on site every day."
+check("an owner sentence at the end of a long paragraph is still found", sentence(LONG) == [("Wayne Hargreaves", "Owner")], str(sentence(LONG)))
+
 sys.exit(1 if fails else 0)

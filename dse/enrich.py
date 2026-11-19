@@ -56,6 +56,9 @@ NOT_A_NAME = {"google", "reviews", "review", "facebook", "instagram", "twitter",
               "meet", "welcome", "latest", "recent", "featured", "customer", "customers", "client", "clients", "work", "projects", "project", "news", "blog", "quote", "quotes", "free",
               "privacy", "cookie", "cookies", "terms", "policy", "rights", "reserved", "copyright", "powered", "website", "web", "design", "designed", "marketing", "digital", "media",
               "find", "follow", "like", "share", "tweet", "call", "email", "phone", "address", "opening", "hours", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+# "Owned by Wayne Hargreaves", "run by Dave Smith", "founded by ...": small firms name the owner in a sentence, not next to a title (found on a real run, 19 Nov 2026).
+OWNED_BY = re.compile(rf"\b(?P<cue>(?i:owned(?:\s+and\s+(?:run|operated|managed))?|run|operated|managed|founded|established|started))\s+(?i:by)\s+(?P<name>{NAME_RX})(?![A-Za-z'’-])")
+NOT_AN_OWNER = {"council", "analytics", "wordpress", "wix", "squarespace", "hosting", "agency", "studio", "associates", "partners", "holdings", "network", "systems", "software", "technologies"}
 HEADING_TITLE = re.compile(r"^(?:meet|our|about|the|why|welcome|get|contact|read|view|see)\b", re.I)
 TITLE_ANY = re.compile("|".join(f"(?:{t['rx']})" for t in RULES["titles"]), re.I)
 SOCIAL_ONLY = set(RULES["social_only_domains"])
@@ -233,6 +236,12 @@ def extract_people(html: str) -> list[dict]:
             continue
         if re.fullmatch(NAME_RX, ln) and i + 1 < len(lines) and len(lines[i + 1]) <= 60 and TITLE_ANY.search(lines[i + 1]):
             add(ln, lines[i + 1])
+    for ln in lines:
+        for m in OWNED_BY.finditer(ln):
+            nm = m.group("name")
+            if any(w.lower().strip(".,") in NOT_AN_OWNER for w in nm.split()):
+                continue
+            add(nm, "Founder" if m.group("cue").lower().split()[0] in ("founded", "established", "started") else "Owner")
     return sorted(people.values(), key=lambda p: (p["rank"], p["name"]))
 
 
