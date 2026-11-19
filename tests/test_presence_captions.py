@@ -54,6 +54,9 @@ ok("no captions without words, and bad entries (no time, backwards time, empty o
 many = C.group_words(words(" ".join(f"w{i}." for i in range(300))))
 ok("a long recording gives one caption per sentence in order, with no overlap", len(many) == 300 and all(many[i]["end"] <= many[i + 1]["start"] + 1e-9 for i in range(299)))
 
+g = C.group_words(words("one two three four five six seven eight nine ten"))
+ok("every caption carries the real time of each of its words, in order, matching its text", all(" ".join(w["w"] for w in c["words"]) == c["text"] and c["words"][0]["start"] == c["start"] for c in g) and sum(len(c["words"]) for c in g) == 10 and all(c["words"][i]["start"] <= c["words"][i + 1]["start"] for c in g for i in range(len(c["words"]) - 1)))
+
 # ---- the captions file
 srt = C.to_srt([{"start": 0.0, "end": 1.5, "text": "Hello."}, {"start": 3725.25, "end": 3726.0, "text": "Late."}])
 ok("the captions file numbers each caption and writes times as hours:minutes:seconds,milliseconds", srt.startswith("1\n00:00:00,000 --> 00:00:01,500\nHello.\n") and "2\n01:02:05,250 --> 01:02:06,000\nLate.\n" in srt)
@@ -89,9 +92,11 @@ else:
     C.WORKER = stand
     msgs = []
     out = C.make_captions("tone.wav", say=msgs.append)
-    ok("a run saves the captions next to the voiceover and says what to do next", out == PM.AUDIO / "tone.srt" and "Hello world." in out.read_text(encoding="utf-8") and any("Captions file (.srt)" in m for m in msgs))
+    ok("a run saves the captions next to the voiceover and says what to do next", out == PM.AUDIO / "tone.srt" and "Hello world." in out.read_text(encoding="utf-8") and any("Captions file" in m and ".captions.json" in m for m in msgs))
+    js = json.loads((PM.AUDIO / "tone.captions.json").read_text(encoding="utf-8"))
+    ok("a run also saves <name>.captions.json: the same captions with the real start and end of every word", js["v"] == 1 and len(js["cues"]) == 1 and js["cues"][0]["text"] == "Hello world." and [w["w"] for w in js["cues"][0]["words"]] == ["Hello", "world."] and js["cues"][0]["words"][1]["start"] == 0.45 and js["cues"][0]["start"] == 0.1)
     out2 = C.make_captions("tone.wav", say=lambda *_: None)
-    ok("a captions file that is already there is never overwritten (a new one is saved beside it)", out2.name == "tone-captions.srt" and out.exists())
+    ok("a captions file that is already there is never overwritten (a new one is saved beside it), and the word times go with the new one", out2.name == "tone-captions.srt" and out.exists() and (PM.AUDIO / "tone-captions.captions.json").exists() and (PM.AUDIO / "tone.captions.json").exists())
     try: C.make_captions("tone.wav", model="huge"); wrong = False
     except RuntimeError as e: wrong = "huge" in str(e)
     ok("a model that is not offered is refused with a message", wrong)
@@ -132,7 +137,7 @@ cat = json.loads((Path(__file__).resolve().parents[1] / "bridge" / "catalog.json
 t = cat["dse.presence_captions"]; names = {f["name"] for f in t["fields"]}
 ok("the HQ tool is in the catalog, in the Grow group, and every argument points at a real field", t["group"] == "Grow" and all(a.get("field") in names for a in t["args"] if "field" in a) and {"media", "model"} <= names)
 ok("the tool offers three accuracy levels, the balanced one as the default", [c["value"] for c in t["fields"][1]["choices"]] == list(C.MODELS) and t["fields"][1]["default"] == "base.en")
-ok("the tool picks the voiceover from my-audio and hands back the captions file", t["fields"][0]["glob"] == "my-audio/*" and t["outputs"][0]["glob"] == "my-audio/*.srt")
+ok("the tool picks the voiceover from my-audio and hands back the captions file and the word times", t["fields"][0]["glob"] == "my-audio/*" and [o["glob"] for o in t["outputs"]] == ["my-audio/*.srt", "my-audio/*.captions.json"])
 src = (Path(__file__).resolve().parents[1] / "dse" / "presence_captions.py").read_text(encoding="utf-8") + (Path(__file__).resolve().parents[1] / "dse" / "whisper_worker.py").read_text(encoding="utf-8")
 ok("no em dash in the module", "\u2014" not in src)
 ok("the speech worker imports nothing from the toolkit (it runs in the separate environment)", not re.search(r"^\s*(from|import)\s+(dse|\.)", (Path(__file__).resolve().parents[1] / "dse" / "whisper_worker.py").read_text(encoding="utf-8"), re.M))
