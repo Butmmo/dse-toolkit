@@ -4,7 +4,7 @@
     python dse.py grid people <grid> --companies-house                                              the same, for a Ledger grid (Name source column says where a name came from)
 
 Why: small UK trades rarely name their owner on their website (5 of 36 tree surgeons did), but every UK company has a public register entry that lists its directors. For each business
-we search the register by name (and town, when we have it), accept only a match we are confident of (active company, same name apart from Ltd/Limited, and not two different companies
+we search the register by name (and town, when we have it), accept only a match we are confident of (active company, same name apart from Ltd/Limited, and registered in the same postcode area as the lead, and not two different companies
 that fit equally well), and take the longest-serving active human director: "SMITH, John Michael" becomes first name John, last name Smith. A sole trader or partnership is not on the
 register, and a company whose name differs from its trading name is not matched: those rows stay empty rather than guessed.
 
@@ -95,7 +95,34 @@ def name_score(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
-def choose_company(items: list[dict], name: str, city: str = "") -> tuple[dict | None, str]:
+POSTCODE = re.compile(r"\b([A-Z]{1,2})\d[A-Z\d]?\s*\d[A-Z]{2}\b")
+
+
+def postcode_area(text: str) -> str:
+    """'LS8 2SG' -> 'LS', 'B63 1BT' -> 'B'; '' when the text has no UK postcode."""
+    m = POSTCODE.search((text or "").upper())
+    return m.group(1) if m else ""
+
+
+def company_place(it: dict) -> str:
+    a = it.get("address") or {}
+    return " ".join(str(x) for x in (it.get("address_snippet", ""), a.get("postal_code", ""), a.get("locality", "")) if x)
+
+
+def place_ok(it: dict, address: str = "", city: str = "") -> bool | None:
+    """Is this company registered where the lead is? True or False, or None when the lead gives no place to compare. Same postcode area (LS, BS, M ...) is enough: a firm may be registered
+    in the next town. Without a postcode the lead's town must appear in the company's address. Found on a real run (19 Nov 2026): 'Tree Doctors' in Leeds matched a Halesowen company."""
+    where = company_place(it)
+    lead_area, co_area = postcode_area(address), postcode_area(where)
+    if lead_area and co_area:
+        return lead_area == co_area
+    town = re.sub(r"\s+", " ", (city or "")).strip().lower()
+    if town:
+        return town in where.lower()
+    return None if not lead_area else False
+
+
+def choose_company(items: list[dict], name: str, city: str = "", address: str = "") -> tuple[dict | None, str]:
     """(the matching company, 'exact') or (None, why). Only active companies, and the name must be the same apart from Ltd and Limited. A partial overlap is never accepted: on a real run
     (19 Nov 2026) "Leeds Tree Services" matched NORTH LEEDS TREE SERVICES, "Elm House Tree Services" matched ELM TREE HOUSE LIMITED and "Bostock Total Tree Services" matched TOTAL TREE
     SERVICES LIMITED, three different businesses. When two different companies fit equally well the town decides, and if it cannot, nothing is returned: a wrong owner is worse than no owner."""
@@ -108,6 +135,11 @@ def choose_company(items: list[dict], name: str, city: str = "") -> tuple[dict |
             ok.append((s, it))
     if not ok:
         return None, "no company of that name"
+    if address or city:
+        placed = [(sc, it) for sc, it in ok if place_ok(it, address, city) is not False]
+        if not placed:
+            return None, "a company of that name is registered elsewhere"
+        ok = placed
     top = max(s for s, _ in ok)
     best = [it for s, it in ok if s >= top - 0.01]
     if len(best) > 1 and city:
@@ -150,7 +182,7 @@ def pick_director(officers: list[dict]) -> dict | None:
 
 # ------------------------------------------------------------------ lookups
 
-def director_for(client: Client, business: str, city: str = "") -> dict:
+def director_for(client: Client, business: str, city: str = "", address: str = "") -> dict:
     """{'first','last','role','company','number','match'} or {'why': ...} for one business."""
     business = re.sub(r"\s+", " ", business or "").strip()
     if len(norm_tokens(business)) < 1:
@@ -160,7 +192,7 @@ def director_for(client: Client, business: str, city: str = "") -> dict:
         raise RuntimeError("Companies House refused the key (401). " + HELP)
     if status != 200:
         return {"why": f"search failed (HTTP {status})"}
-    company, how = choose_company(data.get("items") or [], business, city)
+    company, how = choose_company(data.get("items") or [], business, city, address)
     if not company:
         return {"why": how}
     number = company.get("company_number", "")
@@ -194,6 +226,7 @@ def file(src: str, company_col: str = "", city_col: str = "", max_rows: int = 20
     if not comp or comp not in heads:
         raise ValueError("I could not find the business name column. Name it with --company-column. Columns: " + ", ".join(heads[:12]) + ".")
     city = city_col or next((low[k] for k in ("city", "town", "search_city") if k in low), "")
+    addr = next((low[k] for k in ("address", "full address", "street address") if k in low), "")
     client = client or Client(need_key())
     found = 0
     done = 0
@@ -206,7 +239,7 @@ def file(src: str, company_col: str = "", city_col: str = "", max_rows: int = 20
         if not (r.get(comp) or "").strip():
             continue
         done += 1
-        d = director_for(client, r[comp], r.get(city, "") if city else "")
+        d = director_for(client, r[comp], r.get(city, "") if city else "", r.get(addr, "") if addr else "")
         if d.get("first"):
             found += 1
             r.update(director_first=d["first"], director_last=d["last"], director_role=d["role"], ch_company=d["company"], ch_number=d["number"], ch_match=d["match"])

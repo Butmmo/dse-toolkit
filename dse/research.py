@@ -20,7 +20,7 @@ from . import pagecache
 from .common import DATA, ROOT, domain, log, read_csv, slug, write_csv
 
 DB = DATA / "leads.sqlite"
-KEEP = ["business", "website", "city", "state", "phone", "email", "best_email", "decision_maker", "category", "niche_match", "tech_platform", "tech_gap_count", "tech_gaps", "lead_score", "lead_why"]
+KEEP = ["business", "website", "city", "state", "phone", "email", "best_email", "decision_maker", "owner_first", "owner_last", "owner_source", "category", "niche_match", "tech_platform", "tech_gap_count", "tech_gaps", "lead_score", "lead_why"]
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
@@ -78,9 +78,34 @@ def save_leads(con: sqlite3.Connection, rows: list[dict], kind: str, country: st
     return new, old
 
 
+UK = {"GB", "UK"}
+
+
+def add_owners(path: str, client=None, max_rows: int = 100) -> str:
+    """Add owner_first, owner_last and owner_source to a list: the name its own website gave if there is one, else the longest-serving director from Companies House (exact name, same postcode area)."""
+    from . import chdirectors as CH, gridpeople as GP
+    dst = CH.file(path, max_rows=max_rows, client=client)
+    rows = read_csv(dst)
+    for r in rows:
+        first, last = GP.split_name(r.get("decision_maker", ""))
+        src = "website" if first and last else ""
+        if not src:
+            first, last = r.get("director_first", ""), r.get("director_last", "")
+            src = "Companies House" if first and last else ""
+        r["owner_first"], r["owner_last"], r["owner_source"] = (first, last, src) if src else ("", "", "")
+    write_csv(dst, rows)
+    return dst
+
+
 def run(kind: str = "", cities: str = "", country: str = "US", cities_file: str = "", tiers: str = "", cap: int = 100, strict: bool = False, new_only: bool = False,
-        enrich: bool = True, icp: str = "", words: str = "", skip: str = "", source: str = "foursquare", max_rows: int = 100, db: Path | str | None = None, today: str = "") -> str:
+        enrich: bool = True, icp: str = "", words: str = "", skip: str = "", source: str = "foursquare", max_rows: int = 100, db: Path | str | None = None, today: str = "", owners: bool = False, ch_client=None) -> str:
     from . import enrich as EN, places as P, tech as T
+    if owners:                                   # fail now, not after a long run
+        if (country or "").upper() not in UK:
+            raise ValueError("Owner names come from Companies House, so they work for UK searches only (country GB).")
+        if ch_client is None:
+            from . import chdirectors
+            chdirectors.need_key()
     today = today or time.strftime("%Y-%m-%d")
     max_rows = max(max_rows, cap)            # every lead found is checked and enriched, not just the first 100
     con = connect(db)
@@ -100,6 +125,8 @@ def run(kind: str = "", cities: str = "", country: str = "US", cities_file: str 
                 m = re.search(r"Saved: (\S+)", text)
                 if m:
                     final = str(ROOT / m.group(1))
+            if owners:
+                final = add_owners(final, ch_client, max_rows)
         st = pagecache.stats()
     out_rows = read_csv(final) if rows else []
     kind_name = (out_rows[0].get("category") if out_rows else "") or kind
@@ -113,6 +140,9 @@ def run(kind: str = "", cities: str = "", country: str = "US", cities_file: str 
     con.commit()
     con.close()
     print(f"Research run: {len(out_rows)} leads, {new} new, {old} seen in an earlier run. Pages: {st['misses']} downloaded, {st['hits']} reused from the cache.")
+    if owners and out_rows:
+        web, reg = sum(1 for r in out_rows if r.get("owner_source") == "website"), sum(1 for r in out_rows if r.get("owner_source") == "Companies House")
+        print(f"Owners named: {web + reg} of {len(out_rows)} ({web} from the business's own website, {reg} from Companies House).")
     if out_rows:
         print(f"Combined list: {stamp}")
         print(f"Lead database: {Path(db or DB)}  (python dse.py research leads)")
