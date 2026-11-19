@@ -79,39 +79,42 @@ C.ROOT = real_roots
 
 # ---- the whole run with a stand-in for the speech step
 ff = PM.find_ffmpeg()
-subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(PM.AUDIO / "tone.wav")], check=True)
-stand = td / "worker.py"
-stand.write_text("import json, sys\nwav, model, out = sys.argv[1:4]\nopen(out, 'w').write(json.dumps({'words': [{'w': 'Hello', 'start': 0.1, 'end': 0.4}, {'w': 'world.', 'start': 0.45, 'end': 0.9}], 'model': model}))\n", encoding="utf-8")
-os.environ["DSE_WHISPER_PYTHON"] = sys.executable
-C.WORKER = stand
-msgs = []
-out = C.make_captions("tone.wav", say=msgs.append)
-ok("a run saves the captions next to the voiceover and says what to do next", out == PM.AUDIO / "tone.srt" and "Hello world." in out.read_text(encoding="utf-8") and any("Captions file (.srt)" in m for m in msgs))
-out2 = C.make_captions("tone.wav", say=lambda *_: None)
-ok("a captions file that is already there is never overwritten (a new one is saved beside it)", out2.name == "tone-captions.srt" and out.exists())
-try: C.make_captions("tone.wav", model="huge"); wrong = False
-except RuntimeError as e: wrong = "huge" in str(e)
-ok("a model that is not offered is refused with a message", wrong)
-try: C.make_captions("ghost.wav"); wrong = False
-except RuntimeError as e: wrong = "ghost.wav" in str(e) and "my-audio" in str(e)
-ok("a missing file is refused with a message that names it", wrong)
-stand.write_text("import json, sys\nopen(sys.argv[3], 'w').write(json.dumps({'words': []}))\n", encoding="utf-8")
-try: C.make_captions("tone.wav", say=lambda *_: None); wrong = False
-except RuntimeError as e: wrong = "No speech" in str(e)
-ok("a recording with no speech is reported, and no empty file is saved", wrong and not (PM.AUDIO / "tone-captions-captions.srt").exists())
-stand.write_text("import sys\nsys.stderr.write('boom')\nsys.exit(3)\n", encoding="utf-8")
-try: C.make_captions("tone.wav", say=lambda *_: None); wrong = False
-except RuntimeError as e: wrong = "boom" in str(e)
-ok("when the speech tool fails its last message is shown", wrong)
-(PM.AUDIO / "bad.wav").write_bytes(b"not audio")
-try: C.make_captions("bad.wav", say=lambda *_: None); wrong = False
-except RuntimeError as e: wrong = "ffmpeg could not read" in str(e)
-ok("a file ffmpeg cannot read is reported", wrong)
-C.ROOT = td / "nowhere" / "toolkit"; os.environ.pop("DSE_WHISPER_PYTHON")
-try: C.make_captions("tone.wav", say=lambda *_: None); wrong = False
-except RuntimeError as e: wrong = "not set up" in str(e) and "faster-whisper" in str(e)
-ok("without the speech tool the message says how to set it up", wrong)
-C.ROOT = real_roots
+if not ff:
+    print("SKIP  ffmpeg is not on this machine: the runs that read sound were not done")
+else:
+    subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(PM.AUDIO / "tone.wav")], check=True)
+    stand = td / "worker.py"
+    stand.write_text("import json, sys\nwav, model, out = sys.argv[1:4]\nopen(out, 'w').write(json.dumps({'words': [{'w': 'Hello', 'start': 0.1, 'end': 0.4}, {'w': 'world.', 'start': 0.45, 'end': 0.9}], 'model': model}))\n", encoding="utf-8")
+    os.environ["DSE_WHISPER_PYTHON"] = sys.executable
+    C.WORKER = stand
+    msgs = []
+    out = C.make_captions("tone.wav", say=msgs.append)
+    ok("a run saves the captions next to the voiceover and says what to do next", out == PM.AUDIO / "tone.srt" and "Hello world." in out.read_text(encoding="utf-8") and any("Captions file (.srt)" in m for m in msgs))
+    out2 = C.make_captions("tone.wav", say=lambda *_: None)
+    ok("a captions file that is already there is never overwritten (a new one is saved beside it)", out2.name == "tone-captions.srt" and out.exists())
+    try: C.make_captions("tone.wav", model="huge"); wrong = False
+    except RuntimeError as e: wrong = "huge" in str(e)
+    ok("a model that is not offered is refused with a message", wrong)
+    try: C.make_captions("ghost.wav"); wrong = False
+    except RuntimeError as e: wrong = "ghost.wav" in str(e) and "my-audio" in str(e)
+    ok("a missing file is refused with a message that names it", wrong)
+    stand.write_text("import json, sys\nopen(sys.argv[3], 'w').write(json.dumps({'words': []}))\n", encoding="utf-8")
+    try: C.make_captions("tone.wav", say=lambda *_: None); wrong = False
+    except RuntimeError as e: wrong = "No speech" in str(e)
+    ok("a recording with no speech is reported, and no empty file is saved", wrong and not (PM.AUDIO / "tone-captions-captions.srt").exists())
+    stand.write_text("import sys\nsys.stderr.write('boom')\nsys.exit(3)\n", encoding="utf-8")
+    try: C.make_captions("tone.wav", say=lambda *_: None); wrong = False
+    except RuntimeError as e: wrong = "boom" in str(e)
+    ok("when the speech tool fails its last message is shown", wrong)
+    (PM.AUDIO / "bad.wav").write_bytes(b"not audio")
+    try: C.make_captions("bad.wav", say=lambda *_: None); wrong = False
+    except RuntimeError as e: wrong = "ffmpeg could not read" in str(e)
+    ok("a file ffmpeg cannot read is reported", wrong)
+    C.ROOT = td / "nowhere" / "toolkit"; os.environ.pop("DSE_WHISPER_PYTHON")
+    try: C.make_captions("tone.wav", say=lambda *_: None); wrong = False
+    except RuntimeError as e: wrong = "not set up" in str(e) and "faster-whisper" in str(e)
+    ok("without the speech tool the message says how to set it up", wrong)
+    C.ROOT = real_roots
 
 # ---- the command
 import io, contextlib
