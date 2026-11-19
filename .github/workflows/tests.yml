@@ -1,8 +1,7 @@
 name: Toolkit tests
 
 # Runs every tests/test_*.py on each push and pull request. Nothing real is contacted: the tests replace mail servers, Citadel and Google with fakes.
-# The tests were written and run on Windows so far; until this has gone green once on Linux it reports a failure but does not mark the commit as failed (continue-on-error).
-# After the first green run, delete the `continue-on-error` line.
+# The tests were written on Windows and have gone green on Linux here, so a failure now fails the commit.
 
 on:
   push:
@@ -14,7 +13,6 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
