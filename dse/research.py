@@ -20,6 +20,7 @@ from . import pagecache
 from .common import DATA, ROOT, domain, log, read_csv, slug, write_csv
 
 DB = DATA / "leads.sqlite"
+OWNER_COLS = ("owner_first", "owner_last", "owner_source")
 KEEP = ["business", "website", "city", "state", "phone", "email", "best_email", "decision_maker", "owner_first", "owner_last", "owner_source", "category", "niche_match", "tech_platform", "tech_gap_count", "tech_gaps", "lead_score", "lead_why"]
 
 
@@ -34,6 +35,11 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
     CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, kind TEXT, country TEXT, cities TEXT, found INTEGER, new INTEGER, seen_before INTEGER,
         strict INTEGER, enriched INTEGER, pages_downloaded INTEGER, pages_reused INTEGER, out_file TEXT);
     """)
+    have = {r[1] for r in con.execute("PRAGMA table_info(leads)")}
+    for col in OWNER_COLS:                       # databases made before owners were kept get the columns now
+        if col not in have:
+            con.execute(f"ALTER TABLE leads ADD COLUMN {col} TEXT DEFAULT ''")
+    con.commit()
     return con
 
 
@@ -57,6 +63,12 @@ def known_keys(con: sqlite3.Connection) -> set[str]:
     return {r[0] for r in con.execute("SELECT key FROM leads")}
 
 
+def known_owners(con: sqlite3.Connection) -> dict[str, tuple[str, str, str]]:
+    """Every owner already found for a lead: key -> (first, last, source). A lead looked up once is not looked up again."""
+    return {r["key"]: (r["owner_first"], r["owner_last"], r["owner_source"]) for r in con.execute(
+        "SELECT key, owner_first, owner_last, owner_source FROM leads WHERE COALESCE(owner_first,'') <> '' AND COALESCE(owner_last,'') <> ''")}
+
+
 def save_leads(con: sqlite3.Connection, rows: list[dict], kind: str, country: str, today: str) -> tuple[int, int]:
     """Add or refresh every lead. Returns (new, seen_before)."""
     new = old = 0
@@ -66,13 +78,16 @@ def save_leads(con: sqlite3.Connection, rows: list[dict], kind: str, country: st
             continue
         vals = (kind, country, r.get("business", ""), r.get("website", ""), r.get("city", "") or r.get("search_city", ""), r.get("phone", ""), r.get("best_email", "") or r.get("email", ""),
                 r.get("niche_match", ""), _int(r.get("tech_gap_count")), _int(r.get("lead_score")), r.get("lead_why", ""))
+        own = tuple(r.get(c, "") or "" for c in OWNER_COLS)
         if con.execute("SELECT 1 FROM leads WHERE key=?", (k,)).fetchone():
             con.execute("UPDATE leads SET kind=?, country=?, business=?, website=?, city=?, phone=?, email=?, niche_match=?, tech_gap_count=?, lead_score=?, lead_why=?, last_seen=?, "
                         "times_seen=times_seen+1 WHERE key=?", vals + (today, k))
+            if own[0] and own[1]:                # a name found now replaces the old one; a run without owners never erases it
+                con.execute("UPDATE leads SET owner_first=?, owner_last=?, owner_source=? WHERE key=?", own + (k,))
             old += 1
         else:
-            con.execute("INSERT INTO leads (key, kind, country, business, website, city, phone, email, niche_match, tech_gap_count, lead_score, lead_why, first_seen, last_seen) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (k,) + vals + (today, today))
+            con.execute("INSERT INTO leads (key, kind, country, business, website, city, phone, email, niche_match, tech_gap_count, lead_score, lead_why, owner_first, owner_last, owner_source, first_seen, last_seen) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (k,) + vals + own + (today, today))
             new += 1
     con.commit()
     return new, old
@@ -81,18 +96,37 @@ def save_leads(con: sqlite3.Connection, rows: list[dict], kind: str, country: st
 UK = {"GB", "UK"}
 
 
-def add_owners(path: str, client=None, max_rows: int = 100) -> str:
-    """Add owner_first, owner_last and owner_source to a list: the name its own website gave if there is one, else the longest-serving director from Companies House (exact name, same postcode area)."""
+def add_owners(path: str, client=None, max_rows: int = 100, known: dict | None = None) -> str:
+    """Add owner_first, owner_last and owner_source to a list: the name its own website gave if there is one, else a name kept from an earlier run (`known`, from the lead database),
+    else the longest-serving director from Companies House (exact name, same postcode area). Only the last group is looked up, so a lead is asked of the register once."""
+    from pathlib import Path
     from . import chdirectors as CH, gridpeople as GP
-    dst = CH.file(path, max_rows=max_rows, client=client)
-    rows = read_csv(dst)
+    from .common import out_path
+    known = known or {}
+    rows = read_csv(path)
+    pending = []
     for r in rows:
         first, last = GP.split_name(r.get("decision_maker", ""))
-        src = "website" if first and last else ""
-        if not src:
-            first, last = r.get("director_first", ""), r.get("director_last", "")
-            src = "Companies House" if first and last else ""
-        r["owner_first"], r["owner_last"], r["owner_source"] = (first, last, src) if src else ("", "", "")
+        if first and last:
+            r["owner_first"], r["owner_last"], r["owner_source"] = first, last, "website"
+        elif known.get(lead_key(r)):
+            r["owner_first"], r["owner_last"], r["owner_source"] = known[lead_key(r)]
+        else:
+            r["owner_first"] = r["owner_last"] = r["owner_source"] = ""
+            pending.append(r)
+        for c in CH.COLUMNS:
+            r.setdefault(c, "")
+    if pending:
+        tmp = Path(path).with_name(Path(path).stem + "-lookup.csv")
+        write_csv(tmp, pending)
+        done = read_csv(CH.file(str(tmp), max_rows=max_rows, client=client, out=str(tmp.with_name(tmp.stem + "-out.csv"))))
+        for r, d in zip(pending, done):
+            r.update({c: d.get(c, "") for c in CH.COLUMNS})
+            if d.get("director_first") and d.get("director_last"):
+                r["owner_first"], r["owner_last"], r["owner_source"] = d["director_first"], d["director_last"], "Companies House"
+        for f in (tmp, tmp.with_name(tmp.stem + "-out.csv")):
+            f.unlink(missing_ok=True)
+    dst = str(out_path("directors", Path(path).stem))
     write_csv(dst, rows)
     return dst
 
@@ -110,6 +144,7 @@ def run(kind: str = "", cities: str = "", country: str = "US", cities_file: str 
     max_rows = max(max_rows, cap)            # every lead found is checked and enriched, not just the first 100
     con = connect(db)
     before = known_keys(con)
+    owners_known = known_owners(con) if owners else {}
     with pagecache.active():
         found = P.find(kind, cities, cap=cap, words=words, skip=skip, country=country, source=source, cities_file=cities_file, tiers=tiers, strict=strict)
         rows = read_csv(found)
@@ -126,7 +161,7 @@ def run(kind: str = "", cities: str = "", country: str = "US", cities_file: str 
                 if m:
                     final = str(ROOT / m.group(1))
             if owners:
-                final = add_owners(final, ch_client, max_rows)
+                final = add_owners(final, ch_client, max_rows, owners_known)
         st = pagecache.stats()
     out_rows = read_csv(final) if rows else []
     kind_name = (out_rows[0].get("category") if out_rows else "") or kind

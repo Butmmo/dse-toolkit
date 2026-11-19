@@ -214,6 +214,41 @@ check("owners: the business's own website wins over the register", (orows["Tree 
 check("owners: every row is looked up (not only the first), and a company registered in another town leaves the owner empty", (orows["Tree Co 1"]["owner_first"], orows["Tree Co 1"]["owner_last"]) == ("Ann", "King") and orows["Tree Co 2"]["owner_first"] == "" and orows["Tree Co 2"]["owner_source"] == "", str((orows["Tree Co 1"], orows["Tree Co 2"])))
 check("owners: the owner columns come first in the list, with the director columns kept", "owner_first" in next(csv.reader(open(fin, encoding="utf-8-sig")))[:12] and "director_first" in orows["Tree Co 0"] and "ch_match" in orows["Tree Co 0"], str(next(csv.reader(open(fin, encoding="utf-8-sig")))[:14]))
 check("owners: the run says how many owners it named and where from", "Owners named: 3 of 4 (1 from the business's own website, 2 from Companies House)" in buf.getvalue(), buf.getvalue())
+# ---------------------------------------------------------------- owners kept in the lead database (19 Nov 2026)
+con = R.connect(TMP / "owners.sqlite")
+stored = {r["business"]: (r["owner_first"], r["owner_last"], r["owner_source"]) for r in con.execute("SELECT * FROM leads")}
+check("database: each owner found is saved with the lead and its source", stored["Tree Co 0"] == ("Owen", "Hart", "Companies House") and stored["Tree Co 3"] == ("Sam", "Rowe", "website") and stored["Tree Co 2"] == ("", "", ""), str(stored))
+check("database: known_owners lists only leads that have a full name", len(R.known_owners(con)) == 3, str(R.known_owners(con)))
+con.close()
+REG.clear()
+with contextlib.redirect_stdout(io.StringIO()):
+    fin2 = R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners.sqlite", today="2026-11-20", owners=True, ch_client=CH.Client("k", http=register, sleep=lambda s: None))
+asked = {p for p in REG if p == "/search/companies"}
+searched_names = [x for x in REG if x == "/search/companies"]
+check("database: a lead whose owner is already known is not asked of the register again, one without is", len(searched_names) == 1, str(REG))
+orows2 = {r["business"]: r for r in csv.DictReader(open(fin2, encoding="utf-8-sig"))}
+check("database: the known names are still in the new list, with their source", (orows2["Tree Co 0"]["owner_first"], orows2["Tree Co 0"]["owner_source"]) == ("Owen", "Companies House") and (orows2["Tree Co 1"]["owner_last"], orows2["Tree Co 3"]["owner_source"]) == ("King", "website"), str(orows2["Tree Co 0"]))
+con = R.connect(TMP / "owners.sqlite")
+check("database: a later run without owners does not erase the names", con.execute("SELECT COUNT(*) FROM leads WHERE owner_last <> ''").fetchone()[0] == 3)
+with contextlib.redirect_stdout(io.StringIO()):
+    R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners.sqlite", today="2026-11-21")
+con.close()
+con = R.connect(TMP / "owners.sqlite")
+check("database: a run without the owners option leaves the saved names alone", con.execute("SELECT COUNT(*) FROM leads WHERE owner_last <> ''").fetchone()[0] == 3 and con.execute("SELECT times_seen FROM leads WHERE business='Tree Co 0'").fetchone()[0] == 3)
+con.close()
+import sqlite3 as _sq
+old = _sq.connect(TMP / "old.sqlite")
+old.execute("CREATE TABLE leads (key TEXT PRIMARY KEY, kind TEXT, country TEXT, business TEXT, website TEXT, city TEXT, phone TEXT, email TEXT, niche_match TEXT, tech_gap_count INTEGER, lead_score INTEGER, lead_why TEXT, first_seen TEXT, last_seen TEXT, times_seen INTEGER DEFAULT 1, status TEXT DEFAULT 'new')")
+old.execute("INSERT INTO leads (key, business) VALUES ('a.example', 'Old Co')")
+old.commit()
+old.close()
+con = R.connect(TMP / "old.sqlite")
+check("database: one made before owners existed gets the columns and keeps its leads", con.execute("SELECT business, owner_first FROM leads").fetchall()[0][0] == "Old Co" and {"owner_first", "owner_last", "owner_source"} <= {r[1] for r in con.execute("PRAGMA table_info(leads)")})
+R.save_leads(con, [{"website": "https://a.example", "business": "Old Co", "owner_first": "Zed", "owner_last": "Poole", "owner_source": "website"}], "x", "GB", "2026-11-20")
+check("database: a name found for a lead already in an old database is saved", con.execute("SELECT owner_last FROM leads").fetchone()[0] == "Poole")
+R.save_leads(con, [{"website": "https://a.example", "business": "Old Co", "owner_first": "Yan", "owner_last": "Bell", "owner_source": "Companies House"}], "x", "GB", "2026-11-21")
+check("database: a newer name replaces the old one", con.execute("SELECT owner_last, owner_source FROM leads").fetchone()[:] == ("Bell", "Companies House"))
+con.close()
 REG.clear()
 n_find = len(calls)
 R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners2.sqlite", today="2026-11-19")
