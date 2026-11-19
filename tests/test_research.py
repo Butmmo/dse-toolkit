@@ -251,8 +251,8 @@ check("database: a newer name replaces the old one", con.execute("SELECT owner_l
 con.close()
 REG.clear()
 n_find = len(calls)
-R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners2.sqlite", today="2026-11-19")
-check("without the owners option the register is never asked and the list has no owner columns", REG == [] and "owner_first" not in next(iter(csv.DictReader(open(list((TMP / "lists").glob("*-research-*.csv"))[-1], encoding="utf-8-sig")))), str(REG))
+plain = R.run("stump grinding", "Leeds", country="GB", db=TMP / "owners2.sqlite", today="2026-11-19")
+check("without the owners option the register is never asked and the list has no owner columns", REG == [] and "owner_first" not in next(iter(csv.DictReader(open(plain, encoding="utf-8-sig")))), str(REG))
 searched = []
 real_find = P.find
 P.find = lambda *a, **k: (searched.append(1), real_find(*a, **k))[1]
