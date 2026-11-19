@@ -345,7 +345,7 @@ def run(key: str, rest: list[str], emit=print) -> int:
             emit(f"Step {n}/{n_steps} ({st['label']}) was refused: {e}")
             return 1
         emit(f"== Step {n}/{n_steps}: {st['label']} ==")
-        globs = [o["glob"] for o in tool.get("outputs", [])]
+        globs = [o["glob"] for o in r.norm_outputs(tool.get("outputs"))]
         before = r.snapshot(globs)
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
         code, timed_out = run_streaming(argv, str(ROOT), env, int(tool.get("timeout_min", 30)) * 60, emit)
