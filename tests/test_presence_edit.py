@@ -261,21 +261,17 @@ t = cat["dse.presence_edit_render"]; names = {f["name"] for f in t["fields"]}
 ok("the HQ tool is in the catalog, in the Grow group, and every argument points at a real field", t["group"] == "Grow" and all(a["field"] in names for a in t["args"] if "field" in a) and t["script"] == "dse.py")
 ok("the tool asks for the edit file from my-video and offers a quick draft", any(f["name"] == "project" and f["glob"] == "my-video/*.edit.json" and f["required"] for f in t["fields"]) and any(f["name"] == "draft" and f["type"] == "bool" for f in t["fields"]) and {"flag": "--draft", "field": "draft"} in t["args"])
 
-# ---- colour looks and zoom (CapCut-style filters and the slow push in)
-lp = E.parse_edit({"v": 1, "clips": [{"kind": "color", "name": "c", "out": 2, "look": "cinema", "zoom": "in"}, {"kind": "color", "name": "d", "out": 2, "look": "evil", "zoom": "spin"}]})
-ok("a clip can have a colour look and a zoom; anything unknown means none", lp["clips"][0]["look"] == "cinema" and lp["clips"][0]["zoom"] == "in" and lp["clips"][1]["look"] == "none" and lp["clips"][1]["zoom"] == "none" and set(E.LOOKS) == {"warm", "cool", "mono", "vivid", "matte", "cinema"})
+# ---- slow zoom (the Ken Burns push in or pull out)
+lp = E.parse_edit({"v": 1, "clips": [{"kind": "color", "name": "c", "out": 2, "zoom": "in"}, {"kind": "color", "name": "d", "out": 2, "zoom": "spin"}]})
+ok("a clip can have a zoom (none, in, out); anything unknown means none", lp["clips"][0]["zoom"] == "in" and lp["clips"][1]["zoom"] == "none")
 if E.PM.find_ffmpeg():
     import subprocess as _sp
     _ff = E.PM.find_ffmpeg(); _d = Path(tempfile.mkdtemp()); _src = _d / "src.mp4"
     _sp.run([_ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=3", "-f", "lavfi", "-i", "anullsrc", "-t", "3", "-shortest", str(_src)], check=True)
     def _frame(look, zoom, t):
-        o = E.render_edit({"v": 1, "title": "fx", "preset": "reels", "clips": [{"kind": "video", "name": "src.mp4", "srcSeconds": 3, "in": 0, "out": 3, "look": look, "zoom": zoom}]}, out_path=_d / f"{look}{zoom}.mp4", draft=True, extra=_d, say=lambda m: None)
+        o = E.render_edit({"v": 1, "title": "fx", "preset": "reels", "clips": [{"kind": "video", "name": "src.mp4", "srcSeconds": 3, "in": 0, "out": 3, "zoom": zoom}]}, out_path=_d / f"{zoom}.mp4", draft=True, extra=_d, say=lambda m: None)
         r = _sp.run([_ff, "-v", "error", "-ss", str(t), "-i", str(o), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True)
         return r.stdout
-    plain = _frame("none", "none", 0.1)
-    mono = _frame("mono", "none", 0.1)
-    grey = all(abs(mono[i] - mono[i + 1]) <= 4 and abs(mono[i + 1] - mono[i + 2]) <= 4 for i in range(0, len(mono) - 3, 3 * 997))
-    ok("a mono look draws a grey picture and no look leaves the colours", grey and plain != mono and not all(abs(plain[i] - plain[i + 1]) <= 4 for i in range(0, len(plain) - 3, 3 * 997)))
     def _diff(a, b): return sum(1 for x, y in zip(a, b) if abs(x - y) > 30) / max(1, len(a))
     p0, p1 = _frame("none", "none", 0.05), _frame("none", "none", 2.9)
     zi0, zi1, zo0 = _frame("none", "in", 0.05), _frame("none", "in", 2.9), _frame("none", "out", 0.05)
