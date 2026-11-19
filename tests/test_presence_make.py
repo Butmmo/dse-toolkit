@@ -188,6 +188,30 @@ for lay, h, b in (("question", "Do you reply in a minute?", "x " * 80), ("quote"
 ok("review fix: on a photo a dull accent is replaced so it can be read (gold on a dark photo)", (lambda im: im.size == (1080, 1350))(Image.open(M.make_graphic("stat", "4 of 6", "x", "", "", "post", "gold", out_path=td / "rp.png"))) and M._contrast("#2A2D33", "#4A3300") < 3.0)
 src = Path(M.__file__).read_text(encoding="utf-8")
 ok("nothing here posts or sends anything: the only network use is the one-time voice download (a GET from the project's release page)", "urllib" not in src and "smtplib" not in src and ".post(" not in src and src.count("requests.get(") == 1 and src.index("requests.get(") > src.index("def install_kokoro") and "github.com/thewh1teagle/kokoro-onnx/releases/download" in src)
+# ---- transitions between scenes
+ok("a project can ask for a transition between scenes; anything else is a plain cut", M.parse_project({"scenes": [{"text": "x scene text"}], "transition": "slide"})["transition"] == "slide" and M.parse_project({"scenes": [{"text": "x scene text"}], "transition": "evil"})["transition"] == "cut" and M.parse_project({"scenes": [{"text": "x scene text"}]})["transition"] == "cut")
+_ff = M.find_ffmpeg()
+if _ff:
+    import tempfile as _tf
+    _td = Path(_tf.mkdtemp()); _M = M
+    def _dur(path):
+        r = subprocess.run([_ff, "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+        h, m, sec = [l for l in r.splitlines() if "Duration" in l][0].split("Duration:")[1].split(",")[0].strip().split(":")
+        return int(h) * 3600 + int(m) * 60 + float(sec)
+    _sc = [{"text": "First scene here", "seconds": 2}, {"text": "Second scene now", "seconds": 2}, {"text": "Third scene end", "seconds": 2}]
+    M.VIDEOS = _td
+    _durs = {}
+    for _tr in ("cut", "fade", "slide", "circle", "dip", "wipe", "zoom"):
+        _o = M.make_video({"title": "tr", "transition": _tr, "scenes": _sc}, out_path=_td / f"{_tr}.mp4", say=lambda m: None)
+        _durs[_tr] = _dur(_o)
+    ok("every transition keeps the video the same length as a cut (so the captions file stays in step)", all(abs(d - _durs["cut"]) < 0.1 for d in _durs.values()))
+    _f = _td / "mid.png"
+    subprocess.run([_ff, "-y", "-loglevel", "error", "-ss", "2.2", "-i", str(_td / "fade.mp4"), "-frames:v", "1", str(_f)], check=True)
+    _g = _td / "cutmid.png"
+    subprocess.run([_ff, "-y", "-loglevel", "error", "-ss", "2.2", "-i", str(_td / "cut.mp4"), "-frames:v", "1", str(_g)], check=True)
+    ok("in the middle of a blend the picture differs from the plain cut at the same moment", Image.open(_f).convert("L").tobytes() != Image.open(_g).convert("L").tobytes())
+else:
+    print("SKIP  transitions (ffmpeg is not installed here)")
 ok("no em dash in the file", chr(0x2014) not in src)
 print("\nALL PASS" if not fails else f"\n{fails} FAILED")
 sys.exit(1 if fails else 0)

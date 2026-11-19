@@ -416,6 +416,45 @@ def _duration(ff: str, path: Path) -> float | None:
     return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else None
 
 
+TRANSITIONS = {"cut": None, "fade": "fade", "dip": "fadeblack", "slide": "slideleft", "wipe": "wipeleft", "zoom": "zoomin", "circle": "circleopen"}   # between scenes: the name in a project -> ffmpeg's xfade
+TRANSITION_S = 0.4
+
+
+def join_scenes(ff: str, clips: list, seconds: list, transition: str, out: Path) -> None:
+    """Joins the scene clips. A cut is a plain copy. A transition blends the end of each scene into the start of the next: each clip but the last is held on its last frame for the blend
+    and the blends overlap that hold, so every scene still starts exactly where the plain cut would start it (the .srt captions stay in step)."""
+    kind = TRANSITIONS.get(transition)
+    if not kind or len(clips) < 2:
+        td = out.parent
+        lst = td / (out.stem + "-list.txt")
+        lst.write_text("".join("file '" + Path(c).as_posix().replace("'", "'\\''") + "'" + chr(10) for c in clips), encoding="utf-8")
+        r = subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(out)], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"ffmpeg could not join the scenes: {r.stderr.strip()[-300:]}")
+        return
+    T = round(min(TRANSITION_S, min(seconds) / 2), 3)
+    n = len(clips)
+    parts, vlast, alast, t_end = [], "", "", 0.0
+    for i in range(n):
+        pad_v = f",tpad=stop_mode=clone:stop_duration={T}" if i < n - 1 else ""
+        pad_a = f",apad=pad_dur={T}" if i < n - 1 else ""
+        parts.append(f"[{i}:v]fps=30,setsar=1,format=yuv420p{pad_v}[v{i}]")
+        parts.append(f"[{i}:a]aresample=44100,aformat=channel_layouts=mono{pad_a}[a{i}]")
+    vlast, alast = "v0", "a0"
+    for i in range(1, n):
+        t_end += seconds[i - 1]
+        parts.append(f"[{vlast}][v{i}]xfade=transition={kind}:duration={T}:offset={round(t_end, 3)}[x{i}]")
+        parts.append(f"[{alast}][a{i}]acrossfade=d={T}[y{i}]")
+        vlast, alast = f"x{i}", f"y{i}"
+    cmd = [ff, "-y", "-loglevel", "error"]
+    for c in clips:
+        cmd += ["-i", str(c)]
+    cmd += ["-filter_complex", ";".join(parts), "-map", f"[{vlast}]", "-map", f"[{alast}]", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "44100", "-ac", "1", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg could not blend the scenes: {r.stderr.strip()[-300:]}")
+
+
 def parse_project(raw: object) -> dict:
     """Reads a video project safely: a size, a voice choice and up to 30 scenes of 1 to 30 seconds."""
     if not isinstance(raw, dict) or not isinstance(raw.get("scenes"), list) or not raw["scenes"]:
@@ -437,7 +476,7 @@ def parse_project(raw: object) -> dict:
     if not scenes:
         raise ValueError("Every scene is empty.")
     return {"title": str(raw.get("title") or "video")[:80], "size": size, "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink", "kit": raw.get("kit") if isinstance(raw.get("kit"), dict) else None,
-            "engine": "blender" if raw.get("engine") == "blender" else "cards", "quality": "high" if raw.get("quality") == "high" else "draft", "arrive": "fly" if raw.get("arrive") == "fly" else "rise", "move": raw.get("move") if raw.get("move") in ("dolly", "drift", "still") else "dolly",
+            "engine": "blender" if raw.get("engine") == "blender" else "cards", "quality": "high" if raw.get("quality") == "high" else "draft", "arrive": "fly" if raw.get("arrive") == "fly" else "rise", "transition": raw.get("transition") if raw.get("transition") in TRANSITIONS else "cut", "move": raw.get("move") if raw.get("move") in ("dolly", "drift", "still") else "dolly",
             "voice": raw.get("voice") if raw.get("voice") in ("windows", "own", "kokoro") else "none", "kokoro_voice": raw.get("kokoro_voice") if KOKORO_VOICE.match(str(raw.get("kokoro_voice") or "")) else DEFAULT_KOKORO_VOICE, "captions": raw.get("captions") is not False, "footer": str(raw.get("footer") or "")[:60], "scenes": scenes}
 
 
@@ -620,11 +659,7 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
                 raise RuntimeError(f"ffmpeg stopped on scene {i}: {r.stderr.strip()[-300:]}")
             clips.append(clip)
             say(f"Scene {i} of {len(P['scenes'])}: {s['seconds']:.1f}s")
-        lst = td / "list.txt"
-        lst.write_text("".join("file '" + c.as_posix().replace("'", "'\\''") + "'\n" for c in clips), encoding="utf-8")
-        r = subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(out)], capture_output=True, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg could not join the scenes: {r.stderr.strip()[-300:]}")
+        join_scenes(ff, clips, [x["seconds"] for x in P["scenes"]], P["transition"], out)
     out.with_suffix(".srt").write_text(make_srt(P["scenes"]), encoding="utf-8")
     return out
 
