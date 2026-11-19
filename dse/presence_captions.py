@@ -6,7 +6,7 @@
 The speech is read by faster-whisper, a free speech-to-text program that runs on this PC: nothing is uploaded. The first run downloads its model once (base.en is about 145 MB).
 It lives in its own small Python environment because the speech libraries do not have builds for every Python yet.
 The words are grouped into short captions the way Reels and TikTok show them (a few words at a time, breaking at full stops and pauses) and saved as <name>.srt next to the file,
-ready for the editor: Presence > Edit > "Captions file (.srt)". The file is found by its name in my-audio, my-video, then my-graphics.
+ready for the editor: Presence > Edit > "Captions file". It also saves <name>.captions.json, the same captions with the real time of every word, which makes "Light each word as it is spoken" follow the voice exactly. The file is found by its name in my-audio, my-video, then my-graphics.
 Always read the captions before posting: speech-to-text makes mistakes, especially with names, accents and noise.
 """
 from __future__ import annotations
@@ -74,11 +74,12 @@ def group_words(words: list[dict]) -> list[dict]:
             size = len(sen) // n + (1 if k < len(sen) % n else 0)
             part = sen[at:at + size]
             at += size
-            cues.append({"start": part[0]["start"], "end": part[-1]["end"], "text": " ".join(x["w"] for x in part)})
+            cues.append({"start": part[0]["start"], "end": part[-1]["end"], "text": " ".join(x["w"] for x in part), "words": part})
     for i, c in enumerate(cues):
         nxt = cues[i + 1]["start"] if i + 1 < len(cues) else c["end"] + MIN_SECONDS
         c["end"] = min(max(c["end"], c["start"] + MIN_SECONDS), max(nxt, c["end"]))
-    return [{"start": round(c["start"], 3), "end": round(c["end"], 3), "text": c["text"]} for c in cues]
+    return [{"start": round(c["start"], 3), "end": round(c["end"], 3), "text": c["text"],
+             "words": [{"w": x["w"], "start": round(x["start"], 3), "end": round(x["end"], 3)} for x in c["words"]]} for c in cues]
 
 
 def to_srt(cues: list[dict]) -> str:
@@ -139,7 +140,9 @@ def make_captions(name: str, model: str = "base.en", say=print) -> Path:
     if out.exists() and out.stat().st_size > 0:
         out = media.with_name(media.stem + "-captions.srt")
     out.write_text(to_srt(cues), encoding="utf-8")
-    say(f"Saved {out.name} in {out.parent.name}: {len(cues)} captions. Read it and fix any mistakes, then in Presence > Edit press 'Captions file (.srt)'.")
+    # the same captions with the real time of every word, so the editor can light the word being spoken exactly when it is said
+    out.with_name(out.stem + ".captions.json").write_text(json.dumps({"v": 1, "cues": cues}, ensure_ascii=False, indent=1), encoding="utf-8")
+    say(f"Saved {out.name} and {out.stem}.captions.json in {out.parent.name}: {len(cues)} captions. Read them and fix any mistakes, then in Presence > Edit press 'Captions file' and choose the .json one (it keeps the real word times for 'Light each word') or the .srt.")
     return out
 
 
