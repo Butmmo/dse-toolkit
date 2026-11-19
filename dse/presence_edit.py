@@ -29,6 +29,7 @@ MAX_MIX = 1.0   # seconds a clip may blend (a crossfade) with the one before it,
 FPS = 30
 FONTS = ("sans", "serif", "mono")
 MOTIONS = ("none", "rise", "drop", "slide")
+HL_COLOR = "#ffd23f"   # the colour a spoken word is lit in unless another is chosen
 ZOOMS = ("none", "in", "out")   # a slow push in or pull out over the clip (the Ken Burns move)
 ZOOM_BY = 0.14                  # how much bigger the picture gets at the end of a push in
 MOTION_S = 0.4      # seconds a text takes to move into place (at most half of its time on screen)
@@ -120,7 +121,8 @@ def parse_edit(raw: object) -> dict:
         texts.append({"role": role, "text": _clean(t.get("text"), 120), "start": start, "end": end, "x": _r3(_num(t.get("x"), 0, 1, 0.5)), "y": _r3(_num(t.get("y"), 0, 1, 0.74 if role == "caption" else 0.45)),
                       "size": _r3(_num(t.get("size"), 0.02, 0.12, 0.045 if role == "caption" else 0.07)), "color": _hex(t.get("color"), "#ffffff"), "bold": t.get("bold") is not False,
                       "font": t.get("font") if t.get("font") in FONTS else "sans", "fade": t.get("fade") is not False,
-                      "motion": t.get("motion") if t.get("motion") in MOTIONS else "none"})
+                      "motion": t.get("motion") if t.get("motion") in MOTIONS else "none",
+                      "hl": t.get("hl") is True, "hlColor": _hex(t.get("hlColor"), HL_COLOR)})
     audio = []
     for a in (raw.get("audio") if isinstance(raw.get("audio"), list) else [])[:MAX_AUDIO]:
         if not isinstance(a, dict):
@@ -189,6 +191,47 @@ def _edit_font(key: str, bold: bool, px: int):
         return ImageFont.load_default(px)
     except TypeError:
         return ImageFont.load_default()
+
+
+def word_times(layer: dict) -> list[dict]:
+    """The words of a text and when each is spoken: the layer's time is shared out in proportion to the length of the words, from its start to its end (the editor does the same)."""
+    ws = str(layer["text"]).split()
+    if not ws:
+        return []
+    total = sum(len(w) for w in ws)
+    span = layer["end"] - layer["start"]
+    out, at = [], layer["start"]
+    for i, w in enumerate(ws):
+        start = at
+        at += span * len(w) / total
+        out.append({"w": w, "start": _r3(start), "end": _r3(layer["end"] if i == len(ws) - 1 else at)})
+    return out
+
+
+def word_layer_png(layer: dict, k: int, W: int, H: int, path: Path) -> Path:
+    """The same layout as text_layer_png, but only word number k is drawn, in the highlight colour, exactly over its place in the line."""
+    from PIL import Image, ImageDraw
+    px = max(8, round(layer["size"] * H))
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    f = _edit_font(layer["font"], layer["bold"], px)
+    lines = PM._wrap(d, layer["text"].strip(), f, int(W * 0.86))
+    lh = px * 1.22
+    top = layer["y"] * H - ((len(lines) - 1) * lh) / 2
+    outline = max(1, round(max(2, px * 0.14) / 2))
+    seen = 0
+    for i, line in enumerate(lines):
+        ws = line.split()
+        if k < seen or k >= seen + len(ws):
+            seen += len(ws)
+            continue
+        j = k - seen
+        before = " ".join(ws[:j]) + (" " if j else "")
+        x = layer["x"] * W - d.textlength(line, font=f) / 2 + d.textlength(before, font=f)
+        d.text((x, top + i * lh), ws[j], font=f, fill=layer["hlColor"], anchor="lm", stroke_width=outline, stroke_fill=(0, 0, 0, 199))
+        break
+    img.save(path, "PNG")
+    return path
 
 
 def text_layer_png(layer: dict, W: int, H: int, path: Path) -> Path:
@@ -320,12 +363,14 @@ def render_edit(project: dict, ffmpeg: str | None = None, out_path: str | Path |
         else:
             cmd = [ff, "-y", "-loglevel", "error", "-i", str(base)]
             chains, vlast = [], "[0:v]"
+            idx = 1   # the number of the next input file
             for k, t in enumerate(texts, 1):
                 png = text_layer_png(t, W, H, td / f"t{k}.png")
                 cmd += ["-loop", "1", "-framerate", str(FPS), "-t", str(total), "-i", str(png)]
                 edge = min(0.25, (t["end"] - t["start"]) / 2)
                 fade = f",fade=t=in:st={t['start']}:d={edge}:alpha=1,fade=t=out:st={_r3(t['end'] - edge)}:d={edge}:alpha=1" if t["fade"] and edge > 0 else ""
-                chains.append(f"[{k}:v]format=rgba{fade}[t{k}]")
+                chains.append(f"[{idx}:v]format=rgba{fade}[t{k}]")
+                idx += 1
                 move = ""
                 d = _r3(min(MOTION_S, (t["end"] - t["start"]) / 2))
                 if t["motion"] != "none" and d > 0:
@@ -336,7 +381,28 @@ def render_edit(project: dict, ffmpeg: str | None = None, out_path: str | Path |
                         move = f":y='{'' if t['motion'] == 'rise' else '-'}{MOVE_Y}*H*{rest}'"
                 chains.append(f"{vlast}[t{k}]overlay=enable='between(t,{t['start']},{t['end']})'{move}:eof_action=pass[v{k}]")
                 vlast = f"[v{k}]"
-            n_in = 1 + len(texts)
+                if t["hl"] and word_times(t):
+                    # the spoken word lit in its colour: one picture per word, shown one after another in the word's own time (a list of pictures with durations), laid over the layer with the same move and fade
+                    words = word_times(t)
+                    blank = td / "blank.png"
+                    if not blank.exists():
+                        from PIL import Image
+                        Image.new("RGBA", (W, H), (0, 0, 0, 0)).save(blank, "PNG")
+                    rows = []
+                    if words[0]["start"] > 0:
+                        rows.append((blank, words[0]["start"]))
+                    for n in range(len(words)):
+                        wp = word_layer_png(t, n, W, H, td / f"t{k}w{n}.png")
+                        rows.append((wp, _r3(words[n]["end"] - words[n]["start"])))
+                    lst = td / f"t{k}.txt"
+                    body = "".join(f"file '{p.as_posix()}'\nduration {dur}\n" for p, dur in rows) + f"file '{rows[-1][0].as_posix()}'\n"
+                    lst.write_text(body, encoding="utf-8")
+                    cmd += ["-f", "concat", "-safe", "0", "-i", str(lst)]
+                    chains.append(f"[{idx}:v]fps={FPS},format=rgba{fade}[h{k}]")
+                    idx += 1
+                    chains.append(f"{vlast}[h{k}]overlay=enable='between(t,{t['start']},{t['end']})'{move}:eof_action=pass[w{k}]")
+                    vlast = f"[w{k}]"
+            n_in = idx
             alast = "[0:a]"
             labels = []
             for j, (a, src) in enumerate(sounds, 1):
