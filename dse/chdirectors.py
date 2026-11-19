@@ -96,15 +96,15 @@ def name_score(a: str, b: str) -> float:
 
 
 def choose_company(items: list[dict], name: str, city: str = "") -> tuple[dict | None, str]:
-    """(the matching company, 'exact' or 'close') or (None, why). Only active companies; the name must match (apart from Ltd and Limited); when two different companies fit equally well,
-    the town decides, and if it cannot, nothing is returned: a wrong owner is worse than no owner."""
+    """(the matching company, 'exact') or (None, why). Only active companies, and the name must be the same apart from Ltd and Limited. A partial overlap is never accepted: on a real run
+    (19 Nov 2026) "Leeds Tree Services" matched NORTH LEEDS TREE SERVICES, "Elm House Tree Services" matched ELM TREE HOUSE LIMITED and "Bostock Total Tree Services" matched TOTAL TREE
+    SERVICES LIMITED, three different businesses. When two different companies fit equally well the town decides, and if it cannot, nothing is returned: a wrong owner is worse than no owner."""
     ok = []
     for it in items or []:
         if str(it.get("company_status", "")).lower() != "active":
             continue
         s = name_score(name, it.get("title", ""))
-        sub = set(norm_tokens(name)) <= set(norm_tokens(it.get("title", ""))) and len(norm_tokens(name)) >= 2
-        if s >= 0.75 or (sub and s >= 0.6):
+        if s >= 0.99:
             ok.append((s, it))
     if not ok:
         return None, "no company of that name"
@@ -118,7 +118,7 @@ def choose_company(items: list[dict], name: str, city: str = "") -> tuple[dict |
     if len(best) > 1:
         return None, "more than one company fits"
     it = best[0]
-    return it, "exact" if top >= 0.99 else "close"
+    return it, "exact"
 
 
 def ch_name(raw: str) -> tuple[str, str]:

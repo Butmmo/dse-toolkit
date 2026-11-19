@@ -41,7 +41,12 @@ def co(title, number, status="active", locality="Leeds"):
 
 
 check("the same name apart from Ltd and Limited is an exact match", CH.choose_company([co("ACME TREE SERVICES LIMITED", "1")], "Acme Tree Services Ltd")[1] == "exact")
-check("a trade name that is part of the company's name is a close match", CH.choose_company([co("ACE ROOFING SERVICES LTD", "2")], "Ace Roofing")[1] == "close")
+check("a trade name that is only part of the company's name is not a match", CH.choose_company([co("ACE ROOFING SERVICES LTD", "2")], "Ace Roofing")[0] is None)
+# the three wrong matches of the real run on 36 UK tree firms (19 Nov 2026)
+check("'Leeds Tree Services' is not NORTH LEEDS TREE SERVICES", CH.choose_company([co("NORTH LEEDS TREE SERVICES LTD", "3")], "Leeds Tree Services")[0] is None)
+check("'Elm House Tree Services' is not ELM TREE HOUSE LIMITED", CH.choose_company([co("ELM TREE HOUSE LIMITED", "4")], "Elm House Tree Services")[0] is None)
+check("'Bostock Total Tree Services' is not TOTAL TREE SERVICES LIMITED", CH.choose_company([co("TOTAL TREE SERVICES LIMITED", "5")], "Bostock Total Tree Services")[0] is None)
+check("an exact name is still found beside a lookalike", CH.choose_company([co("NORTH LEEDS TREE SERVICES LTD", "3"), co("LEEDS TREE SERVICES LIMITED", "6")], "Leeds Tree Services")[0]["company_number"] == "6")
 check("a dissolved company is never matched", CH.choose_company([co("ACME TREE SERVICES LTD", "3", "dissolved")], "Acme Tree Services")[0] is None)
 check("a different company with a few words in common is not matched", CH.choose_company([co("ACME FINANCE HOLDINGS LTD", "4")], "Acme Tree Services")[0] is None)
 two = [co("SMITH TREE CARE LTD", "5", locality="Leeds"), co("SMITH TREE CARE LTD", "6", locality="Hull")]
