@@ -122,7 +122,8 @@ def parse_edit(raw: object) -> dict:
                       "size": _r3(_num(t.get("size"), 0.02, 0.12, 0.045 if role == "caption" else 0.07)), "color": _hex(t.get("color"), "#ffffff"), "bold": t.get("bold") is not False,
                       "font": t.get("font") if t.get("font") in FONTS else "sans", "fade": t.get("fade") is not False,
                       "motion": t.get("motion") if t.get("motion") in MOTIONS else "none",
-                      "hl": t.get("hl") is True, "hlColor": _hex(t.get("hlColor"), HL_COLOR)})
+                      "hl": t.get("hl") is True, "hlColor": _hex(t.get("hlColor"), HL_COLOR),
+                      "wordStarts": _word_starts(t.get("wordStarts"), _clean(t.get("text"), 120), end - start)})
     audio = []
     for a in (raw.get("audio") if isinstance(raw.get("audio"), list) else [])[:MAX_AUDIO]:
         if not isinstance(a, dict):
@@ -193,11 +194,29 @@ def _edit_font(key: str, bold: bool, px: int):
         return ImageFont.load_default()
 
 
+def _word_starts(v, text: str, span: float):
+    """The seconds (from the layer's start) at which each word starts, when known from the real speech: kept only when there is one per word, none negative and none going back (else None, and the light uses the estimate)."""
+    n = len(text.split())
+    if not isinstance(v, list) or n == 0 or len(v) != n:
+        return None
+    out = []
+    for x in v:
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or x != x or x < 0 or (out and x < out[-1]):
+            return None
+        out.append(_r3(min(float(x), max(0.0, span))))
+    return out
+
+
 def word_times(layer: dict) -> list[dict]:
     """The words of a text and when each is spoken: the layer's time is shared out in proportion to the length of the words, from its start to its end (the editor does the same)."""
     ws = str(layer["text"]).split()
     if not ws:
         return []
+    starts = layer.get("wordStarts")
+    if starts and len(starts) == len(ws):
+        # the real speech: a word is lit from when it starts until the next one starts (the first from the layer's start, the last to its end)
+        at = [layer["start"] if i == 0 else _r3(min(layer["end"], max(layer["start"], layer["start"] + starts[i]))) for i in range(len(ws))]
+        return [{"w": w, "start": at[i], "end": layer["end"] if i == len(ws) - 1 else max(at[i], at[i + 1])} for i, w in enumerate(ws)]
     total = sum(len(w) for w in ws)
     span = layer["end"] - layer["start"]
     out, at = [], layer["start"]
