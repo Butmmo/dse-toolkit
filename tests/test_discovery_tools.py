@@ -136,6 +136,8 @@ try:
         rd = R.build_command(cat, "dse.research_run", {"kind": "dentist", "cities": "Tampa FL"})[0][3:]
         rdn = parse(rd)
         check("research run: strict, new only and skip-enrich are all off unless ticked", rdn is not None and not (rdn.strict or rdn.new_only or rdn.no_enrich) and rdn.country == "US", str(rdn))
+        rdo = parse(R.build_command(cat, "dse.research_run", {"kind": "stump grinding", "cities": "Leeds", "country": "GB", "owners": True})[0][3:])
+        check("research run: the owners box is off unless ticked, and reaches the command when ticked", rdo is not None and rdo.owners is True and rdn.owners is False, str(rdo))
         check("research history and the lead database buttons build their commands (the database list is always saved to one file, to upload)", ns["dse.research_history"].action == "history"
               and ns["dse.research_leads"].action == "leads" and ns["dse.research_leads"].min_score == 60 and ns["dse.research_leads"].country == "GB" and ns["dse.research_leads"].csv == "my-lists/research-leads.csv")
         check("list: country and source reach the command", ns["dse.list"].country == "GB" and ns["dse.list"].source == "overture")
