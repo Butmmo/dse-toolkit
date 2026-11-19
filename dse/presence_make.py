@@ -418,6 +418,34 @@ def _duration(ff: str, path: Path) -> float | None:
 
 TRANSITIONS = {"cut": None, "fade": "fade", "dip": "fadeblack", "slide": "slideleft", "wipe": "wipeleft", "zoom": "zoomin", "circle": "circleopen"}   # between scenes: the name in a project -> ffmpeg's xfade
 TRANSITION_S = 0.4
+MUSIC_EXT = (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac")
+
+
+def _music_name(v) -> str:
+    """The file name of a music track in my-audio (a bare name: any folder part is dropped), or '' when it is not an audio file name."""
+    n = Path(str(v or "").replace("\\", "/")).name.strip()[:80]
+    return n if n.lower().endswith(MUSIC_EXT) else ""
+
+
+def _music_volume(v) -> float:
+    try:
+        return round(min(0.6, max(0.05, float(v))), 2)
+    except (TypeError, ValueError):
+        return 0.2
+
+
+def add_music(ff: str, video: Path, music: Path, seconds: float, volume: float, out: Path) -> None:
+    """Puts a music track under the finished video: looped to the video's length, quiet, ducked under the voice (it drops while someone speaks and comes back in the gaps), faded out over the last 1.5 s.
+    The picture is copied untouched."""
+    fade = max(0.0, round(seconds - 1.5, 2))
+    fc = (f"[1:a]aresample=44100,aformat=channel_layouts=mono,volume={volume},afade=t=out:st={fade}:d=1.5[m];"
+          "[0:a]aresample=44100,asplit=2[vo][sc];"
+          "[m][sc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=400[duck];"
+          "[vo][duck]amix=inputs=2:duration=first:dropout_transition=0,volume=2[a]")
+    r = subprocess.run([ff, "-y", "-loglevel", "error", "-i", str(video), "-stream_loop", "-1", "-i", str(music), "-filter_complex", fc,
+                        "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-ar", "44100", "-ac", "1", "-t", str(seconds), str(out)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg could not add the music: {r.stderr.strip()[-300:]}")
 
 
 def join_scenes(ff: str, clips: list, seconds: list, transition: str, out: Path) -> None:
@@ -476,7 +504,7 @@ def parse_project(raw: object) -> dict:
     if not scenes:
         raise ValueError("Every scene is empty.")
     return {"title": str(raw.get("title") or "video")[:80], "size": size, "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink", "kit": raw.get("kit") if isinstance(raw.get("kit"), dict) else None,
-            "engine": "blender" if raw.get("engine") == "blender" else "cards", "quality": "high" if raw.get("quality") == "high" else "draft", "arrive": "fly" if raw.get("arrive") == "fly" else "rise", "transition": raw.get("transition") if raw.get("transition") in TRANSITIONS else "cut", "move": raw.get("move") if raw.get("move") in ("dolly", "drift", "still") else "dolly",
+            "engine": "blender" if raw.get("engine") == "blender" else "cards", "quality": "high" if raw.get("quality") == "high" else "draft", "arrive": "fly" if raw.get("arrive") == "fly" else "rise", "transition": raw.get("transition") if raw.get("transition") in TRANSITIONS else "cut", "music": _music_name(raw.get("music")), "music_volume": _music_volume(raw.get("musicVolume")), "move": raw.get("move") if raw.get("move") in ("dolly", "drift", "still") else "dolly",
             "voice": raw.get("voice") if raw.get("voice") in ("windows", "own", "kokoro") else "none", "kokoro_voice": raw.get("kokoro_voice") if KOKORO_VOICE.match(str(raw.get("kokoro_voice") or "")) else DEFAULT_KOKORO_VOICE, "captions": raw.get("captions") is not False, "footer": str(raw.get("footer") or "")[:60], "scenes": scenes}
 
 
@@ -660,6 +688,18 @@ def make_video(project: dict, ffmpeg: str | None = None, out_path: str | Path | 
             clips.append(clip)
             say(f"Scene {i} of {len(P['scenes'])}: {s['seconds']:.1f}s")
         join_scenes(ff, clips, [x["seconds"] for x in P["scenes"]], P["transition"], out)
+        if P["music"]:
+            mp = AUDIO / P["music"]
+            if mp.is_file():
+                tmp = td / "with-music.mp4"
+                try:
+                    add_music(ff, out, mp, sum(x["seconds"] for x in P["scenes"]), P["music_volume"], tmp)
+                    shutil.copyfile(tmp, out)
+                    say(f"Music added under the voice: {P['music']}.")
+                except RuntimeError as e:
+                    say(f"The music was not added: {e}")
+            else:
+                say(f"The music file {P['music']} is not in my-audio, so the video has no music. Put it there with exactly that name and run it again.")
     out.with_suffix(".srt").write_text(make_srt(P["scenes"]), encoding="utf-8")
     return out
 

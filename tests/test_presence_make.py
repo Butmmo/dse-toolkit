@@ -212,6 +212,28 @@ if _ff:
     ok("in the middle of a blend the picture differs from the plain cut at the same moment", Image.open(_f).convert("L").tobytes() != Image.open(_g).convert("L").tobytes())
 else:
     print("SKIP  transitions (ffmpeg is not installed here)")
+# ---- music under the voice
+ok("a project can name a music file in my-audio and a volume; folders in the name are dropped and a non-audio name means none", M.parse_project({"scenes": [{"text": "x scene text"}], "music": "../secret/song.mp3", "musicVolume": 9})["music"] == "song.mp3" and M.parse_project({"scenes": [{"text": "x scene text"}], "music": "x.exe"})["music"] == "" and M.parse_project({"scenes": [{"text": "x scene text"}], "musicVolume": 9})["music_volume"] == 0.6 and M.parse_project({"scenes": [{"text": "x scene text"}]})["music_volume"] == 0.2)
+if _ff:
+    _m = Path(_tf.mkdtemp()); M.AUDIO = _m; M.VIDEOS = _m
+    subprocess.run([_ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=330:d=3", str(_m / "voice.wav")], check=True)      # a voice stand-in for scene 1
+    subprocess.run([_ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "anoisesrc=d=2:c=pink:a=0.5", str(_m / "bed.mp3")], check=True)   # a short music track: it must be looped
+    (_m / "voice.wav").replace(_m / "tune-scene-1.wav")
+    _lines = []
+    _o = M.make_video({"title": "tune", "music": "bed.mp3", "musicVolume": 0.4, "scenes": [{"text": "Voice scene here", "voice": "hello", "seconds": 3}, {"text": "Quiet scene here", "seconds": 3}]}, out_path=_m / "tune.mp4", say=_lines.append)
+    def _level(t0):
+        r = subprocess.run([_ff, "-hide_banner", "-ss", str(t0), "-t", "1", "-i", str(_o), "-vn", "-af", "highpass=f=2500,volumedetect", "-f", "null", "-"], capture_output=True, text=True).stderr          # only the high frequencies: the 300 Hz voice stand-in is out, the music (noise) is left
+        return float([l for l in r.splitlines() if "mean_volume" in l][0].split("mean_volume:")[1].split("dB")[0])
+    ok("the music is added, looped past its own length, and the student is told", _o.exists() and any("Music added" in l for l in _lines) and _dur(_o) > 5.5)
+    # ducking, tested directly: a voice (a 300 Hz tone) for 1.5 s then silence, music (loud noise) under it the whole time
+    subprocess.run([_ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=300:d=1.5", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-filter_complex", "[0:a]volume=2,aresample=44100[v];[v][1:a]concat=n=2:v=0:a=1[a]", "-map", "[a]", "-t", "4", str(_m / "talk.wav")], check=True)
+    subprocess.run([_ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10:d=4", "-i", str(_m / "talk.wav"), "-shortest", "-c:v", "libx264", "-c:a", "aac", str(_m / "talkv.mp4")], check=True)
+    M.add_music(_ff, _m / "talkv.mp4", _m / "bed.mp3", 4, 0.5, _m / "ducked.mp4")
+    _o = _m / "ducked.mp4"
+    ok("the music ducks: it is clearly quieter while the voice speaks than in the gap after it", _level(0.3) < _level(2.6) - 4)
+    _lines2 = []
+    M.make_video({"title": "nomusic", "music": "missing.mp3", "scenes": [{"text": "Just one scene", "seconds": 2}]}, out_path=_m / "nm.mp4", say=_lines2.append)
+    ok("a music file that is not in my-audio is said plainly and the video is still made", (_m / "nm.mp4").exists() and any("not in my-audio" in l for l in _lines2))
 ok("no em dash in the file", chr(0x2014) not in src)
 print("\nALL PASS" if not fails else f"\n{fails} FAILED")
 sys.exit(1 if fails else 0)
