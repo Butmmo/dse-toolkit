@@ -520,7 +520,7 @@ def ai_digest(sources: list[tuple[str, str]], budget: int = AI_BUDGET) -> str:
     return "\n".join(parts)
 
 
-def _ollama_chat(model: str, system: str, user: str, timeout: int = 150) -> str:
+def _ollama_chat(model: str, system: str, user: str, timeout: int = 420) -> str:
     import urllib.request
     body = json.dumps({"model": model, "stream": False, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "options": {"temperature": 0.2}}).encode("utf-8")
     req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
