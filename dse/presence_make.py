@@ -13,7 +13,11 @@ a card (your picture or a text card made by the graphic tool), moves slowly (a g
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import io
 import json
+import math
 import os
 import re
 import shutil
@@ -85,6 +89,106 @@ def parse_kit(raw: object = None, theme: str = "ink") -> dict:
                  muted=str(raw["muted"]).upper() if HEX.match(str(raw.get("muted", ""))) and _contrast(bg, str(raw["muted"])) >= 3.0 else _readable(bg, str(raw["fg"]), 3.0),
                  head=raw.get("head") if raw.get("head") in HEADS else "sans", motif=raw.get("motif") if raw.get("motif") in MOTIFS else "bar")
     return d
+
+
+# ---- the student's brand kit (Presence > Brand kit): the logo that reads on the page, placed where the kit says, and the profile picture beside the handle
+
+CORNERS = ("tl", "tr", "bl", "br", "tc", "bc")
+MAX_BRAND_BYTES = 400_000          # one decoded logo or profile picture
+
+
+def _round(v: float) -> int:
+    """Round half up, the same as the app's Math.floor(v + 0.5) (Python's round() goes to the even number, which would move the logo by a pixel)."""
+    return int(math.floor(v + 0.5))
+
+
+def place_logo(corner: str, size: float, margin: float, aspect: float, W: int, H: int, fmt: str = "post") -> tuple[int, int, int, int]:
+    """Where the logo goes: (x, y, width, height). The same sums as placeLogo in src/lib/presence-brandkit.ts: keep the two in step (tests/test_presence_brand.py checks the same numbers)."""
+    a = max(0.2, min(8.0, float(aspect or 1)))
+    m = _round(W * max(3, min(14, margin)) / 100)
+    top_x = _round(H * 0.07) if fmt == "story" else 0
+    bot_x = _round(H * 0.12) if fmt == "story" else _round(H * 0.05)
+    w = _round(W * max(6, min(45, size)) / 100)
+    h = _round(w / a)
+    max_h = _round(H * 0.06)
+    if h > max_h:
+        h = max_h
+        w = _round(h * a)
+    min_h = _round(H * 0.03)
+    if h < min_h:
+        h = min_h
+        w = _round(h * a)
+    if w > W - 2 * m:
+        w = W - 2 * m
+        h = _round(w / a)
+    x = m if corner in ("tl", "bl") else W - m - w if corner in ("tr", "br") else _round((W - w) / 2)
+    y = m + top_x if corner in ("tl", "tr", "tc") else H - m - h - bot_x
+    return x, y, w, h
+
+
+def _brand_image(raw: object):
+    """A picture from a brand block ({mime, b64}): size-limited and checked by Pillow before it is used. None when it is not a real picture."""
+    from PIL import Image
+    if not isinstance(raw, dict) or raw.get("mime") not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
+        return None
+    b64 = str(raw.get("b64") or "")
+    if not b64 or len(b64) > MAX_BRAND_BYTES * 4 // 3 + 8:
+        return None
+    try:
+        data = base64.b64decode(b64, validate=True)
+        Image.open(io.BytesIO(data)).verify()
+        return Image.open(io.BytesIO(data)).convert("RGBA")
+    except (binascii.Error, ValueError, OSError, SyntaxError):
+        return None
+
+
+def parse_brand(raw: object) -> dict | None:
+    """Reads the brand block of a project safely: a logo and a profile picture (real pictures only, small), where the logo goes, and an optional tint for a one-colour logo. None when there is nothing usable."""
+    if not isinstance(raw, dict):
+        return None
+    place = raw.get("place") if isinstance(raw.get("place"), dict) else {}
+
+    def num(x, lo, hi, d):
+        try:
+            return max(lo, min(hi, float(x)))
+        except (TypeError, ValueError):
+            return d
+
+    logo = _brand_image(raw.get("logo"))
+    avatar = _brand_image(raw.get("avatar"))
+    if logo is None and avatar is None:
+        return None
+    tint = str(raw["logo"].get("tint") or "") if logo is not None and isinstance(raw.get("logo"), dict) else ""
+    if logo is not None and HEX.match(tint) and logo.getchannel("A").getextrema()[0] < 250:
+        solid = Image_new_solid(logo.size, tint)
+        solid.putalpha(logo.getchannel("A"))
+        logo = solid
+    shape = (raw.get("avatar") or {}).get("shape") if isinstance(raw.get("avatar"), dict) else "circle"
+    return {"logo": logo, "avatar": avatar, "shape": shape if shape in ("circle", "rounded", "square") else "circle",
+            "corner": place.get("corner") if place.get("corner") in CORNERS else "tl", "size": num(place.get("size"), 6, 45, 20), "margin": num(place.get("margin"), 3, 14, 9)}
+
+
+def Image_new_solid(size: tuple[int, int], color: str):
+    from PIL import Image
+    return Image.new("RGBA", size, color)
+
+
+def _avatar_tile(img, size: int, shape: str):
+    """The profile picture cut to a square and shaped (circle, rounded square or square), ready to paste."""
+    from PIL import Image, ImageDraw
+    side = min(img.size)
+    box = ((img.width - side) // 2, (img.height - side) // 2, (img.width - side) // 2 + side, (img.height - side) // 2 + side)
+    tile = img.crop(box).resize((size, size), Image.LANCZOS)
+    mask = Image.new("L", (size, size), 0)
+    dm = ImageDraw.Draw(mask)
+    if shape == "circle":
+        dm.ellipse((0, 0, size - 1, size - 1), fill=255)
+    elif shape == "rounded":
+        dm.rounded_rectangle((0, 0, size - 1, size - 1), radius=max(4, size // 5), fill=255)
+    else:
+        dm.rectangle((0, 0, size - 1, size - 1), fill=255)
+    tile.putalpha(Image.composite(tile.getchannel("A"), Image.new("L", (size, size), 0), mask))
+    return tile
 
 
 STAT = re.compile(r"^(\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s*(?:of|out of|in)\s*\d{1,3}(?:[,.]\d{3})*|\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s?(?:%|x|k|m|bn|billion|million)?)(?=\s|[,.:;]|$)\s*(.*)$", re.I | re.S)
@@ -201,7 +305,7 @@ def _motif(img, k: dict, W: int, H: int, pad: int):
 
 
 def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kicker: str = "", footer: str = "", size: str = "post", theme: str = "ink",
-                 picture: str = "", logo: str = "", out_path: str | Path | None = None, kit: dict | None = None) -> Path:
+                 picture: str = "", logo: str = "", out_path: str | Path | None = None, kit: dict | None = None, brand: dict | None = None) -> Path:
     from PIL import Image, ImageDraw
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {', '.join(LAYOUTS)}")
@@ -231,6 +335,13 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
         lg = lg.resize((max(1, int(lg.width * hgt / lg.height)), hgt), Image.LANCZOS)
         img.paste(lg, (pad, pad), lg)
         top = pad + hgt + int(H * 0.02)
+    elif brand and brand.get("logo") is not None:
+        # the brand kit's logo, placed by its arrangement; text starts below it when it sits in the top row
+        bl = brand["logo"]
+        bx, by, bw, bh = place_logo(brand["corner"], brand["size"], brand["margin"], bl.width / bl.height, W, H, size if size in ("post", "square", "story", "landscape") else "post")
+        img.paste(bl.resize((bw, bh), Image.LANCZOS), (bx, by), bl.resize((bw, bh), Image.LANCZOS))
+        if brand["corner"] in ("tl", "tr", "tc"):
+            top = by + bh + int(H * 0.02)
     hd, fg, accent, muted = k["head"], k["fg"], k["accent"], k["muted"]
     if k["motif"] == "bar":
         d.rectangle((pad, top, pad + int(W * 0.12), top + 8), fill=accent)
@@ -327,7 +438,13 @@ def make_graphic(layout: str = "quote", headline: str = "", body: str = "", kick
             for i, line in enumerate(bl):
                 d.text((pad, by + i * blh), line, font=bf, fill=fg)
     if footer.strip():
-        d.text((pad, footer_y), footer.strip()[:60], font=_font(True, max(24, int(W * 0.028)), "sans"), fill=accent if layout != "stat" else muted)
+        fx = pad
+        if brand and brand.get("avatar") is not None:
+            av = max(48, int(W * 0.078))
+            tile = _avatar_tile(brand["avatar"], av, brand["shape"])
+            img.paste(tile, (pad, max(0, footer_y + int(W * 0.014) - av // 2)), tile)
+            fx = pad + av + int(W * 0.02)
+        d.text((fx, footer_y), footer.strip()[:60], font=_font(True, max(24, int(W * 0.028)), "sans"), fill=accent if layout != "stat" else muted)
     GRAPHICS.mkdir(exist_ok=True)
     out = Path(out_path) if out_path else GRAPHICS / f"{slug(headline)[:40] or 'graphic'}-{layout}-{size}.png"
     img.save(out, "PNG")
@@ -642,7 +759,7 @@ def parse_carousel(raw: object) -> dict:
     if not slides:
         raise ValueError("Every slide is empty.")
     return {"title": str(raw.get("title") or "carousel")[:80], "size": raw.get("size") if raw.get("size") in SIZES else "post", "theme": raw.get("theme") if raw.get("theme") in THEMES else "ink", "kit": raw.get("kit") if isinstance(raw.get("kit"), dict) else None,
-            "footer": str(raw.get("footer") or "")[:60], "picture": str(raw.get("picture") or "")[:200], "logo": str(raw.get("logo") or "")[:200], "slides": slides}
+            "footer": str(raw.get("footer") or "")[:60], "picture": str(raw.get("picture") or "")[:200], "logo": str(raw.get("logo") or "")[:200], "brand": parse_brand(raw.get("brand")), "slides": slides}
 
 
 def make_carousel(project: dict, out_dir: str | Path | None = None, say=print) -> list[Path]:
@@ -654,7 +771,7 @@ def make_carousel(project: dict, out_dir: str | Path | None = None, say=print) -
     for i, sl in enumerate(P["slides"], 1):
         layout = auto_layout(sl["title"], sl["body"], "cover" if i == 1 else "tip")
         kicker = f"{i} / {n}"
-        files.append(make_graphic(layout, sl["title"], sl["body"], kicker, P["footer"] if i == n else "", P["size"], P["theme"], P["picture"], P["logo"], out_path=out / f"{base}-{i:02}.png", kit=P["kit"]))
+        files.append(make_graphic(layout, sl["title"], sl["body"], kicker, P["footer"] if i == n else "", P["size"], P["theme"], P["picture"], P["logo"], out_path=out / f"{base}-{i:02}.png", kit=P["kit"], brand=P["brand"]))
         say(f"Slide {i} of {n}")
     return files
 
