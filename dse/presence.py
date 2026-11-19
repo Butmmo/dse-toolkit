@@ -165,6 +165,9 @@ def cli(args: list[str]) -> int:
     if cmd in ("graphic", "video", "carousel", "voice-setup"):
         from . import presence_make
         return presence_make.cli([cmd] + rest)
+    if cmd == "captions":
+        from . import presence_captions
+        return presence_captions.cli(rest)
     if cmd == "edit-render":
         from . import presence_edit
         return presence_edit.cli(rest)
