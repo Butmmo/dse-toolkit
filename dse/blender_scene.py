@@ -125,6 +125,10 @@ for idx, b in enumerate(spec["blocks"]):
         ob.keyframe_insert("rotation_euler", frame=1)
         ob.rotation_euler = (math.radians(90), 0, 0)
         ob.keyframe_insert("rotation_euler", frame=max(2, min(FRAMES, 1 + INTRO + 6)))
+        settle = max(2, min(FRAMES, 1 + INTRO + 6))
+        if FRAMES - settle >= 6:                                                                      # then it turns slowly the other way for the rest of the scene, so the depth keeps showing
+            ob.rotation_euler = (math.radians(90), 0, math.radians(-float(b["tilt"]) * 0.4))
+            ob.keyframe_insert("rotation_euler", frame=FRAMES)
     arrive(ob, idx, float(b["y"]), (1, 1, 1))
 
 if spec.get("bar"):
