@@ -37,6 +37,11 @@ LK = E.parse_edit({"v": 1, "clips": [{"kind": "color", "out": 1, "bright": 9, "c
 ok("a look is kept inside its range (brightness 1.5, contrast 0.5, colour strength 2 at most/least)", [LK["clips"][0][k] for k in ("bright", "contrast", "sat")] == [1.5, 0.5, 2.0])
 ok("a missing, empty, null, true or unreadable look value means 1 (unchanged), never 0", all(LK["clips"][i][k] == 1.0 for i in (1, 2, 4) for k in ("bright", "contrast", "sat")))
 ok("a good look is read as written (a number as text counts; colour strength 0 is allowed)", LK["clips"][3]["bright"] == 1.2 and LK["clips"][3]["contrast"] == 0.9 and LK["clips"][3]["sat"] == 0.0)
+HP = E.parse_edit({"v": 1, "clips": [{"kind": "color", "out": 5}], "texts": [{"text": "a", "hl": True, "hlColor": "#00ff00"}, {"text": "b", "hl": "yes", "hlColor": "red"}, {"text": "c"}]})
+ok("a text's word light is read: on only when true, a good colour is kept, anything else gives the yellow default", [t["hl"] for t in HP["texts"]] == [True, False, False] and [t["hlColor"] for t in HP["texts"]] == ["#00ff00", "#ffd23f", "#ffd23f"])
+WT = E.word_times({"text": "go home now", "start": 2.0, "end": 6.0})
+ok("the words of a text are timed in proportion to their length, from the start to the end with no gap (the editor does the same)", len(WT) == 3 and WT[0]["start"] == 2.0 and WT[2]["end"] == 6.0 and WT[0]["end"] == WT[1]["start"] and WT[1]["end"] == WT[2]["start"] and abs((WT[0]["end"] - WT[0]["start"]) - 4 * 2 / 9) < 0.002 and [w["w"] for w in WT] == ["go", "home", "now"])
+ok("a text of only spaces has no words", E.word_times({"text": "   ", "start": 0, "end": 2}) == [])
 ok("at most 12 clips and 60 texts and 4 sounds are read, however many there are", len(E.parse_edit({"v": 1, "clips": pics(20, 1)})["clips"]) == 12
    and len(E.parse_edit({"v": 1, "clips": pics(1, 5), "texts": [{"text": "q", "start": 0, "end": 1}] * 80})["texts"]) == 60
    and len(E.parse_edit({"v": 1, "clips": pics(1, 5), "audio": [{"name": f"s{i}", "srcSeconds": 5} for i in range(9)]})["audio"]) == 4)
@@ -237,6 +242,36 @@ else:
     ok("the look is on the picture only: a fade in from black still starts black, even with brightness 1.5", luma(looked("#808080", "look-fade", bright=1.5, fadeIn=1), 0.02) < 25)
     two = blend([dict(solid("a", 1, "#808080"), bright=1.5), solid("b", 1, "#808080")], "look-two")
     ok("a look belongs to its own clip: the next clip, with none, stays grey", luma(two, 0.5) > 175 and abs(luma(two, 1.5) - 128) < 8)
+    # ---- the spoken word lit in its colour
+    def yellow_box(path, t):
+        fpng = td / f"y{abs(hash((str(path), t)))}.png"
+        run("-ss", str(t), "-i", str(path), "-frames:v", "1", str(fpng))
+        im = Image.open(fpng).convert("RGB").point(lambda v: v)
+        px = im.load(); w, h = im.size; xs, ys = [], []
+        for yy in range(0, h, 2):
+            for xx in range(0, w, 2):
+                r, g, b = px[xx, yy]
+                if r > 200 and g > 150 and b < 110: xs.append(xx); ys.append(yy)
+        return (min(xs), max(xs), min(ys), max(ys)) if xs else None
+    hlproj = {"v": 1, "title": "hl-words", "preset": "reels", "clips": [{"kind": "color", "out": 4, "color": "#101030"}],
+              "texts": [{"role": "caption", "text": "AAAA BBBB CCCC", "start": 0.5, "end": 3.5, "y": 0.5, "size": 0.045, "fade": False, "hl": True, "hlColor": "#ffd23f"}]}
+    hlout = E.render_edit(hlproj, draft=True, say=lambda *_: None)
+    b0, b1, b2, b3, b4 = yellow_box(hlout, 0.2), yellow_box(hlout, 1.3), yellow_box(hlout, 2.3), yellow_box(hlout, 3.3), yellow_box(hlout, 3.8)
+    ok("the lit word shows only while the text is on (none before it starts or after it ends)", b0 is None and b4 is None)
+    ok("the first word is lit first, then the second, then the third, each further right than the one before", b1 and b2 and b3 and b1[1] < b2[0] + 4 and b2[1] < b3[0] + 4 and b1[0] < b2[0] < b3[0])
+    ok("only one word is lit at a time: each lit word is about a third of the text's width and on the same line", all(b and 90 < (b[1] - b[0]) < 190 and abs(b[2] - b1[2]) < 6 for b in (b1, b2, b3)))
+    def white_inside(path, t, box):
+        fpng = td / f"wi{abs(hash((str(path), t)))}.png"
+        run("-ss", str(t), "-i", str(path), "-frames:v", "1", str(fpng))
+        px = Image.open(fpng).convert("RGB").load()
+        return sum(1 for yy in range(box[2], box[3] + 1) for xx in range(box[0], box[1] + 1) if min(px[xx, yy]) > 235)
+    ok("the lit word sits exactly over the same word in the plain text: none of the plain white word shows through inside the lit word's own box (for the second and third word too)", white_inside(hlout, 1.3, b1) < 25 and white_inside(hlout, 2.3, b2) < 25 and white_inside(hlout, 3.3, b3) < 25)
+    still = dict(hlproj, title="hl-off", texts=[dict(hlproj["texts"][0], hl=False)])
+    sout = E.render_edit(still, draft=True, say=lambda *_: None)
+    ok("with the word light off no word is yellow", yellow_box(sout, 1.0) is None and yellow_box(sout, 2.0) is None)
+    two = dict(hlproj, title="hl-two", texts=[dict(hlproj["texts"][0], text="one two three four five six seven eight nine ten eleven twelve thirteen", end=3.9, start=0.1)])
+    tout = E.render_edit(two, draft=True, say=lambda *_: None)
+    ok("a long text that wraps onto two lines lights words on both lines, the later ones lower down", yellow_box(tout, 0.4) and yellow_box(tout, 3.6) and yellow_box(tout, 3.6)[2] > yellow_box(tout, 0.4)[2] + 15)
     muted = dict(proj, clips=[dict(proj["clips"][0], muted=True)] + proj["clips"][1:])
     out2 = E.render_edit(muted, draft=True, out_path=td / "muted.mp4", say=lambda *_: None)
     out_keep, out = out, out2
