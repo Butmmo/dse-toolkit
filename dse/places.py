@@ -344,6 +344,35 @@ def _build_foursquare(kinds: list[str], country: str = "US"):
     (DATA / "places-release.txt").write_text(dt + "\n", encoding="utf-8")
 
 
+GEOCODE_WAITS = (1.1, 5, 15, 45)          # seconds before each try; the first is the 1 request a second rule, the rest grow after a bad reply
+
+
+def _nominatim(place: str, country: str) -> list:
+    """One Nominatim lookup that survives a rate limit or a temporary error page (19 Nov: a non-JSON reply stopped a 25-city run). Raises SystemExit naming the city after the last try."""
+    last = ""
+    for i, wait in enumerate(GEOCODE_WAITS):
+        time.sleep(wait)
+        try:
+            r = requests.get("https://nominatim.openstreetmap.org/search",
+                             params={"q": place + ", USA" if country == "US" else place, "format": "json", "limit": 1, "countrycodes": country.lower()},
+                             headers={"User-Agent": "DSEToolkit/1.0 (local lead research)"}, timeout=20)
+            ctype = ((getattr(r, "headers", None) or {}).get("Content-Type") or "").lower()
+            if getattr(r, "status_code", 200) != 200:
+                last = f"HTTP {r.status_code}"
+            elif ctype and "json" not in ctype:
+                last = f"a non-JSON reply ({ctype})"
+            else:
+                data = r.json()
+                if isinstance(data, list):
+                    return data
+                last = "an unexpected JSON reply"
+        except (requests.RequestException, ValueError) as e:
+            last = f"{type(e).__name__}"
+        print(f"  geocode '{place}': {last}; try {i + 1} of {len(GEOCODE_WAITS)}", flush=True)
+    sys.exit(f"Could not look up '{place}' on OpenStreetMap (Nominatim) after {len(GEOCODE_WAITS)} tries: last answer was {last}. "
+             "Cities already looked up are saved, so run it again in a few minutes and it carries on.")
+
+
 def geocode(place: str, country: str = "US") -> tuple[float, float]:
     """'Tampa FL' -> (lat, lon) via OpenStreetMap Nominatim (free, max 1 request a second), cached. The US keeps its old cache keys; other countries are cached as 'GB|leeds'."""
     DATA.mkdir(exist_ok=True)
@@ -354,11 +383,7 @@ def geocode(place: str, country: str = "US") -> tuple[float, float]:
     key = place.strip().lower() if country == "US" else f"{country}|{place.strip().lower()}"
     if key in cache:
         return cache[key]
-    time.sleep(1.1)
-    r = requests.get("https://nominatim.openstreetmap.org/search",
-                     params={"q": place + ", USA" if country == "US" else place, "format": "json", "limit": 1, "countrycodes": country.lower()},
-                     headers={"User-Agent": "DSEToolkit/1.0 (local lead research)"}, timeout=20)
-    hits = r.json()
+    hits = _nominatim(place, country)
     if not hits:
         sys.exit(f"Could not find the city '{place}'" + (". Write it like 'Tampa FL'." if country == "US" else f" in {C.NAMES.get(country, country)}. Try the city name alone."))
     cache[key] = (float(hits[0]["lat"]), float(hits[0]["lon"]))
