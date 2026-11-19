@@ -28,6 +28,16 @@ MAX_MIX = 1.0   # seconds a clip may blend (a crossfade) with the one before it,
 FPS = 30
 FONTS = ("sans", "serif", "mono")
 MOTIONS = ("none", "rise", "drop", "slide")
+LOOKS = {   # colour looks for a clip, like CapCut's filters: name -> ffmpeg filter chain. "none" is the picture as shot.
+    "warm": "eq=saturation=1.15:contrast=1.04,colorbalance=rs=0.08:gs=0.02:bs=-0.08",
+    "cool": "eq=saturation=1.05,colorbalance=rs=-0.07:bs=0.1",
+    "mono": "hue=s=0,eq=contrast=1.12",
+    "vivid": "eq=saturation=1.5:contrast=1.08",
+    "matte": "eq=contrast=0.9:brightness=0.04:saturation=0.85",
+    "cinema": "eq=contrast=1.12:saturation=0.9,colorbalance=rs=0.06:bs=-0.05:rh=0.04:bh=0.05,vignette=PI/5",
+}
+ZOOMS = ("none", "in", "out")   # a slow push in or pull out over the clip (the Ken Burns move)
+ZOOM_BY = 0.14                  # how much bigger the picture gets at the end of a push in
 MOTION_S = 0.4      # seconds a text takes to move into place (at most half of its time on screen)
 MOVE_Y, MOVE_SLIDE = 0.06, 0.3   # how far it travels: share of the picture height (rise, drop) or width (slide)
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -94,7 +104,7 @@ def parse_edit(raw: object) -> dict:
         fi = _r3(min(MAX_FADE, _num(c.get("fadeIn"), 0, MAX_FADE, 0), length))
         fo = _r3(min(MAX_FADE, _num(c.get("fadeOut"), 0, MAX_FADE, 0), length - fi))
         start = _r3(max(0.0, total - mix)) if clips else 0.0
-        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f"), "speed": speed, "fadeIn": fi, "fadeOut": fo, "mix": mix, "start": start, "seconds": length})
+        clips.append({"kind": kind, "name": name, "in": _r3(inn), "out": _r3(out), "muted": c.get("muted") is True, "color": _hex(c.get("color"), "#14110f"), "speed": speed, "fadeIn": fi, "fadeOut": fo, "mix": mix, "start": start, "look": c.get("look") if c.get("look") in LOOKS else "none", "zoom": c.get("zoom") if c.get("zoom") in ZOOMS else "none", "seconds": length})
         total = _r3(start + length)
     if not clips:
         raise ValueError("The project has no clips.")
@@ -215,6 +225,11 @@ def _segment(ff: str, c: dict, path_of: dict, W: int, H: int, out: Path, crf: st
     taken = _r3(c["out"] - c["in"])            # how much of the file it uses
     speed = c["speed"]
     vf = (f"setpts=PTS/{speed}," if speed != 1 else "") + f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps={FPS}"
+    if c.get("zoom", "none") != "none" and length > 0:      # scale up a little more each frame, then crop back to the frame: the centre stays put
+        k = f"(1+{ZOOM_BY}*t/{length})" if c["zoom"] == "in" else f"(1+{ZOOM_BY}*(1-t/{length}))"
+        vf += f",scale=w='trunc({W}*{k}/2)*2':h='trunc({H}*{k}/2)*2':eval=frame,crop={W}:{H}"
+    if c.get("look", "none") in LOOKS:
+        vf += "," + LOOKS[c["look"]]
     if c["fadeIn"] > 0:
         vf += f",fade=t=in:st=0:d={c['fadeIn']}"
     if c["fadeOut"] > 0:
