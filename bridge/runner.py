@@ -498,6 +498,12 @@ def kill_tree(proc: subprocess.Popen):
         proc.kill()
 
 
+def norm_outputs(specs) -> list[dict]:
+    """A tool's output files as {glob, upload} entries. Some catalog tools list a bare glob string (dse.enrich, dse.proposal ...): that means the same as {glob, upload: true}.
+    Found 19 Nov 2026: a string made run_job raise TypeError, which stopped the whole runner, so the job showed 'runner restarted while this job was running'."""
+    return [s if isinstance(s, dict) else {"glob": str(s), "upload": True} for s in (specs or [])]
+
+
 def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
     job_id, tool_key = job["id"], job["tool"]
     LOG_DIR.mkdir(exist_ok=True)
@@ -523,7 +529,7 @@ def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
 
     say(f"job {job_id}: {tool_key} -> {shown}")
     lines.append(f"$ python {shown}")
-    out_specs = tool.get("outputs", [])
+    out_specs = norm_outputs(tool.get("outputs"))
     before = snapshot([o["glob"] for o in out_specs])
     started = time.time()
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
@@ -739,6 +745,18 @@ def start_periodic(cat: dict):
         say(f"periodic helper on: {script.relative_to(ROOT).as_posix()} every {every}s")
 
 
+def run_job_safely(api, cat: dict, job: dict) -> None:
+    """One job's unexpected error fails that job and is reported; it never stops the runner (and every other job with it)."""
+    try:
+        run_job(api, cat, job)
+    except Exception as e:
+        say(f"job {job.get('id')}: the runner hit an error: {type(e).__name__}: {str(e)[:200]}")
+        try:
+            api.finish(job["id"], "failed", None, "", f"The PC runner hit an error on this job: {type(e).__name__}: {str(e)[:200]}", [])
+        except Exception:
+            pass
+
+
 def loop(once=False):
     single_instance()
     env = load_env()
@@ -774,7 +792,7 @@ def loop(once=False):
                 last_files_json, last_full, last_oll = fj, time.time(), oj
             job = api.claim()
             if job:
-                run_job(api, cat, job)
+                run_job_safely(api, cat, job)
                 last_full = 0                              # outputs may have added files: resend
                 if once:
                     return
