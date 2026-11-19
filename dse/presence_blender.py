@@ -94,18 +94,18 @@ def scene_spec(text: str, kit: dict, size: tuple[int, int], frames: int, move: s
     blocks = []
     if stat and stat[0]:
         big, rest = str(stat[0])[:14], str(stat[1] or "")[:110]
-        bsize = 2.6 if len(big) <= 6 else 1.9 if len(big) <= 9 else 1.4
+        bsize = 3.2 if len(big) <= 6 else 2.2 if len(big) <= 9 else 1.5
         fy = 0.18 * frame_h if rest else 0.03 * frame_h                       # a figure alone sits in the middle; with words under it the pair is centred
         blocks.append({"text": big, "color": kit["accent"], "size": bsize, "y": fy, "font": head, "depth": 0.12, "tilt": 14})
         if rest:
-            per = 26
-            blocks.append({"text": _wrap(rest, per), "color": kit["fg"], "size": 0.78, "y": -0.05 * frame_h - 0.2, "font": body_font, "depth": 0.05})
+            per = int(FRAME_W * 0.86 / (0.36 * 1.1))                              # measured: a bold glyph is about 0.36 of the size wide
+            blocks.append({"text": _wrap(rest, per), "color": kit["fg"], "size": 1.1, "y": -0.05 * frame_h - 0.2, "font": body_font, "depth": 0.05})
         bar_y = 0.07 * frame_h if rest else fy - bsize * 0.75 - 0.3
         bar = {"color": kit["accent"], "y": bar_y, "w": 1.6}
     else:
         n = len(text)
-        sz = 1.25 if n <= 24 else 1.0 if n <= 48 else 0.82 if n <= 80 else 0.66
-        per = max(8, int(FRAME_W * 0.86 / (sz * 0.56)))
+        sz = 1.7 if n <= 24 else 1.4 if n <= 48 else 1.15 if n <= 80 else 0.9
+        per = max(8, int(FRAME_W * 0.86 / (sz * 0.36)))
         wrapped = _wrap(text, per)
         lines = wrapped.count("\n") + 1
         blocks.append({"text": wrapped, "color": kit["fg"], "size": sz, "y": 0.0, "font": head, "depth": 0.1})
