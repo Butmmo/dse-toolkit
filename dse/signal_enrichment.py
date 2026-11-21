@@ -17,12 +17,14 @@ from pathlib import Path
 
 from . import importer
 from . import business_profiles
+from . import classification
 from .common import LISTS, ROOT
 
 USER_AGENT = "DFamociousHQ/1.0 (local user-requested business research)"
 OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_status",
               "research_findings", "research_sources", "research_searched_at", "research_status",
               "herald_company_findings", "herald_company_sources", "herald_person_findings", "herald_person_sources",
+              "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_assessed_at", "herald_assessment_note",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
@@ -292,7 +294,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
         "options": {"num_ctx": 8192, "num_predict": 450, "temperature": 0.2},
         "messages": [{"role": "system", "content": (
             "Draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
-            "Search snippets can be wrong: do not state a claim as fact unless its source ID is returned. Target profiles are search preferences, not verified company facts; "
+            "Search snippets can be wrong: do not state a claim as fact unless its source ID is returned. Target profiles and heuristic assessments are review aids, not verified company facts; "
             "never claim a business is a franchise, SaaS company, enterprise or C-Corp/S-Corp without clear supplied evidence. Keep company facts and named-person facts distinct. "
             "Only describe a current or former position/company when the cited evidence explicitly supports it. Never claim prior contact, "
             "personal familiarity, urgency, private knowledge, or guaranteed results. If evidence is weak, return empty subject/body. "
@@ -380,6 +382,12 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         people = [s for s in person_signals if "/company/" not in urllib.parse.urlparse(s["url"]).path.casefold()]
         row["herald_people_candidates"] = json.dumps([{"source_id": s["id"], "title": s["title"], "snippet": s["snippet"], "url": s["url"], "role_candidates": roles} for s in people], ensure_ascii=False, separators=(",", ":"))
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        assessment = classification.assess(signals, roles, custom_role, legal_form, checked_at)
+        row["herald_business_assessment"] = json.dumps(assessment["business_profiles"], ensure_ascii=False, separators=(",", ":"))
+        row["herald_role_assessment"] = json.dumps({"roles": assessment["decision_maker_roles"], "people": assessment["people_candidates"]}, ensure_ascii=False, separators=(",", ":"))
+        row["herald_legal_form_assessment"] = json.dumps(assessment["legal_form_mentions"], ensure_ascii=False, separators=(",", ":"))
+        row["herald_assessed_at"] = checked_at
+        row["herald_assessment_note"] = assessment["basis"]
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
         row.update({k: "" for k in ("outreach_subject", "outreach_body", "outreach_evidence", "outreach_model")})

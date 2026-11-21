@@ -10064,7 +10064,7 @@
     "dse.enrich_signals": {
       "label": "Lead signals: research and draft outreach",
       "group": "Grow",
-      "help": "Researches public company, product and news results for the Herald-facing lane. Choose a business type, decision-maker path and optional US legal-form search hint to steer the queries. These choices are not verified classifications; the CSV records them separately from sourced findings. If Ollama is running on this PC, a local model can draft an email subject and body using the retrieved evidence. The draft is advisory and is never sent. Public social signals are handled by a separate Presence tool.",
+      "help": "Researches company, product and news signals. Choose a business type and role path, or let the lead signal suggest roles. Results include source-linked heuristic business and role assessments. Scores are evidence cues, not probabilities or verified facts; legal form is never verified here. Optional local AI email drafts cite retrieved evidence and are never sent. Public social signals are handled by a separate Presence tool.",
       "script": "dse.py",
       "args": [
         {
