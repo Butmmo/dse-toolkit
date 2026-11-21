@@ -10064,7 +10064,7 @@
     "dse.enrich_signals": {
       "label": "Lead signals: research and draft outreach",
       "group": "Grow",
-      "help": "Researches company, product and news signals. Choose a business type and role path, or let the lead signal suggest roles. Results include source-linked heuristic business and role assessments. Scores are evidence cues, not probabilities or verified facts; legal form is never verified here. Optional local AI email drafts cite retrieved evidence and are never sent. Public social signals are handled by a separate Presence tool.",
+      "help": "Researches public company, product and news results for the Herald-facing lane. Choose a business type and role path to steer searches, or let the lead signal suggest several roles. Choose DuckDuckGo for the default search source, or Brave Search with a key stored on this PC; Brave API usage can incur prepaid charges. Configure BRAVE_SEARCH_API_KEY and set it locally before selecting Brave. The CSV includes source-linked heuristic business and role assessments. Scores are evidence cues, not probabilities or verified facts; legal form is never verified here. If Ollama is running on this PC, a local model can draft an email subject and body using retrieved evidence. The draft is advisory and is never sent. Public social signals are handled by a separate Presence tool.",
       "script": "dse.py",
       "args": [
         {
@@ -10100,6 +10100,10 @@
         {
           "opt": "--legal-form",
           "field": "legal_form"
+        },
+        {
+          "opt": "--search-provider",
+          "field": "search_provider"
         },
         {
           "flag": "--no-ai",
@@ -10252,6 +10256,23 @@
           "type": "text",
           "required": false,
           "max": 80
+        },
+        {
+          "name": "search_provider",
+          "label": "Public search source (Brave requires PC key; API use may be chargeable)",
+          "type": "choice",
+          "required": false,
+          "default": "duckduckgo",
+          "choices": [
+            {
+              "value": "duckduckgo",
+              "label": "DuckDuckGo (default)"
+            },
+            {
+              "value": "brave",
+              "label": "Brave Search API (my PC-local key)"
+            }
+          ]
         },
         {
           "name": "legal_form",

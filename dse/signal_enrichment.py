@@ -12,6 +12,7 @@ import re
 import sys
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -32,6 +33,11 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
+BRAVE_SEARCH_REQUESTS = 0
+
+
+class SearchProviderError(RuntimeError):
+    """A safe-to-display provider configuration or response error."""
 
 
 class Results(HTMLParser):
@@ -83,8 +89,51 @@ def _clean_url(url: str) -> str:
     return url if p.scheme in ("https", "http") and p.hostname else ""
 
 
-def search(query: str, limit: int = 2) -> list[dict]:
-    """Fetch result snippets only. Search-result targets are recorded but never crawled here."""
+def search(query: str, limit: int = 2, provider: str = "duckduckgo") -> list[dict]:
+    """Fetch search snippets only; the selected provider is explicit and recorded."""
+    global BRAVE_SEARCH_REQUESTS
+    provider = (provider or "duckduckgo").strip().casefold()
+    if provider not in ("duckduckgo", "brave"):
+        raise SearchProviderError("Choose DuckDuckGo or Brave Search as the public search provider.")
+    if provider == "brave":
+        api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
+        if not api_key:
+            raise SearchProviderError("Brave Search was selected, but BRAVE_SEARCH_API_KEY is not set on this PC.")
+        try:
+            request_limit = int(os.environ.get("DSE_BRAVE_SEARCH_QUERY_LIMIT", "150"))
+        except ValueError:
+            request_limit = 150
+        request_limit = max(1, min(1000, request_limit))
+        if BRAVE_SEARCH_REQUESTS >= request_limit:
+            raise SearchProviderError(f"Brave Search reached this run's query cap ({request_limit}).")
+        BRAVE_SEARCH_REQUESTS += 1
+        params = urllib.parse.urlencode({"q": query, "count": max(1, min(20, limit)), "safesearch": "moderate"})
+        req = urllib.request.Request(
+            "https://api.search.brave.com/res/v1/web/search?" + params,
+            headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                data = json.loads(response.read(1_500_000))
+        except urllib.error.HTTPError as error:
+            raise SearchProviderError(f"Brave Search API returned HTTP {error.code}.") from None
+        except (urllib.error.URLError, TimeoutError):
+            raise SearchProviderError("Brave Search API could not be reached from this PC.") from None
+        except (ValueError, TypeError):
+            raise SearchProviderError("Brave Search API returned an unreadable response.") from None
+        out, seen = [], set()
+        for item in (data.get("web") or {}).get("results", []):
+            target = _clean_url(item.get("url", ""))
+            title = re.sub(r"\s+", " ", str(item.get("title", ""))).strip()
+            snippet = re.sub(r"\s+", " ", str(item.get("description", ""))).strip()
+            if target and title and target not in seen:
+                seen.add(target)
+                out.append({"title": title[:240], "snippet": snippet[:700], "url": target,
+                            "provider": "Brave Search API", "publication_date_hint": item.get("page_age") or item.get("age") or ""})
+            if len(out) >= limit:
+                break
+        return out
+
     url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
     with urllib.request.urlopen(req, timeout=15) as response:
@@ -98,7 +147,8 @@ def search(query: str, limit: int = 2) -> list[dict]:
         snippet = re.sub(r"\s+", " ", html.unescape(item.get("snippet", ""))).strip()
         if target and title and target not in seen:
             seen.add(target)
-            out.append({"title": title[:240], "snippet": snippet[:700], "url": target})
+            out.append({"title": title[:240], "snippet": snippet[:700], "url": target,
+                        "provider": "DuckDuckGo public web results"})
         if len(out) >= limit:
             break
     return out
@@ -155,9 +205,9 @@ def _ratio(expected: set[str], observed: set[str]) -> tuple[float, list[str]]:
     return (len(matched) / len(expected) if expected else 0.0), matched
 
 
-def _publication_date(title: str, snippet: str) -> dict:
+def _publication_date(title: str, snippet: str, date_hint: str = "") -> dict:
     """Extract only an explicit or relative publication date; search time is not publication time."""
-    text = html.unescape(f"{title or ''} {snippet or ''}")
+    text = html.unescape(f"{date_hint or ''} {title or ''} {snippet or ''}")
     now = dt.datetime.now(dt.timezone.utc).date()
     published = None
     precision = "unknown"
@@ -291,7 +341,7 @@ def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_ro
     return [("decision_maker_profile", profile_query[:300]), ("decision_maker_signal", signal_query[:300])]
 
 
-def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> tuple[list[dict], list[str]]:
+def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo") -> tuple[list[dict], list[str]]:
     company = business_profiles.row_value(row, "business", "company", "name", "current_company", "website", "domain")
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
@@ -310,7 +360,11 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
     queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role) + decision_maker_queries_for(row, decision_maker, custom_role)
     for kind, query in queries:
         try:
-            results = search(query)
+            results = search(query, provider=search_provider)
+        except SearchProviderError as e:
+            if str(e) not in errors:
+                errors.append(str(e))
+            continue
         except Exception as e:
             errors.append(type(e).__name__)
             continue
@@ -330,9 +384,9 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             social = any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS)
             source = {"id": f"S{len(found)+1:02d}", "type": kind, "query_matches": [{"type": kind, "query": query}], "social_platform_result": social,
                           **identity,
-                          **_publication_date(item["title"], item["snippet"]),
+                          **_publication_date(item["title"], item["snippet"], item.get("publication_date_hint", "")),
                           "source_host": host, "title": item["title"], "snippet": item["snippet"], "url": key,
-                          "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
+                          "query": query, "provider": item.get("provider", "DuckDuckGo public web results"), "retrieved_at": searched_at,
                           "match_terms": sorted(terms & _tokens(text)),
                           "matched_person_terms": identity.get("matched_person_terms", []),
                           "matched_person_company_terms": identity.get("matched_person_company_terms", [])}
@@ -543,7 +597,7 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 
 
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
-                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> str:
+                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo") -> str:
     p = Path(source)
     if not p.is_absolute():
         p = (ROOT / source) if (ROOT / source).is_file() else p
@@ -560,6 +614,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         raise ValueError(str(e)) from None
     if decision_role not in business_profiles.DECISION_ROLES:
         raise ValueError("Choose a decision-maker role from the listed options.")
+    if search_provider not in ("duckduckgo", "brave"):
+        raise ValueError("Choose DuckDuckGo or Brave Search as the public search provider.")
     custom_role = re.sub(r"[^A-Za-z0-9 /&'-]", "", custom_role).strip()[:80]
     strategy = business_profiles.strategy_text(business_profile, decision_maker, legal_form, decision_role) + (f" Custom role target: {custom_role}." if custom_role else "")
     model = _ollama_model() if use_ai else ""
@@ -599,7 +655,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_people_candidates"] = ""
         row["enrichment_target_legal_form"] = legal_form
         row["enrichment_search_strategy"] = strategy
-        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role)
+        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role, search_provider=search_provider)
         errors.extend(row_errors)
         identity_summary = {}
         for subject in ("company", "person"):
@@ -665,6 +721,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
     dated_sources = sum(bool(source.get("publication_date")) for source in collected_sources)
     stale_sources = sum(source.get("freshness_status") == "stale" for source in collected_sources)
     report = [f"# Lead signals: {p.name}", "", f"- Searched: {min(len(rows), max_rows)} of {len(rows)} rows",
+              f"- Public search provider: {search_provider}",
+              f"- Brave API queries used: {BRAVE_SEARCH_REQUESTS}" if search_provider == "brave" else "- Brave API queries used: 0",
               f"- Business profile target: {bp['label']}", f"- Decision-maker path: {dm['label']}", f"- Decision-maker role target: {custom_role or business_profiles.DECISION_ROLES[decision_role]['label']}", f"- Legal-form search: {lf['label']}",
               "- Target selections guide search queries only; they are not business classifications or legal verification.",
               f"- Leads with public results: {sum(bool(r['research_sources']) for r in out[:min(len(rows), max_rows)])}",
