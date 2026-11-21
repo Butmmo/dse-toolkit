@@ -1,7 +1,7 @@
 # Lead enrichment, Stage 5: target profiles for the Herald research waterfall
 
 **Date:** 21 November 2026  
-**Status:** Implemented locally; not yet installed on the PC runner or deployed.
+**Status:** Implemented, installed on the PC runner, and published to the connected runner catalog on 21 November 2026.
 
 ## What changed
 
@@ -24,6 +24,12 @@ The local draft model sees the target preferences but is instructed not to state
 This slice changes search direction and keeps person/company evidence distinct, but does not yet classify companies or verify their ownership, staff size, franchise relationship, SaaS status, current/former job history, or corporate tax election. Role candidates are search hypotheses, not verified org-chart positions; public profile pages may be incomplete or mismatched. Name/company-token matching screens candidates but does not confirm identity or employment. A later stage should add evidence-backed role/person adjudication with confidence, source and timestamp, and authoritative registries for legal-form checks where available. Low-confidence cases must stay unclassified rather than being silently forced into a target group.
 
 No Supabase SQL change is needed. HQ Tools reads the updated PC runner catalog when the runner restarts or reports its catalog again.
+
+## PC runner install
+
+On 21 November 2026, the seven changed or added runtime files were copied to C:/Users/Administrator/Desktop/DFamocious-HQ/dse-toolkit. The six files that already existed there were backed up before replacement under work/pc-runner-backups/2026-11-21-stage-5 in the Codex workspace. A connected heartbeat published the catalog successfully as runner dse-office-pc-toolkit, with 170 tools. The runner was already live and reloads catalog changes on its polling loop; each tool invocation uses the current toolkit files, so no restart was needed.
+
+The first manual heartbeat used the default Python and reported that optional My tools / Tool Studio catalog loading could not import requests. Repeating it using the documented dependency-aware Python selection connected successfully and published the complete 170-tool catalog without that warning.
 
 ## Changed code
 
