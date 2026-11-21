@@ -25,6 +25,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "research_findings", "research_sources", "research_searched_at", "research_status",
               "herald_company_findings", "herald_company_sources", "herald_person_findings", "herald_person_sources",
               "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_assessed_at", "herald_assessment_note",
+              "herald_identity_summary",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
@@ -433,6 +434,17 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["enrichment_search_strategy"] = strategy
         signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role)
         errors.extend(row_errors)
+        identity_summary = {}
+        for subject in ("company", "person"):
+            subject_signals = [s for s in signals if s.get("identity_subject") == subject]
+            counts = {strength: sum(s.get("identity_strength") == strength for s in subject_signals)
+                      for strength in ("strong", "moderate", "insufficient")}
+            identity_summary[subject] = {
+                "matched_sources": len(subject_signals), "strength_counts": counts,
+                "best_match_score": max((s.get("identity_score", 0) for s in subject_signals), default=0),
+                "match_types": list(dict.fromkeys(s.get("identity_match", "") for s in subject_signals)),
+            }
+        row["herald_identity_summary"] = json.dumps(identity_summary, ensure_ascii=False, separators=(",", ":"))
         company_signals = [s for s in signals if not str(s.get("type", "")).startswith("decision_maker")]
         person_signals = [s for s in signals if str(s.get("type", "")).startswith("decision_maker")]
         row["herald_findings"] = row["research_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in signals)
@@ -481,6 +493,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
               f"- Business profile target: {bp['label']}", f"- Decision-maker path: {dm['label']}", f"- Decision-maker role target: {custom_role or business_profiles.DECISION_ROLES[decision_role]['label']}", f"- Legal-form search: {lf['label']}",
               "- Target selections guide search queries only; they are not business classifications or legal verification.",
               f"- Leads with public results: {sum(bool(r['research_sources']) for r in out[:min(len(rows), max_rows)])}",
+              f"- Leads with at least one strong identity match: {sum(bool(r.get('herald_identity_summary') and any(json.loads(r['herald_identity_summary'])[subject]['strength_counts']['strong'] for subject in ('company', 'person'))) for r in out[:min(len(rows), max_rows)])}",
               f"- Local AI drafts ready for review: {drafted}", f"- Local model: {model or 'not used / unavailable'}", "",
               "## Review before use", "", "Search snippets are leads for human review, not verified facts. Open the linked source before using a claim in outreach. Nothing was sent.", ""]
     if errors:
