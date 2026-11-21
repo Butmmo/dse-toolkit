@@ -121,19 +121,44 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
         legal_mentions[key] = {"status": "unverified mention found" if matches else "no mention found", "evidence_ids": [m["id"] for m in matches], "matched_cues": list(dict.fromkeys(c for m in matches for c in m["cues"]))}
 
     people = []
-    for source in person_sources:
+    candidate_sources = list(person_sources)
+    candidate_sources.extend(
+        s for s in signals
+        if s.get("type") == "decision_maker_role_discovery"
+        and "/in/" in urlparse(str(s.get("url", ""))).path.casefold()
+        and s not in candidate_sources
+    )
+    for source in candidate_sources:
         path = urlparse(str(source.get("url", ""))).path.casefold()
         if "/company/" in path:
             continue
         text = f"{source.get('title', '')} {source.get('snippet', '')}"
-        matched = [r for r in role_results if r["role"] != "custom" and any(re.search(p, text, re.IGNORECASE) for p in ROLE_RULES.get(r["role"], ()))]
-        if custom_role.strip() and re.search(re.escape(custom_role.strip()), text, re.IGNORECASE):
-            matched.append(next((r for r in role_results if r["role"] == "custom"), {"role": "custom", "label": custom_role.strip()}))
+        candidate_roles = []
+        for role in role_results:
+            patterns = (re.escape(custom_role.strip()),) if role["role"] == "custom" and custom_role.strip() else ROLE_RULES.get(role["role"], ())
+            cues = _matches(text, patterns) if patterns else []
+            if cues:
+                candidate_roles.append({"role": role["role"], "label": role["label"], "matched_cues": cues})
+        identity_score = float(source.get("identity_score") or 0)
+        role_score = 1.0 if candidate_roles else 0.0
+        person_identity_bonus = 0.10 if source.get("identity_subject") == "person" else 0.0
+        candidate_score = round(min(1.0, identity_score * 0.45 + role_score * 0.45 + person_identity_bonus), 2)
+        is_company_discovery = source.get("type") == "decision_maker_role_discovery"
         people.append({
-            "source_id": source.get("id", ""), "title": source.get("title", ""), "url": source.get("url", ""),
-            "role_candidates": [{"role": r["role"], "label": r["label"], "evidence_ids": r["evidence_ids"]} for r in matched],
-            "status": "role match possible" if matched else "profile result needs manual role review",
+            "source_id": source.get("id", ""), "title": source.get("title", ""),
+            "snippet": source.get("snippet", ""), "url": source.get("url", ""),
+            "identity_strength": source.get("identity_strength", "unknown"),
+            "identity_score": round(identity_score, 2), "candidate_score": candidate_score,
+            "candidate_score_kind": "heuristic review ordering, not a probability",
+            "source_type": source.get("type", ""), "role_candidates": candidate_roles,
+            "review_reasons": (["company/person identity matched"] if identity_score else [])
+                              + (["title or snippet matches a targeted role"] if candidate_roles else [])
+                              + (["individual identity needs manual confirmation"] if is_company_discovery else []),
+            "status": "role match possible" if candidate_roles else "profile result needs manual role review",
         })
+    people.sort(key=lambda item: (-item["candidate_score"], item["source_id"]))
+    for position, candidate in enumerate(people, 1):
+        candidate["review_order"] = position
     return {
         "version": 1,
         "checked_at": checked_at,

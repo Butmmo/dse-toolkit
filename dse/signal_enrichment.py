@@ -454,10 +454,9 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_company_sources"] = json.dumps(company_signals, ensure_ascii=False, separators=(",", ":"))
         row["herald_person_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in person_signals)
         row["herald_person_sources"] = json.dumps(person_signals, ensure_ascii=False, separators=(",", ":"))
-        people = [s for s in person_signals if "/company/" not in urllib.parse.urlparse(s["url"]).path.casefold()]
-        row["herald_people_candidates"] = json.dumps([{"source_id": s["id"], "title": s["title"], "snippet": s["snippet"], "url": s["url"], "role_candidates": roles} for s in people], ensure_ascii=False, separators=(",", ":"))
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         assessment = classification.assess(signals, roles, custom_role, legal_form, checked_at)
+        row["herald_people_candidates"] = json.dumps(assessment["people_candidates"], ensure_ascii=False, separators=(",", ":"))
         row["herald_business_assessment"] = json.dumps(assessment["business_profiles"], ensure_ascii=False, separators=(",", ":"))
         row["herald_role_assessment"] = json.dumps({"roles": assessment["decision_maker_roles"], "people": assessment["people_candidates"]}, ensure_ascii=False, separators=(",", ":"))
         row["herald_legal_form_assessment"] = json.dumps(assessment["legal_form_mentions"], ensure_ascii=False, separators=(",", ":"))
