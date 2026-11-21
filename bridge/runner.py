@@ -108,6 +108,8 @@ def load_env() -> dict:
         if os.environ.get(k):
             env[k] = os.environ[k]
     env.setdefault("HQ_RUNNER_ID", re.sub(r"[^A-Za-z0-9._-]", "-", socket.gethostname())[:64] or "hq-pc")
+    if IS_TOOLKIT and not env["HQ_RUNNER_ID"].lower().startswith("dse-"):
+        env["HQ_RUNNER_ID"] = "dse-" + re.sub(r"[^A-Za-z0-9._-]", "-", env["HQ_RUNNER_ID"])[:60]
     return env
 
 
@@ -294,12 +296,14 @@ def ollama_info() -> dict:
 
 
 def public_catalog(cat: dict) -> dict:
-    """What Citadel sees: labels and form fields only (no scripts or argument templates)."""
+    """What Citadel sees: safe form data plus runner kind, never scripts or argument templates."""
     keep = ("label", "group", "help", "fields", "timeout_min")
     resolve_fields(cat)
     return {"version": cat.get("version", 1),
+            "runner_kind": "dse-toolkit" if IS_TOOLKIT else "hq",
             "ollama": ollama_info(),
-            "tools": {k: {**{f: t[f] for f in keep if f in t}, "timeout_min": tool_minutes(t)} for k, t in cat["tools"].items()}}
+            "tools": {k: {**{f: t[f] for f in keep if f in t}, "timeout_min": tool_minutes(t),
+                          "executor": "dse-toolkit" if IS_TOOLKIT else "hq"} for k, t in cat["tools"].items()}}
 
 
 # ----------------------------------------------------------------- Supabase calls
