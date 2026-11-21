@@ -15,7 +15,8 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
   python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
-  python dse.py signals leads.csv [--engine x] [--max 25] [--no-ai]           public web/social search signals plus optional local-AI email draft (never sends)
+  python dse.py signals leads.csv [--engine x] [--max 25] [--no-ai]           Herald business/news research plus optional local-AI email draft
+  python dse.py presence-signals leads.csv [--engine x] [--max 25]             separate public professional/social evidence for Presence
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
   python dse.py context <engine> [--add FOLDER] [--label L] [--scan] [--show] [--remove FOLDER] [--suggest] [--adopt LIST [--apply]]  read a folder of earlier work into the engine
@@ -227,6 +228,10 @@ def main():
     se.add_argument("--engine", default="", help="also save the researched CSV to this engine's imports")
     se.add_argument("--max", type=int, default=25, help="most leads to research in this stage, 1 to 50")
     se.add_argument("--no-ai", action="store_true", help="collect sourced search signals without asking local Ollama to draft email")
+    ps = sub.add_parser("presence-signals", help="collect separate public professional/social signals for Presence (no outreach draft)")
+    ps.add_argument("source", help="CSV with a company name; contact name and city improve matching")
+    ps.add_argument("--engine", default="", help="also save the Presence-specific CSV to this engine's imports")
+    ps.add_argument("--max", type=int, default=25, help="most leads to check in this stage, 1 to 50")
     gl = sub.add_parser("goal"); gl.add_argument("engine"); gl.add_argument("--month", default=""); gl.add_argument("--stretch", type=float, default=goals.STRETCH_DEFAULT)
     gl.add_argument("--apply", action="store_true", help="save the suggestion as that month's goal"); gl.add_argument("--set", type=float, default=0, dest="set_to")
     rv = sub.add_parser("review"); rv.add_argument("engine", help="an engine, or all"); rv.add_argument("--top", type=int, default=5)
@@ -299,6 +304,11 @@ def main():
     elif a.cmd == "signals":
         try:
             print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai))
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "presence-signals":
+        try:
+            print(signal_enrichment.enrich_presence_file(a.source, a.engine, a.max))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "reply":

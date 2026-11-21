@@ -19,8 +19,10 @@ from . import importer
 from .common import LISTS, ROOT
 
 USER_AGENT = "DFamociousHQ/1.0 (local user-requested business research)"
-OUT_FIELDS = ["research_findings", "research_sources", "research_searched_at", "research_status",
+OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_status",
+              "research_findings", "research_sources", "research_searched_at", "research_status",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model"]
+PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
 
@@ -103,8 +105,7 @@ def queries_for(row: dict) -> list[tuple[str, str]]:
         company = (row.get("website") or row.get("domain") or "").strip()
     suffix = f" {city}" if city else ""
     q = [("business", f'"{company}"{suffix} {product} products services'[:220]),
-         ("news", f'"{company}"{suffix} news announcement launch'[:220]),
-         ("social", f'"{company}"{suffix} site:linkedin.com/posts OR site:instagram.com/p OR site:facebook.com/posts'[:240])]
+         ("news", f'"{company}"{suffix} news announcement launch'[:220])]
     return [(kind, text) for kind, text in q if company]
 
 
@@ -135,6 +136,52 @@ def gather(row: dict, max_signals: int = 6) -> tuple[list[dict], list[str]]:
                           "title": item["title"], "snippet": item["snippet"], "url": key,
                           "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
                           "match_terms": sorted(terms & _tokens(text))})
+        time.sleep(1.0)
+    return found[:max_signals], errors
+
+
+def presence_queries_for(row: dict) -> list[tuple[str, str]]:
+    """Search only for public professional/business social presence, not personal-life content."""
+    company = (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip()
+    contact = (row.get("contact_name") or row.get("decision_maker") or row.get("person") or "").strip()
+    city = (row.get("city") or row.get("City") or "").strip()
+    if not company:
+        company = (row.get("website") or row.get("domain") or "").strip()
+    suffix = f" {city}" if city else ""
+    queries = [("business_profile", f'"{company}"{suffix} site:linkedin.com/company OR site:instagram.com OR site:facebook.com OR site:x.com OR site:youtube.com OR site:tiktok.com'[:300]),
+               ("business_posts", f'"{company}"{suffix} site:linkedin.com/posts OR site:instagram.com/p OR site:facebook.com/posts OR site:x.com'[:300])]
+    if contact and company:
+        queries.append(("professional_contact", f'"{contact}" "{company}" site:linkedin.com/in OR site:linkedin.com/posts'[:260]))
+    return [(kind, query) for kind, query in queries if company]
+
+
+def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[str]]:
+    company = (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip()
+    contact = (row.get("contact_name") or row.get("decision_maker") or row.get("person") or "").strip()
+    company_terms, contact_terms = _tokens(company), _tokens(contact)
+    checked_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    found, seen, errors = [], set(), []
+    for kind, query in presence_queries_for(row):
+        try:
+            results = search(query)
+        except Exception as e:
+            errors.append(type(e).__name__)
+            continue
+        for item in results:
+            url = item["url"]
+            if url in seen:
+                continue
+            text = f"{item['title']} {item['snippet']} {url}".lower()
+            terms = _tokens(text)
+            company_matches = company_terms & terms
+            contact_matches = contact_terms & terms
+            # When a named contact was supplied, require both the business and person to match.
+            if not company_matches or (kind == "professional_contact" and contact_terms and not contact_matches):
+                continue
+            seen.add(url)
+            found.append({"id": f"P{len(found)+1:02d}", "type": kind, "title": item["title"], "snippet": item["snippet"],
+                          "url": url, "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": checked_at,
+                          "matched_company_terms": sorted(company_matches), "matched_contact_terms": sorted(contact_matches)})
         time.sleep(1.0)
     return found[:max_signals], errors
 
@@ -224,17 +271,19 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         print(f"[{i}/{min(len(rows), max_rows)}] researching {row.get('business') or row.get('website') or 'lead'}", file=sys.stderr, flush=True)
         signals, row_errors = gather(row)
         errors.extend(row_errors)
-        row["research_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in signals)
-        row["research_sources"] = json.dumps(signals, ensure_ascii=False, separators=(",", ":"))
-        row["research_searched_at"] = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        row["research_status"] = "evidence found" if signals else "no matching public results"
-        row.update({k: "" for k in OUT_FIELDS[4:]})
+        row["herald_findings"] = row["research_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in signals)
+        sources_json = json.dumps(signals, ensure_ascii=False, separators=(",", ":"))
+        row["herald_sources"] = row["research_sources"] = sources_json
+        checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        row["herald_checked_at"] = row["research_searched_at"] = checked_at
+        row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
+        row.update({k: "" for k in ("outreach_subject", "outreach_body", "outreach_evidence", "outreach_model")})
         if model and signals:
             try:
                 generated = draft(row, signals, model)
                 if generated:
                     row.update(generated)
-                    row["research_status"] = "draft ready for human review"
+                    row["herald_status"] = row["research_status"] = "draft ready for human review"
                     drafted += 1
             except Exception as e:
                 errors.append(type(e).__name__)
@@ -269,3 +318,70 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         _write_csv(imported, out)
         extra = f"\nEngine import copy: {imported.relative_to(ROOT).as_posix()}"
     return ("\n".join(report) + f"\nSaved: {dest.relative_to(ROOT).as_posix()} and its Markdown run summary.{extra}\n")
+
+
+def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> str:
+    """Create an independent Presence social-evidence CSV; never draft or send outreach."""
+    p = Path(source)
+    if not p.is_absolute():
+        p = (ROOT / source) if (ROOT / source).is_file() else p
+    if not p.is_file():
+        raise ValueError(f"I could not find the CSV: {source}")
+    _headers, rows = importer.read_rows(p)
+    if not rows:
+        raise ValueError("That CSV has no rows.")
+    if not 1 <= max_rows <= 50:
+        raise ValueError("--max must be between 1 and 50 leads for this Presence research stage.")
+    normalized_rows, _report = importer.normalize(p)
+    out, errors = [], []
+    for i, original in enumerate(rows[:max_rows], 1):
+        row = dict(original)
+        normalized = normalized_rows[i - 1] if i <= len(normalized_rows) else {}
+        for key in ("business", "website", "city", "contact_name"):
+            if normalized.get(key) and not row.get(key):
+                row[key] = normalized[key]
+        print(f"[{i}/{min(len(rows), max_rows)}] checking public social presence for {row.get('business') or row.get('website') or 'lead'}", file=sys.stderr, flush=True)
+        signals, row_errors = gather_presence(row)
+        errors.extend(row_errors)
+        row["presence_signals"] = json.dumps(signals, ensure_ascii=False, separators=(",", ":"))
+        row["presence_sources"] = "\n".join(f"[{s['id']}] {s['title']} | {s['url']}" for s in signals)
+        row["presence_checked_at"] = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        row["presence_status"] = "public professional/social results found" if signals else "no matching public social results"
+        out.append(row)
+        if i < min(len(rows), max_rows):
+            time.sleep(0.8)
+    for original in rows[max_rows:]:
+        untouched = dict(original)
+        for f in PRESENCE_FIELDS:
+            untouched.setdefault(f, "")
+        untouched.setdefault("presence_status", "not processed: lead limit reached")
+        out.append(untouched)
+    LISTS.mkdir(exist_ok=True)
+    stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
+    dest = LISTS / f"{dt.date.today().isoformat()}-presence-signals-{stem}.csv"
+    _write_csv(dest, out)
+    report = [f"# Presence public social signals: {p.name}", "", f"- Checked: {min(len(rows), max_rows)} of {len(rows)} rows",
+              f"- Rows with public social results: {sum(bool(r['presence_signals']) for r in out[:min(len(rows), max_rows)])}",
+              "- No outreach copy was drafted or sent.", "", "## Review before use", "",
+              "Results are search snippets, not verified identity or reputation. Review each source directly. Only public professional and business-related results are included; do not infer sensitive or personal traits.", ""]
+    if errors:
+        report += ["Search errors: " + ", ".join(errors[:12]), ""]
+    dest.with_suffix(".md").write_text("\n".join(report), encoding="utf-8")
+    shelf = {"kind": "presence-signals", "v": 1, "business": f"{p.stem} ({min(len(rows), max_rows)} leads)"[:120],
+             "made": dt.date.today().isoformat(), "source": "Public professional/business social search", "signals": []}
+    for row in out[:min(len(rows), max_rows)]:
+        for signal in json.loads(row.get("presence_signals") or "[]"):
+            if len(shelf["signals"]) >= 60:
+                break
+            shelf["signals"].append({"business": str(row.get("business") or row.get("company") or "")[:120], **signal})
+    dest.with_name(dest.stem + "-shelf.json").write_text(json.dumps(shelf, ensure_ascii=False, indent=2), encoding="utf-8")
+    extra = ""
+    if engine:
+        from .engines import load, engine_dir
+        load(engine)
+        imports = engine_dir(engine) / "imports"
+        imports.mkdir(parents=True, exist_ok=True)
+        imported = imports / f"presence-signals-{stem}.csv"
+        _write_csv(imported, out)
+        extra = f"\nEngine import copy: {imported.relative_to(ROOT).as_posix()}"
+    return "\n".join(report) + f"\nSaved: {dest.relative_to(ROOT).as_posix()}, its Markdown summary, and Presence shelf JSON.{extra}\n"

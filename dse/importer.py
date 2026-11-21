@@ -121,7 +121,9 @@ def normalize(path: Path) -> tuple[list[dict], dict]:
                      "employees": g("employees"), "industry": g("industry"), "city": g("city") or g("country"), "funding_date": g("funding_date"),
                      "funding_stage": g("funding_stage"), "phone": g("phone"), "_file": path.name})
         # Carry researched evidence and AI draft fields through the engine importer so Send Desk can use them.
-        for field in ("research_findings", "research_sources", "research_searched_at", "research_status",
+        for field in ("herald_findings", "herald_sources", "herald_checked_at", "herald_status",
+                      "research_findings", "research_sources", "research_searched_at", "research_status",
+                      "presence_signals", "presence_sources", "presence_checked_at", "presence_status",
                       "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model"):
             header = next((h for h in headers if squash(h) == squash(field)), None)
             if header:

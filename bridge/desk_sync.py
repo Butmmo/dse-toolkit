@@ -27,6 +27,39 @@ DAYS_BACK, DAYS_AHEAD = 2, 3
 CAL_AHEAD = 14          # the Outreach Pack's touch calendar runs 14 days, so it is pushed further ahead than the lists
 
 
+def _json_value(value, fallback):
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        parsed = json.loads(value) if value else fallback
+        return parsed if isinstance(parsed, (dict, list)) else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def lane_context(row: dict, lane: str) -> dict:
+    """Keep the two research channels distinct in the Send Desk payload."""
+    if lane == "herald":
+        sources = _json_value(row.get("herald_sources") or row.get("research_sources"), [])
+        if not isinstance(sources, list):
+            sources = []
+        return {"status": str(row.get("herald_status") or row.get("research_status") or "")[:100],
+                "findings": str(row.get("herald_findings") or row.get("research_findings") or "")[:500],
+                "sources": [{"title": str(s.get("title", ""))[:160], "snippet": str(s.get("snippet", ""))[:220], "url": str(s.get("url", ""))[:500]}
+                            for s in sources[:3] if isinstance(s, dict)],
+                "subject": str(row.get("outreach_subject") or "")[:120],
+                "evidence": str(row.get("outreach_evidence") or "")[:120],
+                "model": str(row.get("outreach_model") or "")[:100]}
+    signals = _json_value(row.get("presence_signals"), [])
+    if not isinstance(signals, list):
+        signals = []
+    return {"status": str(row.get("presence_status") or "")[:100],
+            "signals": [{"type": str(s.get("type", ""))[:60], "title": str(s.get("title", ""))[:160],
+                         "snippet": str(s.get("snippet", ""))[:220], "url": str(s.get("url", ""))[:500],
+                         "retrieved_at": str(s.get("retrieved_at", ""))[:40]}
+                        for s in signals[:3] if isinstance(s, dict)]}
+
+
 def _runner():
     spec = importlib.util.spec_from_file_location("dse_runner", HERE / "runner.py")
     mod = importlib.util.module_from_spec(spec)
@@ -74,6 +107,7 @@ def build_items(today: dt.date) -> list[dict]:
                 "channel": r.get("channel", ""), "where": r.get("where", ""), "website": r.get("website", ""),
                 "message": r.get("opener", ""), "warmup": "", "gap": r.get("gap_used", ""),
                 "notes": r.get("notes", "") or r.get("gaps_found", ""), "audit": "", "touch": r["touch"],
+                "herald_context": lane_context(r, "herald"), "presence_context": lane_context(r, "presence"),
                 "status": status, "category": (ev or {}).get("category", ""), "reply": (ev or {}).get("reply", ""),
                 "next_step": (ev or {}).get("next_step", ""), "value": (ev or {}).get("value", "")})
         items += outreach.desk_items(slug, cfg, today, DAYS_BACK, CAL_AHEAD, hist)

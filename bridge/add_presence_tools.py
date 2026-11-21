@@ -5,7 +5,7 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_blender_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends", "dse.presence_context", "dse.presence_brand"):
+for k in ("dse.presence_insights", "dse.presence_graphic", "dse.presence_video", "dse.presence_carousel", "dse.presence_voice_setup", "dse.presence_blender_setup", "dse.presence_connect", "dse.presence_accounts", "dse.presence_post", "dse.presence_trends", "dse.presence_context", "dse.presence_brand", "dse.presence_signals"):
     T.pop(k, None)
 
 T["dse.presence_insights"] = {
@@ -125,6 +125,17 @@ T["dse.presence_context"] = {
     "fields": [{"name": "engine", "label": "Engine", "type": "choice", "required": True, "choices_from": "engines", "choices": []},
                {"name": "ai", "label": "Also let my PC's own AI (Ollama, free, nothing leaves the PC) read it and ask its own questions", "type": "bool", "required": False, "default": True}],
     "timeout_min": 5, "outputs": [{"glob": "my-lists/*-presence-context.json", "upload": True}]}
+
+T["dse.presence_signals"] = {
+    "label": "Presence: check public social signals for leads", "group": "Grow",
+    "help": "Searches public indexed business social profiles and posts, plus a supplied contact's public professional profile when it matches the company. Saves Presence-specific source links, match terms and check time in separate CSV columns. It does not read private posts, infer sensitive traits, draft outreach or send anything. Search snippets can be stale or misidentify an account: review each source directly.",
+    "script": "dse.py", "args": [{"lit": "presence-signals"}, {"field": "csv"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}],
+    "fields": [
+        {"name": "csv", "label": "Lead CSV", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "presence-signals"},
+        {"name": "engine", "label": "Also save a copy to this engine (optional)", "type": "choice", "required": False, "choices_from": "engines", "choices": []},
+        {"name": "max", "label": "Most leads to check in this stage", "type": "int", "min": 1, "max": 50, "default": 25}
+    ],
+    "timeout_min": 240, "outputs": ["my-lists/*-presence-signals-*.csv", "my-lists/*-presence-signals-*.md", {"glob": "my-lists/*-presence-signals-*-shelf.json", "upload": True}]}
 
 T["dse.presence_brand"] = {
     "label": "Presence: find my brand art (logos, icons, fonts, colours)", "group": "Grow",

@@ -257,6 +257,9 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
                          "channel": ch, "where": where, "gap_used": r.get("gap_line") or r.get("gap_used", ""),
                          "variant": cfg.get("variant") or f"{cfg.get('path')}-opener-v1",
                          "opener": drafted_opener, "website": r.get("website", ""),
+                         "herald_sources": r.get("herald_sources", r.get("research_sources", "")),
+                         "herald_status": r.get("herald_status", r.get("research_status", "")),
+                         "presence_signals": r.get("presence_signals", ""), "presence_sources": r.get("presence_sources", ""),
                          "outreach_subject": ai_subject, "outreach_body": ai_body,
                          "research_sources": r.get("research_sources", ""), "research_status": r.get("research_status", ""),
                          "gaps_found": r.get("gaps_found", ""), "email": r.get("email", ""), "phone": r.get("phone", ""),
@@ -268,7 +271,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
             log(f"  {day}: no leads left with a usable channel")
             continue
         p = out_dir / f"{day.isoformat()}.csv"
-        write_csv(p, rows, first=["row", "business", "city", "channel", "where", "gap_used", "variant", "opener", "outreach_subject", "outreach_body", "research_sources"])
+        write_csv(p, rows, first=["row", "business", "city", "channel", "where", "gap_used", "variant", "opener", "outreach_subject", "outreach_body", "herald_sources", "presence_sources"])
         written.append(str(p))
         by = {}
         for x in rows:

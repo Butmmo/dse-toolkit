@@ -27,7 +27,7 @@ T["dse.enrich"] = tool("Lead enrichment: find emails, owners and phones", "Takes
 T["dse.enrich_signals"] = {
     "label": "Lead signals: research and draft outreach",
     "group": "Grow",
-    "help": "Researches public web results for each business, including indexed social pages, and records each result with its source URL and retrieval time. If Ollama is running on this PC, a local model can draft an email subject and body using those signals. The draft is advisory, cites evidence IDs in the CSV, and is never sent. Search snippets can be inaccurate, so open sources and review before use.",
+    "help": "Researches public company, product and news results for the Herald-facing lane, recording source URLs and retrieval time. If Ollama is running on this PC, a local model can draft an email subject and body using those business signals. The draft is advisory, cites evidence IDs in the CSV, and is never sent. Public social signals are handled by a separate Presence tool.",
     "script": "dse.py", "args": [{"lit": "signals"}, {"field": "csv"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}, {"flag": "--no-ai", "field": "no_ai"}],
     "fields": [
         {"name": "csv", "label": "Lead CSV", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "researched"},

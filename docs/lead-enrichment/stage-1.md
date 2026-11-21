@@ -47,14 +47,14 @@ Lead/list-producing schedules now require an Engine when saved. The schedules pa
 
 The app and migration changes are in the Citadel branch. The error shown in the screenshot ("This CSV is not linked to an engine. Run Lead enrichment again and choose its engine first") comes from an older deployed import function: that wording is not in the current migration, which allows legacy scheduled results to choose an Engine during import. In Supabase, run the updated `20261231130000_hq_csv_ledgers.sql` first if it has not been applied with its scheduled-result support, then run `20261231180000_engine_linked_schedules.sql`. New schedules will keep their Engine attached to future jobs. If an old job still fails after the updated import function is installed, download its CSV and upload it manually to the chosen Engine's Ledger as a temporary route.
 
-## Planned lane separation for the next stage
+## Lane separation delivered in Stage 2
 
-The next planned design separates two kinds of Send Desk context:
+Stage 2 implements separate evidence paths for the two kinds of Send Desk context:
 
 - **Herald-facing outreach intelligence:** HQ Tools, DBI-AI, Ledgers and Herald coordinate through Ledger workflows and automations. This lane covers company/contact fit, business signals, and reviewable outreach drafts.
 - **Presence-facing social reputation intelligence:** HQ Tools, DBI-AI and Presence coordinate through Presence functions and Presence-native tools. This lane covers public social profiles, posts and reputation signals.
 
-Both lanes can refer to one lead, but findings should be source-linked and stored/displayed separately. Presence observations should not silently become claims in a Herald email. A later implementation should add explicit, reviewable handoffs between the lanes rather than mixing their evidence by default.
+Both lanes can refer to one lead, but findings are source-linked and stored/displayed separately. Presence observations do not silently become claims in a Herald email. The implementation is documented in [stage-2.md](stage-2.md). A later slice can add an explicit, reviewable handoff between the lanes when the user chooses it.
 
 ## Changed code in this stage
 
