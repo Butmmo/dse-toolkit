@@ -67,6 +67,35 @@ def _source_host(source: dict) -> str:
     return str(source.get("source_host") or urlparse(str(source.get("url", ""))).hostname or "").lower().removeprefix("www.")
 
 
+def _role_title_tokens(value: str) -> set[str]:
+    """Normalize common executive abbreviations and title filler for custom-role matching."""
+    text = (value or "").casefold()
+    expansions = (
+        (r"\bchief executive officer\b", " ceo "),
+        (r"\bchief operating officer\b", " coo "),
+        (r"\bchief technology officer\b|\bchief technical officer\b", " cto "),
+        (r"\bchief financial officer\b", " cfo "),
+        (r"\bchief marketing officer\b", " cmo "),
+        (r"\bchief product officer\b", " cpo "),
+        (r"\bchief revenue officer\b", " cro "),
+        (r"\bsenior vice president\b", " svp "),
+        (r"\bexecutive vice president\b", " evp "),
+        (r"\bvice president\b", " vp "),
+    )
+    for pattern, replacement in expansions:
+        text = re.sub(pattern, replacement, text)
+    filler = {"of", "the", "and", "at", "for", "a", "an"}
+    return {token for token in re.findall(r"[a-z0-9]+", text) if token not in filler}
+
+
+def _custom_role_cues(text: str, role: str) -> list[str]:
+    expected = _role_title_tokens(role)
+    observed = _role_title_tokens(text)
+    if expected and expected <= observed:
+        return ["normalized title match: " + " ".join(sorted(expected))]
+    return []
+
+
 def _assessment(strong: list[dict], medium: list[dict]) -> dict:
     evidence = strong or medium
     if not evidence:
@@ -118,11 +147,10 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
     role_sources = [s for s in signals if s.get("identity_strength") != "insufficient"
                     and (str(s.get("type", "")).startswith("decision_maker_role_discovery") or s.get("identity_subject") == "person")]
     for role in role_keys:
-        patterns = (re.escape(custom_role.strip()),) if role == "custom" and custom_role.strip() else ROLE_RULES.get(role, ())
         matches = []
         for source in role_sources:
             text = f"{source.get('title', '')} {source.get('snippet', '')}"
-            cues = _matches(text, patterns) if patterns else []
+            cues = _custom_role_cues(text, custom_role.strip()) if role == "custom" and custom_role.strip() else _matches(text, ROLE_RULES.get(role, ()))
             if cues:
                 matches.append({"id": str(source.get("id", "")), "cues": cues, "source_host": _source_host(source)})
         assessment = _assessment(matches, [])
@@ -156,8 +184,7 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
         text = f"{source.get('title', '')} {source.get('snippet', '')}"
         candidate_roles = []
         for role in role_results:
-            patterns = (re.escape(custom_role.strip()),) if role["role"] == "custom" and custom_role.strip() else ROLE_RULES.get(role["role"], ())
-            cues = _matches(text, patterns) if patterns else []
+            cues = _custom_role_cues(text, custom_role.strip()) if role["role"] == "custom" and custom_role.strip() else _matches(text, ROLE_RULES.get(role["role"], ()))
             if cues:
                 candidate_roles.append({"role": role["role"], "label": role["label"], "matched_cues": cues})
         identity_score = float(source.get("identity_score") or 0)
