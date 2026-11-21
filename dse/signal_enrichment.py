@@ -155,6 +155,61 @@ def _ratio(expected: set[str], observed: set[str]) -> tuple[float, list[str]]:
     return (len(matched) / len(expected) if expected else 0.0), matched
 
 
+def _publication_date(title: str, snippet: str) -> dict:
+    """Extract only an explicit or relative publication date; search time is not publication time."""
+    text = html.unescape(f"{title or ''} {snippet or ''}")
+    now = dt.datetime.now(dt.timezone.utc).date()
+    published = None
+    precision = "unknown"
+    basis = ""
+    iso = re.search(r"\b(20\d{2})-(0?[1-9]|1[0-2])-([0-2]?\d|3[01])\b", text)
+    if iso:
+        try:
+            published = dt.date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+            precision, basis = "day", iso.group(0)
+        except ValueError:
+            pass
+    if not published:
+        month_day = re.search(r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(20\d{2})\b", text, re.IGNORECASE)
+        if month_day:
+            value = f"{month_day.group(1).rstrip('.')[:3]} {month_day.group(2)} {month_day.group(3)}"
+            for fmt in ("%b %d %Y",):
+                try:
+                    published = dt.datetime.strptime(value, fmt).date()
+                    precision, basis = "day", month_day.group(0)
+                    break
+                except ValueError:
+                    continue
+    if not published:
+        month_year = re.search(r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(20\d{2})\b", text, re.IGNORECASE)
+        if month_year:
+            try:
+                published = dt.datetime.strptime(f"{month_year.group(1).rstrip('.')[:3]} {month_year.group(2)}", "%b %Y").date().replace(day=1)
+                precision, basis = "month", month_year.group(0)
+            except ValueError:
+                pass
+    if not published:
+        relative = re.search(r"\b(\d{1,3})\s+(day|week|month|year)s?\s+ago\b", text, re.IGNORECASE)
+        if relative:
+            amount = int(relative.group(1))
+            unit = relative.group(2).lower()
+            days = amount if unit == "day" else amount * 7 if unit == "week" else amount * 30 if unit == "month" else amount * 365
+            published = now - dt.timedelta(days=days)
+            precision, basis = f"relative_{unit}", relative.group(0)
+        elif re.search(r"\byesterday\b", text, re.IGNORECASE):
+            published, precision, basis = now - dt.timedelta(days=1), "relative_day", "yesterday"
+        elif re.search(r"\btoday\b", text, re.IGNORECASE):
+            published, precision, basis = now, "relative_day", "today"
+    if not published:
+        return {"publication_date": "", "date_precision": "unknown", "date_evidence": "",
+                "freshness_status": "undated", "age_days": None, "freshness_score": 0.0}
+    age_days = (now - published).days
+    status = "future_dated" if age_days < 0 else "recent" if age_days <= 90 else "aging" if age_days <= 365 else "stale"
+    score = 0.0 if age_days < 0 else 1.0 if age_days <= 90 else 0.55 if age_days <= 365 else 0.15
+    return {"publication_date": published.isoformat(), "date_precision": precision, "date_evidence": basis,
+            "freshness_status": status, "age_days": max(0, age_days), "freshness_score": score}
+
+
 def _source_identity(row: dict, kind: str, url: str, text: str) -> dict:
     """Attach explicit company/person match cues before evidence reaches assessments."""
     observed = _tokens(text)
@@ -274,6 +329,7 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             social = any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS)
             source = {"id": f"S{len(found)+1:02d}", "type": kind, "query_matches": [{"type": kind, "query": query}], "social_platform_result": social,
                           **identity,
+                          **_publication_date(item["title"], item["snippet"]),
                           "title": item["title"], "snippet": item["snippet"], "url": key,
                           "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
                           "match_terms": sorted(terms & _tokens(text)),
@@ -363,6 +419,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
     evidence = [{"id": s["id"], "subject": s.get("identity_subject", "unknown"),
                  "evidence_type": s.get("type", "business"), "identity_match": s.get("identity_match", ""),
                  "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
+                 "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
                  "matched_company_terms": s.get("matched_company_terms", []), "matched_person_terms": s.get("matched_person_terms", []),
                  "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
     company = business_profiles.row_value(row, "business", "company", "Company", "name")
@@ -397,6 +454,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "Review the evidence and draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
             "Keep company evidence, named-person evidence, personal lead signals, and company lead signals distinct. "
             "A signal supplied as search context is not proof: mention it only if an identity-matched source snippet independently supports it. "
+            "Do not describe aging or stale evidence as recent; when a source date is absent, do not imply recency. "
             "Prefer a supported current position over a previous position; never present a previous role as current. "
             "Use a candidate's name or role only when person evidence is explicitly matched; company role-discovery results alone do not verify an individual's identity. "
             "Search snippets can be wrong: do not state a claim as fact unless its source ID is returned. Target profiles and heuristic assessments are review aids, not verified company facts; "
@@ -429,6 +487,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
                         "evidence_type": s.get("type", ""), "identity_match": s.get("identity_match", ""),
                         "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
                         "title": s.get("title", ""), "url": s.get("url", ""),
+                        "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
                         "retrieved_at": s.get("retrieved_at", "")} for s in cited]
     basis = "; ".join(f"{s['id']} ({s.get('identity_subject', 'unknown')}: {s.get('identity_strength', 'unknown')} {s.get('identity_match', 'match')})" for s in cited)
     def valid_ids(value, allowed):
@@ -597,11 +656,17 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
     date = dt.date.today().isoformat()
     dest = LISTS / f"{date}-researched-{stem}.csv"
     _write_csv(dest, out)
+    processed = out[:min(len(rows), max_rows)]
+    collected_sources = [source for row in processed for source in json.loads(row.get("herald_sources") or "[]")]
+    dated_sources = sum(bool(source.get("publication_date")) for source in collected_sources)
+    stale_sources = sum(source.get("freshness_status") == "stale" for source in collected_sources)
     report = [f"# Lead signals: {p.name}", "", f"- Searched: {min(len(rows), max_rows)} of {len(rows)} rows",
               f"- Business profile target: {bp['label']}", f"- Decision-maker path: {dm['label']}", f"- Decision-maker role target: {custom_role or business_profiles.DECISION_ROLES[decision_role]['label']}", f"- Legal-form search: {lf['label']}",
               "- Target selections guide search queries only; they are not business classifications or legal verification.",
               f"- Leads with public results: {sum(bool(r['research_sources']) for r in out[:min(len(rows), max_rows)])}",
               f"- Leads with at least one strong identity match: {sum(bool(r.get('herald_identity_summary') and any(json.loads(r['herald_identity_summary'])[subject]['strength_counts']['strong'] for subject in ('company', 'person'))) for r in out[:min(len(rows), max_rows)])}",
+              f"- Sources with an explicit or relative publication date: {dated_sources} of {len(collected_sources)}",
+              f"- Sources marked stale by the date heuristic: {stale_sources}",
               f"- Local AI drafts ready for review: {drafted}", f"- Local model: {model or 'not used / unavailable'}", "",
               "## Review before use", "", "Search snippets are leads for human review, not verified facts. Open the linked source before using a claim in outreach. Nothing was sent.", ""]
     if errors:

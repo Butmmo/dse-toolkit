@@ -175,6 +175,8 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
         best_signal = max(signal_matches, key=lambda match: match["ratio"], default={"subject": "none", "ratio": 0.0, "matched_terms": []})
         signal_subject = best_signal["subject"]
         signal_ratio, signal_terms = best_signal["ratio"], best_signal["matched_terms"]
+        has_publication_date = bool(source.get("publication_date"))
+        freshness_score = float(source.get("freshness_score") or 0)
         active_weights = [(identity_score, 0.30), (role_score, 0.30)]
         if current_position:
             active_weights.append((current_ratio, 0.20))
@@ -182,9 +184,14 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
             active_weights.append((last_ratio, 0.05))
         if signal_targets:
             active_weights.append((signal_ratio, 0.15))
+        if has_publication_date:
+            active_weights = [(value, weight * 0.9) for value, weight in active_weights]
+            active_weights.append((freshness_score, 0.10))
         total_weight = sum(weight for _, weight in active_weights)
         candidate_score = round(sum(value * weight for value, weight in active_weights) / total_weight, 2) if total_weight else 0.0
         active_weight_names = ["identity", "targeted_role"] + (["current_position"] if current_position else []) + (["previous_position"] if last_position else []) + (["lead_signal"] if signal_targets else [])
+        if has_publication_date:
+            active_weight_names = [*active_weight_names, "freshness"]
         effective_weights = {name: round(weight / total_weight, 3) for name, (_, weight) in zip(active_weight_names, active_weights)} if total_weight else {}
         is_company_discovery = str(source.get("type", "")).startswith("decision_maker_role_discovery")
         people.append({
@@ -199,6 +206,11 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
                 "previous_position_match": {"ratio": round(last_ratio, 2), "matched_terms": last_terms},
                 "lead_signal_subject": signal_subject,
                 "lead_signal_matches": signal_matches,
+                "publication_date": source.get("publication_date", ""),
+                "date_precision": source.get("date_precision", "unknown"),
+                "freshness_status": source.get("freshness_status", "undated"),
+                "age_days": source.get("age_days"),
+                "freshness_score": freshness_score,
                 "effective_ranking_weights": effective_weights,
             },
             "review_reasons": (["company/person identity matched"] if identity_score else [])
