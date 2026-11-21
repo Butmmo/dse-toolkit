@@ -124,6 +124,7 @@ def normalize(path: Path) -> tuple[list[dict], dict]:
         for field in ("herald_findings", "herald_sources", "herald_checked_at", "herald_status",
                       "herald_company_findings", "herald_company_sources", "herald_person_findings", "herald_person_sources", "herald_role_candidates", "herald_people_candidates",
                       "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_assessed_at", "herald_assessment_note", "herald_identity_summary",
+                      "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
                       "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy",
                       "research_findings", "research_sources", "research_searched_at", "research_status",
                       "presence_signals", "presence_sources", "presence_checked_at", "presence_status",

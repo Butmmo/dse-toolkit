@@ -26,6 +26,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_company_findings", "herald_company_sources", "herald_person_findings", "herald_person_sources",
               "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_assessed_at", "herald_assessment_note",
               "herald_identity_summary",
+              "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
@@ -387,11 +388,13 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "target_business_profile": row.get("enrichment_target_profile", "any"), "target_decision_maker": row.get("enrichment_target_decision_maker", "any"),
             "target_role": row.get("enrichment_target_role", "signal_based"), "signal_based_role_candidates": row.get("herald_role_candidates", "[]"),
             "legal_form_search_hint": row.get("enrichment_target_legal_form", "any"),
-            "ranked_people_candidates": candidate_context, "evidence": evidence}
+            "ranked_people_candidates": candidate_context,
+            "role_evidence_assessment": row.get("herald_role_assessment", "{}"), "evidence": evidence,
+            "allowed_role_labels": [item.get("label", "") for item in json.loads(row.get("herald_role_candidates") or "[]") if isinstance(item, dict)]}
     payload = json.dumps({"model": model, "stream": False, "keep_alive": "30m", "format": "json",
         "options": {"num_ctx": 8192, "num_predict": 450, "temperature": 0.2},
         "messages": [{"role": "system", "content": (
-            "Draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
+            "Review the evidence and draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
             "Keep company evidence, named-person evidence, personal lead signals, and company lead signals distinct. "
             "A signal supplied as search context is not proof: mention it only if an identity-matched source snippet independently supports it. "
             "Prefer a supported current position over a previous position; never present a previous role as current. "
@@ -400,8 +403,12 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "never claim a business is a franchise, SaaS company, enterprise or C-Corp/S-Corp without clear supplied evidence. Keep company facts and named-person facts distinct. "
             "Only describe a current or former position/company when the cited evidence explicitly supports it. Never claim prior contact, "
             "personal familiarity, urgency, private knowledge, or guaranteed results. If evidence is weak, return empty subject/body. "
-            "Do not include citations in the email text. Return JSON only with subject, body, evidence_ids. The body should be under 90 words, "
-            "plain and low-pressure, with one clear question and an easy opt-out."
+            "Also return a source-grounded review: company_summary and company_evidence_ids; person_summary and person_evidence_ids; "
+            "role_observations as objects with role (choose only an exact allowed_role_labels value) and evidence_ids; and open_questions as short strings. "
+            "Summaries must be empty when there is no matching subject evidence. Use only supplied source IDs, and never use a person source to support a company summary or vice versa. "
+            "Do not include citations in email text. Return JSON only with subject, body, evidence_ids, company_summary, company_evidence_ids, "
+            "person_summary, person_evidence_ids, role_observations, and open_questions. The body should be under 90 words, plain and low-pressure, "
+            "with one clear question and an easy opt-out."
         )}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]}, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request("http://localhost:11434/api/chat", payload, {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=120) as response:
@@ -412,11 +419,11 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
     except (ValueError, TypeError):
         return {}
     ids = {s["id"] for s in signals}
+    company_ids = {s["id"] for s in signals if s.get("identity_subject") == "company"}
+    person_ids = {s["id"] for s in signals if s.get("identity_subject") == "person"}
     used = [x for x in result.get("evidence_ids", []) if isinstance(x, str) and x in ids]
     subject = re.sub(r"\s+", " ", str(result.get("subject", ""))).strip()[:120]
     body = str(result.get("body", "")).strip()[:1200]
-    if not subject or not body or not used:
-        return {}
     cited = [s for s in signals if s.get("id") in used]
     evidence_detail = [{"id": s["id"], "subject": s.get("identity_subject", "unknown"),
                         "evidence_type": s.get("type", ""), "identity_match": s.get("identity_match", ""),
@@ -424,9 +431,46 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
                         "title": s.get("title", ""), "url": s.get("url", ""),
                         "retrieved_at": s.get("retrieved_at", "")} for s in cited]
     basis = "; ".join(f"{s['id']} ({s.get('identity_subject', 'unknown')}: {s.get('identity_strength', 'unknown')} {s.get('identity_match', 'match')})" for s in cited)
-    return {"outreach_subject": subject, "outreach_body": body, "outreach_evidence": ", ".join(used),
-            "outreach_evidence_detail": json.dumps(evidence_detail, ensure_ascii=False, separators=(",", ":")),
-            "outreach_personalization_basis": basis, "outreach_model": model}
+    def valid_ids(value, allowed):
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(item for item in value if isinstance(item, str) and item in allowed))
+    company_review_ids = valid_ids(result.get("company_evidence_ids"), company_ids)
+    person_review_ids = valid_ids(result.get("person_evidence_ids"), person_ids)
+    company_summary = str(result.get("company_summary", "")).strip()[:500] if company_review_ids else ""
+    person_summary = str(result.get("person_summary", "")).strip()[:500] if person_review_ids else ""
+    role_review = []
+    try:
+        role_assessment = json.loads(row.get("herald_role_assessment") or "{}")
+    except (ValueError, TypeError):
+        role_assessment = {}
+    allowed_roles = {str(item.get("label", "")): set(item.get("evidence_ids", []))
+                     for item in role_assessment.get("roles", []) if isinstance(item, dict)}
+    for item in result.get("role_observations", []) if isinstance(result.get("role_observations", []), list) else []:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "")).strip()
+        role_ids = valid_ids(item.get("evidence_ids"), ids)
+        validated_role_ids = [source_id for source_id in role_ids if source_id in allowed_roles.get(role, set())]
+        if validated_role_ids:
+            role_review.append({"role": role, "evidence_ids": validated_role_ids})
+    open_questions = [re.sub(r"\s+", " ", str(question)).strip()[:240]
+                      for question in result.get("open_questions", []) if isinstance(question, str)][:5] if isinstance(result.get("open_questions", []), list) else []
+    has_review = bool(company_summary or person_summary or role_review or open_questions)
+    output = {}
+    if has_review:
+        ai_review = {"company_summary": company_summary, "company_evidence_ids": company_review_ids,
+                     "person_summary": person_summary, "person_evidence_ids": person_review_ids,
+                     "role_observations": role_review, "open_questions": open_questions,
+                     "basis": "Local-model synthesis constrained to returned public snippets; verify all cited sources."}
+        output.update({"herald_ai_review": json.dumps(ai_review, ensure_ascii=False, separators=(",", ":")),
+                       "herald_ai_reviewed_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                       "herald_ai_review_model": model})
+    if subject and body and used:
+        output.update({"outreach_subject": subject, "outreach_body": body, "outreach_evidence": ", ".join(used),
+                       "outreach_evidence_detail": json.dumps(evidence_detail, ensure_ascii=False, separators=(",", ":")),
+                       "outreach_personalization_basis": basis, "outreach_model": model})
+    return output
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -526,14 +570,17 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_assessment_note"] = assessment["basis"]
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
-        row.update({k: "" for k in ("outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
+        row.update({k: "" for k in ("herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model", "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
         if model and signals:
             try:
                 generated = draft(row, signals, model)
                 if generated:
                     row.update(generated)
-                    row["herald_status"] = row["research_status"] = "draft ready for human review"
-                    drafted += 1
+                    if generated.get("outreach_body"):
+                        row["herald_status"] = row["research_status"] = "draft ready for human review"
+                        drafted += 1
+                    elif generated.get("herald_ai_review"):
+                        row["herald_status"] = row["research_status"] = "local AI evidence review ready"
             except Exception as e:
                 errors.append(type(e).__name__)
         out.append(row)
