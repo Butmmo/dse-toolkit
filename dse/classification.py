@@ -63,18 +63,24 @@ def _overlap(expected: str, observed: str) -> tuple[float, list[str]]:
     return (len(matched) / len(left) if left else 0.0), matched
 
 
+def _source_host(source: dict) -> str:
+    return str(source.get("source_host") or urlparse(str(source.get("url", ""))).hostname or "").lower().removeprefix("www.")
+
+
 def _assessment(strong: list[dict], medium: list[dict]) -> dict:
     evidence = strong or medium
     if not evidence:
-        return {"assessment": "unclear", "confidence": 0.0, "confidence_kind": "heuristic evidence score", "evidence_ids": [], "matched_cues": []}
+        return {"assessment": "unclear", "confidence": 0.0, "confidence_kind": "heuristic evidence score", "evidence_ids": [], "matched_cues": [], "distinct_source_hosts": 0, "source_hosts": []}
     base = 0.78 if strong else 0.52
-    confidence = min(0.94, base + 0.04 * max(0, len({x["id"] for x in evidence}) - 1))
+    hosts = sorted({x.get("source_host") for x in evidence if x.get("source_host")})
+    confidence = min(0.94, base + 0.04 * max(0, len(hosts) - 1))
     return {
         "assessment": "strong textual cue" if confidence >= 0.75 else "some textual cues",
         "confidence": round(confidence, 2),
         "confidence_kind": "heuristic evidence score, not a probability",
         "evidence_ids": list(dict.fromkeys(x["id"] for x in evidence)),
         "matched_cues": list(dict.fromkeys(cue for x in evidence for cue in x["cues"])),
+        "distinct_source_hosts": len(hosts), "source_hosts": hosts,
     }
 
 
@@ -98,9 +104,9 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
             strong_cues = _matches(text, rules["strong"])
             medium_cues = _matches(text, rules["medium"])
             if strong_cues:
-                strong.append({"id": source_id, "cues": strong_cues})
+                strong.append({"id": source_id, "cues": strong_cues, "source_host": _source_host(source)})
             elif medium_cues:
-                medium.append({"id": source_id, "cues": medium_cues})
+                medium.append({"id": source_id, "cues": medium_cues, "source_host": _source_host(source)})
         result = _assessment(strong, medium)
         result["label"] = rules["label"]
         business[key] = result
@@ -118,7 +124,7 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
             text = f"{source.get('title', '')} {source.get('snippet', '')}"
             cues = _matches(text, patterns) if patterns else []
             if cues:
-                matches.append({"id": str(source.get("id", "")), "cues": cues})
+                matches.append({"id": str(source.get("id", "")), "cues": cues, "source_host": _source_host(source)})
         assessment = _assessment(matches, [])
         assessment.update({"role": role, "label": custom_role.strip() if role == "custom" else role.replace("_", " ").title()})
         assessment["candidate_status"] = "role evidence found" if matches else "not evidenced in returned snippets"
@@ -130,10 +136,10 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
     }
     legal_mentions = {}
     for key, patterns in legal_patterns.items():
-        matches = [{"id": str(source.get("id", "")), "cues": _matches(f"{source.get('title', '')} {source.get('snippet', '')}", patterns)}
+        matches = [{"id": str(source.get("id", "")), "cues": _matches(f"{source.get('title', '')} {source.get('snippet', '')}", patterns), "source_host": _source_host(source)}
                    for source in company_sources for _unused in (0,)]
         matches = [m for m in matches if m["cues"]]
-        legal_mentions[key] = {"status": "unverified mention found" if matches else "no mention found", "evidence_ids": [m["id"] for m in matches], "matched_cues": list(dict.fromkeys(c for m in matches for c in m["cues"]))}
+        legal_mentions[key] = {"status": "unverified mention found" if matches else "no mention found", "evidence_ids": [m["id"] for m in matches], "matched_cues": list(dict.fromkeys(c for m in matches for c in m["cues"])), "distinct_source_hosts": len({m["source_host"] for m in matches if m["source_host"]}), "source_hosts": sorted({m["source_host"] for m in matches if m["source_host"]})}
 
     people = []
     candidate_sources = list(person_sources)
@@ -197,6 +203,7 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
         people.append({
             "source_id": source.get("id", ""), "title": source.get("title", ""),
             "snippet": source.get("snippet", ""), "url": source.get("url", ""),
+            "source_host": _source_host(source),
             "identity_strength": source.get("identity_strength", "unknown"),
             "identity_score": round(identity_score, 2), "candidate_score": candidate_score,
             "candidate_score_kind": "heuristic review ordering, not a probability",

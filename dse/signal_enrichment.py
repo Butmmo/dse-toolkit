@@ -326,11 +326,12 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             if kind.startswith("decision_maker_role_discovery") and not (role_match_terms & _tokens(text)):
                 continue
             host = urllib.parse.urlparse(key).hostname or ""
+            host = host.lower().removeprefix("www.")
             social = any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS)
             source = {"id": f"S{len(found)+1:02d}", "type": kind, "query_matches": [{"type": kind, "query": query}], "social_platform_result": social,
                           **identity,
                           **_publication_date(item["title"], item["snippet"]),
-                          "title": item["title"], "snippet": item["snippet"], "url": key,
+                          "source_host": host, "title": item["title"], "snippet": item["snippet"], "url": key,
                           "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
                           "match_terms": sorted(terms & _tokens(text)),
                           "matched_person_terms": identity.get("matched_person_terms", []),
@@ -421,7 +422,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
                  "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
                  "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
                  "matched_company_terms": s.get("matched_company_terms", []), "matched_person_terms": s.get("matched_person_terms", []),
-                 "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
+                 "source_host": s.get("source_host", ""), "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
     company = business_profiles.row_value(row, "business", "company", "Company", "name")
     person_context = {
         "first_name": business_profiles.row_value(row, "decision_maker_first_name", "contact_first_name", "first_name", "contact_first"),
@@ -486,6 +487,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
     evidence_detail = [{"id": s["id"], "subject": s.get("identity_subject", "unknown"),
                         "evidence_type": s.get("type", ""), "identity_match": s.get("identity_match", ""),
                         "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
+                        "source_host": s.get("source_host", ""),
                         "title": s.get("title", ""), "url": s.get("url", ""),
                         "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
                         "retrieved_at": s.get("retrieved_at", "")} for s in cited]
@@ -604,8 +606,10 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             subject_signals = [s for s in signals if s.get("identity_subject") == subject]
             counts = {strength: sum(s.get("identity_strength") == strength for s in subject_signals)
                       for strength in ("strong", "moderate", "insufficient")}
+            hosts = sorted({s.get("source_host", "") for s in subject_signals if s.get("source_host")})
             identity_summary[subject] = {
                 "matched_sources": len(subject_signals), "strength_counts": counts,
+                "distinct_source_hosts": len(hosts), "source_hosts": hosts,
                 "best_match_score": max((s.get("identity_score", 0) for s in subject_signals), default=0),
                 "match_types": list(dict.fromkeys(s.get("identity_match", "") for s in subject_signals)),
             }
