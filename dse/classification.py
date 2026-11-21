@@ -124,12 +124,12 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
         return ""
     company_sources = [s for s in signals if s.get("identity_subject") == "company"]
     person_sources = [s for s in signals if s.get("identity_subject") == "person" and s.get("identity_strength") != "insufficient"]
-    signal_text = {str(s.get("id", "")): f"{s.get('title', '')} {s.get('snippet', '')}"
-                   for s in company_sources}
     business = {}
     for key, rules in BUSINESS_RULES.items():
         strong, medium = [], []
-        for source_id, text in signal_text.items():
+        for source in company_sources:
+            source_id = str(source.get("id", ""))
+            text = f"{source.get('title', '')} {source.get('snippet', '')}"
             strong_cues = _matches(text, rules["strong"])
             medium_cues = _matches(text, rules["medium"])
             if strong_cues:
@@ -255,6 +255,20 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
     people.sort(key=lambda item: (-item["candidate_score"], item["source_id"]))
     for position, candidate in enumerate(people, 1):
         candidate["review_order"] = position
+    from . import business_profiles
+    signal_events = []
+    for source in signals:
+        subject = source.get("identity_subject")
+        if subject not in ("company", "person"):
+            continue
+        if subject == "person" and source.get("identity_strength") == "insufficient":
+            continue
+        signal_events.extend(business_profiles.assess_signal_events(
+            f"{source.get('title', '')} {source.get('snippet', '')}", subject=subject, source=source))
+    personal_context = context_value("decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
+    company_context = context_value("company_last_signal", "company_signal", "last_lead_signal", "last_signal")
+    signal_events.extend(business_profiles.assess_signal_events(personal_context, subject="person", source={"source_type": "lead_csv_input"}))
+    signal_events.extend(business_profiles.assess_signal_events(company_context, subject="company", source={"source_type": "lead_csv_input"}))
     return {
         "version": 1,
         "checked_at": checked_at,
@@ -262,5 +276,7 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
         "business_profiles": business,
         "decision_maker_roles": role_results,
         "people_candidates": people,
+        "signal_events": signal_events,
+        "signal_events_basis": "Matched phrases are research cues from returned snippets or lead CSV input. They are not verified events, and suggested roles are targeting guidance only.",
         "legal_form_mentions": {"verification_status": "not verified", "selected_search_hint": legal_hint, "forms": legal_mentions},
     }

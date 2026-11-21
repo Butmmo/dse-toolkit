@@ -266,6 +266,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
                          "herald_people_candidates": r.get("herald_people_candidates", ""),
                          "herald_business_assessment": r.get("herald_business_assessment", ""),
                          "herald_role_assessment": r.get("herald_role_assessment", ""),
+                         "herald_signal_events": r.get("herald_signal_events", ""),
                          "herald_legal_form_assessment": r.get("herald_legal_form_assessment", ""),
                          "herald_assessed_at": r.get("herald_assessed_at", ""),
                          "herald_assessment_note": r.get("herald_assessment_note", ""),
