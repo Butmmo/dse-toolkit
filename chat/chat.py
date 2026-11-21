@@ -16,13 +16,13 @@ from pathlib import Path
 
 H = Path(__file__).resolve().parent
 NL = chr(10)
-def _pick_model():
+def _pick_model(task=""):
     """Which Ollama model to use and why (ollama_model.py): the OLLAMA_MODEL setting, even one set after the runner started, else the best installed."""
     try:
         spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.pick()
+        return mod.pick(task=task)
     except Exception:
         return os.environ.get("OLLAMA_MODEL", "gemma3:1b"), "the default"
 
@@ -224,6 +224,9 @@ def build_user_message(q, limit=7000):
 
 def claude(q, mode="claude"):
     """Claude, only if the student set their own API key. mode: claude (the PC's default tier, sonnet) or claude:haiku|sonnet|opus. Returns (text, note) or None."""
+    global LAST_USAGE
+    import time
+    started = time.time()
     if not os.environ.get("ANTHROPIC_API_KEY"):
         try:        # a key saved in Windows after this runner started: read it from there (no restart needed)
             spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
@@ -268,6 +271,8 @@ def claude(q, mode="claude"):
         try:
             tin, tout = int(resp.usage.input_tokens), int(resp.usage.output_tokens)
             cost.record(resp.model, tin, tout)
+            LAST_USAGE = {"provider": "claude", "model": resp.model, "input_tokens": tin, "output_tokens": tout,
+                          "duration_ms": int((time.time() - started) * 1000)}
             used = f" {tin + tout:,} tokens (in {tin:,}, out {tout:,}); {cost.used_today():,} today" + (f" of your {cost.limit():,} limit" if cost.limit() else "") + "."
         except Exception:
             pass
@@ -276,15 +281,24 @@ def claude(q, mode="claude"):
         return ("", f"Claude was not available ({type(e).__name__}); answering with the local model.")
 
 
-LAST = {"error": "", "partial": False, "seconds": 0}      # how the last local-model call went, for the answer's footer
+LAST = {"error": "", "partial": False, "seconds": 0, "duration_ms": 0, "input_tokens": 0, "output_tokens": 0}
+LAST_USAGE = None
 OLLAMA_BUDGET_S = 420        # the page waits 7 minutes and the job limit is 10: stay inside both
+
+
+def usage_marker(provider, model, input_tokens, output_tokens, duration_ms):
+    """Private runner-to-app metadata; the DBI-AI page strips it from the saved answer and stores its numbers."""
+    if os.environ.get("HQ_RUNNING_JOB") != "1":
+        return ""
+    safe_model = re.sub(r"[^A-Za-z0-9._:/-]", "", str(model or "unknown"))[:80] or "unknown"
+    return f"\n[DBI-AI-USAGE|{provider}|{safe_model}|{max(0, int(input_tokens or 0))}|{max(0, int(output_tokens or 0))}|{max(0, int(duration_ms or 0))}]"
 
 
 def ollama(q, image=None, budget_s=None):
     """Free local AI through Ollama, streamed so that a slow PC still returns what was written when time runs out (marked as cut short).
     Returns the text, or None if Ollama gave nothing (LAST says why). Small CPUs get a smaller job: 4096 tokens of context, at most 500 new tokens."""
     import time
-    LAST.update(error="", partial=False, seconds=0)
+    LAST.update(error="", partial=False, seconds=0, duration_ms=0, input_tokens=0, output_tokens=0)
     budget = budget_s or OLLAMA_BUDGET_S
     msg = {"role": "user", "content": build_user_message(q, 3500)}
     if image:
@@ -307,10 +321,13 @@ def ollama(q, image=None, budget_s=None):
                     break
                 parts.append((obj.get("message") or {}).get("content", ""))
                 if obj.get("done"):
+                    LAST["input_tokens"] = int(obj.get("prompt_eval_count") or 0)
+                    LAST["output_tokens"] = int(obj.get("eval_count") or 0)
                     break
     except Exception as e:
         LAST["error"] = f"{type(e).__name__}: {str(e)[:100]}"
-    LAST["seconds"] = int(time.time() - start)
+    LAST["duration_ms"] = int((time.time() - start) * 1000)
+    LAST["seconds"] = LAST["duration_ms"] // 1000
     text = "".join(parts).strip()
     if text:
         return text
@@ -386,13 +403,16 @@ def library_reply(q, why):
 
 def _answer(q, image=None, mode="auto"):
     """mode: auto (best available), library (the built-in guides and recipes only, no AI model), claude (your Anthropic key), or ollama:<model> (one installed model)."""
-    global OLLAMA_MODEL, MODEL_WHY
+    global OLLAMA_MODEL, MODEL_WHY, LAST_USAGE
+    LAST_USAGE = None
     if not image:
         g = _guard(q)
         if g:
             return g + NL * 2 + "(Answered instantly by HQ's built-in rules: this chat only answers questions. It cannot see files, build, commit, push or send. No AI model was used.)"
     mode = (mode or "auto").strip()
     chosen = mode != "auto"
+    if mode == "auto" or mode.startswith("claude"):
+        OLLAMA_MODEL, MODEL_WHY = _pick_model(q)
     if mode.startswith("ollama:"):
         want = mode[7:]
         have = installed_models()
@@ -409,13 +429,13 @@ def _answer(q, image=None, mode="auto"):
         if mode.startswith("claude"):
             return "Pictures are read by a local model in this version. Choose Automatic or a local model that reads pictures."
         out = ollama(q, image)
-        return (out + NL * 2 + local_footer(chosen)) if out else ("I could not read the picture" + (f" ({LAST['error']})" if LAST["error"] else "") + ". Your Ollama model must support images: install gemma3:4b "
+        return (out + NL * 2 + local_footer(chosen) + usage_marker("ollama", OLLAMA_MODEL, LAST["input_tokens"], LAST["output_tokens"], LAST["duration_ms"])) if out else ("I could not read the picture" + (f" ({LAST['error']})" if LAST["error"] else "") + ". Your Ollama model must support images: install gemma3:4b "
                                                                       "(ollama pull gemma3:4b), choose it in the model menu and try again.")
     note = ""
     if mode.startswith("claude") or (mode == "auto" and not mode.startswith("ollama:")):
         c = claude(q, mode if mode.startswith("claude") else "claude")
         if c and c[0]:
-            return c[0] + NL * 2 + "(" + c[1] + ")"
+            return c[0] + NL * 2 + "(" + c[1] + ")" + (usage_marker("claude", LAST_USAGE["model"], LAST_USAGE["input_tokens"], LAST_USAGE["output_tokens"], LAST_USAGE["duration_ms"]) if LAST_USAGE else "")
         if mode.startswith("claude"):
             why = c[1] if c else "Claude did not answer (it needs ANTHROPIC_API_KEY on this PC and: pip install anthropic)."
             return library_reply(q, why + " Here is the built-in library answer instead.")
@@ -423,7 +443,7 @@ def _answer(q, image=None, mode="auto"):
             note = NL * 2 + "(" + c[1] + ")"
     out = ollama(q)
     if out:
-        return out + NL * 2 + local_footer(chosen) + note
+        return out + NL * 2 + local_footer(chosen) + note + usage_marker("ollama", OLLAMA_MODEL, LAST["input_tokens"], LAST["output_tokens"], LAST["duration_ms"])
     why = f"Ollama did not give an answer with {OLLAMA_MODEL} ({LAST['error'] or 'it is not running'}). This is the built-in library answer instead. Try a smaller model from the model menu, or a shorter question."
     return library_reply(q, why) + note
 
