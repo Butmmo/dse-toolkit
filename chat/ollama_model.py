@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.request
 
 # best first: all of these read pictures except none; 1b is last because it is too small to follow a conversation or read a picture
 PREFER = ["gemma3:4b", "gemma3:latest", "gemma3:12b", "gemma3:27b", "gemma3:1b"]
+CODING_TASK = re.compile(r"\b(code|coding|program|programming|python|javascript|typescript|sql|debug|bug|stack trace|compiler|repository|repo|function|class|api|migration|build app|dev)\b", re.I)
 DEFAULT = "gemma3:1b"
 
 
@@ -39,8 +41,8 @@ def installed(timeout: float = 2.0) -> list[str]:
         return []
 
 
-def pick(env=None, saved=None, have=None) -> tuple[str, str]:
-    """(model, why). The three sources can be passed in for testing."""
+def pick(env=None, saved=None, have=None, task="") -> tuple[str, str]:
+    """(model, why). Coding work prefers an installed Qwen coder; other tasks use the saved/default preference."""
     env = os.environ.get("OLLAMA_MODEL", "").strip() if env is None else env
     if env:
         return env, "your OLLAMA_MODEL setting"
@@ -48,6 +50,10 @@ def pick(env=None, saved=None, have=None) -> tuple[str, str]:
     if saved:
         return saved, "your saved OLLAMA_MODEL setting (read from Windows, no restart needed)"
     have = installed() if have is None else have
+    if task and CODING_TASK.search(str(task)):
+        coder = sorted((m for m in have if "coder" in m.lower() and "qwen" in m.lower()), key=lambda m: ("14b" not in m.lower(), "7b" not in m.lower(), m.lower()))
+        if coder:
+            return coder[0], "the best installed local coding model for this task"
     for p in PREFER:
         if p in have:
             return p, "the best model installed (no OLLAMA_MODEL setting found)"

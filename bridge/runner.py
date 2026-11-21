@@ -26,6 +26,7 @@ import collections
 import datetime as dt
 import glob
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -108,6 +109,8 @@ def load_env() -> dict:
         if os.environ.get(k):
             env[k] = os.environ[k]
     env.setdefault("HQ_RUNNER_ID", re.sub(r"[^A-Za-z0-9._-]", "-", socket.gethostname())[:64] or "hq-pc")
+    if IS_TOOLKIT and not env["HQ_RUNNER_ID"].lower().startswith("dse-"):
+        env["HQ_RUNNER_ID"] = "dse-" + re.sub(r"[^A-Za-z0-9._-]", "-", env["HQ_RUNNER_ID"])[:60]
     return env
 
 
@@ -294,12 +297,14 @@ def ollama_info() -> dict:
 
 
 def public_catalog(cat: dict) -> dict:
-    """What Citadel sees: labels and form fields only (no scripts or argument templates)."""
+    """What Citadel sees: safe form data plus runner kind, never scripts or argument templates."""
     keep = ("label", "group", "help", "fields", "timeout_min")
     resolve_fields(cat)
     return {"version": cat.get("version", 1),
+            "runner_kind": "dse-toolkit" if IS_TOOLKIT else "hq",
             "ollama": ollama_info(),
-            "tools": {k: {**{f: t[f] for f in keep if f in t}, "timeout_min": tool_minutes(t)} for k, t in cat["tools"].items()}}
+            "tools": {k: {**{f: t[f] for f in keep if f in t}, "timeout_min": tool_minutes(t),
+                          "executor": "dse-toolkit" if IS_TOOLKIT else "hq"} for k, t in cat["tools"].items()}}
 
 
 # ----------------------------------------------------------------- Supabase calls
@@ -452,6 +457,9 @@ def build_command(cat: dict, tool_key: str, params: dict) -> tuple[list[str], di
         raise Bad("values must be an object")
     fields = {f["name"]: f for f in tool["fields"]}
     extra = set(params) - set(fields)
+    # Added by Citadel when a scheduled job is linked to an Engine for Ledger imports.
+    # It is trusted job metadata, not a CLI field, and must never reach a tool's argv.
+    extra.discard("engine_ref")
     if extra:
         raise Bad(f"unknown values: {', '.join(sorted(extra))}")
     vals = {n: check_value(f, params.get(n)) for n, f in fields.items()}
@@ -550,7 +558,7 @@ def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
     out_specs = norm_outputs(tool.get("outputs"))
     before = snapshot([o["glob"] for o in out_specs])
     started = time.time()
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "HQ_RUNNING_JOB": "1"}
     flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     proc = subprocess.Popen(argv, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL, env=env, creationflags=flags)
@@ -605,6 +613,20 @@ def run_job(api: Api | None, cat: dict, job: dict, dry: bool = False) -> dict:
     else:
         status, error = "done", None
     took = int(time.time() - started)
+    if status == "done" and job.get("ai_review") is True:
+        try:
+            spec = importlib.util.spec_from_file_location("hq_tool_review", ROOT / "chat" / "tool_review.py")
+            if not spec or not spec.loader:
+                raise RuntimeError("The local reviewer is unavailable.")
+            reviewer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(reviewer)
+            model, advice = reviewer.review(tool_key, "\n".join(list(lines)[1:]))
+            review_lines = ["", f"Local AI review ({model}, advisory only; tool result unchanged):", *advice.splitlines()[:12]]
+        except Exception as e:
+            review_lines = ["", f"Local AI review unavailable ({type(e).__name__}); the tool result is unchanged."]
+        lines.extend(review_lines)
+        with open(log_path, "a", encoding="utf-8") as review_log:
+            review_log.write("\n" + "\n".join(review_lines) + "\n")
     lines.append(f"-- {status} in {took // 60}m {took % 60}s; full log on the PC: {log_path.relative_to(ROOT).as_posix()} --")
     if api:
         api.finish(job_id, status, code, tail(), error, outputs)
