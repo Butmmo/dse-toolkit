@@ -123,7 +123,7 @@ def queries_for(row: dict, business_profile: str = "any", decision_maker: str = 
     person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
     signal_terms = re.sub(r"\s+", " ", company_signal)[:100] or "hiring funding launch expansion new product leadership"
     q.append(("company_signal", f'"{company}"{suffix} {signal_terms}'[:300]))
-    roles = business_profiles.infer_decision_roles(supplied_signal, decision_role)
+    roles = business_profiles.infer_decision_roles(company_signal, decision_role)
     role_terms = " ".join([*(business_profiles.DECISION_ROLES[r]["terms"] for r in roles), custom_role.strip()[:80]])
     q.append(("decision_maker_role_discovery", f'"{company}" {role_terms} {signal_terms} site:linkedin.com/in OR site:linkedin.com/company'[:300]))
     if person_signal:
