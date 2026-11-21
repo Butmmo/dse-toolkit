@@ -24,6 +24,19 @@ T["dse.enrich"] = tool("Lead enrichment: find emails, owners and phones", "Takes
                         ENG_OPT, {"name": "max", "label": "Most leads to look at in this run", "type": "int", "min": 1, "max": 2000, "default": 100},
                         {"name": "fast", "label": "Fast (skip the hidden browser: quicker, misses sites drawn by JavaScript)", "type": "bool", "default": False},
                         PROV, {"name": "budget", "label": "Most paid lookups (only with a provider)", "type": "int", "min": 0, "max": 5000, "default": 25}], 180)
+T["dse.enrich_signals"] = {
+    "label": "Lead signals: research and draft outreach",
+    "group": "Grow",
+    "help": "Researches public web results for each business, including indexed social pages, and records each result with its source URL and retrieval time. If Ollama is running on this PC, a local model can draft an email subject and body using those signals. The draft is advisory, cites evidence IDs in the CSV, and is never sent. Search snippets can be inaccurate, so open sources and review before use.",
+    "script": "dse.py", "args": [{"lit": "signals"}, {"field": "csv"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}, {"flag": "--no-ai", "field": "no_ai"}],
+    "fields": [
+        {"name": "csv", "label": "Lead CSV", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "researched"},
+        {"name": "engine", "label": "Also save a copy to this engine (optional)", "type": "choice", "required": False, "choices_from": "engines", "choices": []},
+        {"name": "max", "label": "Most leads to research in this stage", "type": "int", "min": 1, "max": 50, "default": 25},
+        {"name": "no_ai", "label": "Only collect signals (do not draft with local AI)", "type": "bool", "default": False}
+    ],
+    "timeout_min": 240, "outputs": ["my-lists/*-researched-*.csv", "my-lists/*-researched-*.md"]
+}
 T["dse.enrich_site"] = tool("Lead enrichment: look at one website", "Reads one company website and shows what a lead list would get: emails, owner, phone, form, booking tool, score and why. Nothing is saved.",
                             [{"lit": "enrich"}, {"opt": "--site", "field": "site"}, {"opt": "--icp", "field": "icp"}, {"flag": "--fast", "field": "fast"}],
                             [{"name": "site", "label": "Website", "type": "url", "required": True},

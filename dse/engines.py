@@ -250,10 +250,15 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
             if not ch:
                 continue
             left[ch] -= 1
+            ai_body = (r.get("outreach_body") or "").strip() if ch == "email" else ""
+            ai_subject = (r.get("outreach_subject") or "").strip() if ai_body else ""
+            drafted_opener = (f"Subject: {ai_subject}\n\n{ai_body}" if ai_subject else ai_body) or fill(opener_tpl, r, cfg)
             rows.append({"row": len(rows) + 1, "business": r.get("business", ""), "city": r.get("city", ""),
                          "channel": ch, "where": where, "gap_used": r.get("gap_line") or r.get("gap_used", ""),
                          "variant": cfg.get("variant") or f"{cfg.get('path')}-opener-v1",
-                         "opener": fill(opener_tpl, r, cfg), "website": r.get("website", ""),
+                         "opener": drafted_opener, "website": r.get("website", ""),
+                         "outreach_subject": ai_subject, "outreach_body": ai_body,
+                         "research_sources": r.get("research_sources", ""), "research_status": r.get("research_status", ""),
                          "gaps_found": r.get("gaps_found", ""), "email": r.get("email", ""), "phone": r.get("phone", ""),
                          "instagram": r.get("instagram", ""), "facebook": r.get("facebook", ""),
                          "category": r.get("category", ""), "host": r.get("host", ""),
@@ -263,7 +268,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
             log(f"  {day}: no leads left with a usable channel")
             continue
         p = out_dir / f"{day.isoformat()}.csv"
-        write_csv(p, rows, first=["row", "business", "city", "channel", "where", "gap_used", "variant", "opener"])
+        write_csv(p, rows, first=["row", "business", "city", "channel", "where", "gap_used", "variant", "opener", "outreach_subject", "outreach_body", "research_sources"])
         written.append(str(p))
         by = {}
         for x in rows:

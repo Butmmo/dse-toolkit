@@ -457,6 +457,9 @@ def build_command(cat: dict, tool_key: str, params: dict) -> tuple[list[str], di
         raise Bad("values must be an object")
     fields = {f["name"]: f for f in tool["fields"]}
     extra = set(params) - set(fields)
+    # Added by Citadel when a scheduled job is linked to an Engine for Ledger imports.
+    # It is trusted job metadata, not a CLI field, and must never reach a tool's argv.
+    extra.discard("engine_ref")
     if extra:
         raise Bad(f"unknown values: {', '.join(sorted(extra))}")
     vals = {n: check_value(f, params.get(n)) for n, f in fields.items()}

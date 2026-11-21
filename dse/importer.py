@@ -120,6 +120,12 @@ def normalize(path: Path) -> tuple[list[dict], dict]:
                      "contact_title": g("contact_title"), "email": g("email").lower(), "linkedin": g("linkedin"), "company_linkedin": g("company_linkedin"),
                      "employees": g("employees"), "industry": g("industry"), "city": g("city") or g("country"), "funding_date": g("funding_date"),
                      "funding_stage": g("funding_stage"), "phone": g("phone"), "_file": path.name})
+        # Carry researched evidence and AI draft fields through the engine importer so Send Desk can use them.
+        for field in ("research_findings", "research_sources", "research_searched_at", "research_status",
+                      "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model"):
+            header = next((h for h in headers if squash(h) == squash(field)), None)
+            if header:
+                rows[-1][field] = (r.get(header) or "").strip()
     rep = {"file": path.name, "rows": len(rows), "headers": headers, "mapped": m, "unmapped": [h for h in headers if h not in m.values()],
            "no_website": sum(1 for x in rows if not x["website"]), "no_contact": sum(1 for x in rows if not (x["contact_name"] or x["email"])),
            "missing_core": [c for c in ("business", "website") if c not in m]}

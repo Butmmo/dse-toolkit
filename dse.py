@@ -15,6 +15,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
   python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
+  python dse.py signals leads.csv [--engine x] [--max 25] [--no-ai]           public web/social search signals plus optional local-AI email draft (never sends)
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
   python dse.py context <engine> [--add FOLDER] [--label L] [--scan] [--show] [--remove FOLDER] [--suggest] [--adopt LIST [--apply]]  read a folder of earlier work into the engine
@@ -53,7 +54,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech, audit
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, signal_enrichment, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech, audit
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -221,6 +222,11 @@ def main():
     en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser"); en.add_argument("--result-line", action="store_true", dest="result_line", help="with --site: also print one RESULT line a Ledger workflow reads")
     en.add_argument("--provider", default="", help="optional: your own paid provider, set up with --add-provider"); en.add_argument("--budget", type=int, default=enrich_providers.DEFAULT_BUDGET)
     en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
+    se = sub.add_parser("signals", help="research public business/search/social signals for leads and draft email with a local AI")
+    se.add_argument("source", help="CSV with a company name; city and website improve matching")
+    se.add_argument("--engine", default="", help="also save the researched CSV to this engine's imports")
+    se.add_argument("--max", type=int, default=25, help="most leads to research in this stage, 1 to 50")
+    se.add_argument("--no-ai", action="store_true", help="collect sourced search signals without asking local Ollama to draft email")
     gl = sub.add_parser("goal"); gl.add_argument("engine"); gl.add_argument("--month", default=""); gl.add_argument("--stretch", type=float, default=goals.STRETCH_DEFAULT)
     gl.add_argument("--apply", action="store_true", help="save the suggestion as that month's goal"); gl.add_argument("--set", type=float, default=0, dest="set_to")
     rv = sub.add_parser("review"); rv.add_argument("engine", help="an engine, or all"); rv.add_argument("--top", type=int, default=5)
@@ -288,6 +294,11 @@ def main():
                 print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget))
             else:
                 sys.exit("Give a CSV to enrich (python dse.py enrich leads.csv), or --site https://their-site.com, or --providers.")
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "signals":
+        try:
+            print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "reply":
