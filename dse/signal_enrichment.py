@@ -16,12 +16,15 @@ import urllib.request
 from pathlib import Path
 
 from . import importer
+from . import business_profiles
 from .common import LISTS, ROOT
 
 USER_AGENT = "DFamociousHQ/1.0 (local user-requested business research)"
 OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_status",
               "research_findings", "research_sources", "research_searched_at", "research_status",
-              "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model"]
+              "herald_company_findings", "herald_company_sources", "herald_person_findings", "herald_person_sources",
+              "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model",
+              "herald_role_candidates", "herald_people_candidates", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
@@ -97,25 +100,79 @@ def search(query: str, limit: int = 2) -> list[dict]:
     return out
 
 
-def queries_for(row: dict) -> list[tuple[str, str]]:
-    company = (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip()
-    city = (row.get("city") or row.get("City") or "").strip()
-    product = (row.get("product") or row.get("service") or row.get("industry") or row.get("Industry") or "").strip()
+def queries_for(row: dict, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> list[tuple[str, str]]:
+    company = business_profiles.row_value(row, "business", "company", "name", "current_company")
+    city = business_profiles.row_value(row, "city")
+    product = business_profiles.row_value(row, "product", "service", "industry")
     if not company:
-        company = (row.get("website") or row.get("domain") or "").strip()
+        company = business_profiles.row_value(row, "website", "domain")
     suffix = f" {city}" if city else ""
-    q = [("business", f'"{company}"{suffix} {product} products services'[:220]),
-         ("news", f'"{company}"{suffix} news announcement launch'[:220])]
+    bp, dm, lf = business_profiles.normalize_profiles(business_profile, decision_maker, legal_form)
+    q = [("business", f'"{company}"{suffix} {product} products services'[:260]),
+         ("news", f'"{company}"{suffix} news announcement launch'[:260])]
+    if bp["terms"]:
+        q.append(("business_profile", f'"{company}"{suffix} {bp["terms"]}'[:300]))
+    if dm["terms"]:
+        q.append(("decision_maker", f'"{company}"{suffix} {dm["terms"]}'[:300]))
+    if lf["terms"]:
+        q.append(("legal_form_search", f'"{company}" {lf["terms"]}'[:300]))
+    supplied_signal = business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal", "recent_signal", "news_signal")
+    signal_terms = re.sub(r"\s+", " ", supplied_signal)[:100] or "hiring funding launch expansion new product leadership"
+    q.append(("company_signal", f'"{company}"{suffix} {signal_terms}'[:300]))
+    roles = business_profiles.infer_decision_roles(supplied_signal, decision_role)
+    role_terms = " ".join([*(business_profiles.DECISION_ROLES[r]["terms"] for r in roles), custom_role.strip()[:80]])
+    q.append(("decision_maker_role_discovery", f'"{company}" {role_terms} {signal_terms} site:linkedin.com/in OR site:linkedin.com/company'[:300]))
     return [(kind, text) for kind, text in q if company]
 
 
-def gather(row: dict, max_signals: int = 6) -> tuple[list[dict], list[str]]:
-    company = (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip()
+def decision_maker_name(row: dict) -> str:
+    first = business_profiles.row_value(row, "decision_maker_first_name", "contact_first_name", "first_name", "contact_first")
+    last = business_profiles.row_value(row, "decision_maker_last_name", "contact_last_name", "last_name", "contact_last")
+    full = business_profiles.row_value(row, "decision_maker_name", "decision_maker", "contact_name", "person")
+    return f"{first} {last}".strip() or full
+
+
+def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_role: str = "") -> list[tuple[str, str]]:
+    """Target a named professional and keep personal-profile evidence distinct from company evidence."""
+    company = business_profiles.row_value(row, "business", "company", "name", "current_company")
+    if not company:
+        company = business_profiles.row_value(row, "website", "domain")
+    person = decision_maker_name(row)
+    if not company or not person:
+        return []
+    dm = business_profiles.DECISION_MAKER_PROFILES[decision_maker]
+    current_position = business_profiles.row_value(row, "current_position", "contact_title", "decision_maker_title")[:80]
+    last_position = business_profiles.row_value(row, "last_position", "previous_position", "decision_maker_last_position")[:80]
+    current_company = (business_profiles.row_value(row, "decision_maker_current_company", "current_company") or company)[:100]
+    last_company = business_profiles.row_value(row, "last_company", "previous_company", "decision_maker_last_company")[:100]
+    history = " ".join(x for x in (current_position, current_company, last_position, last_company, dm["terms"], custom_role.strip()[:80]) if x)
+    person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
+    supplied_signal = person_signal or business_profiles.row_value(row, "last_lead_signal", "last_signal")
+    signal_terms = re.sub(r"\s+", " ", supplied_signal)[:100] or "recent post interview announcement speaking"
+    profile_query = f'"{person}" "{current_company}" {history} site:linkedin.com/in OR site:linkedin.com/posts'
+    signal_query = f'"{person}" "{current_company}" {signal_terms} site:linkedin.com/posts OR site:linkedin.com/in'
+    if last_company and last_company.casefold() != current_company.casefold():
+        profile_query += f' OR "{person}" "{last_company}" {last_position} site:linkedin.com/in'
+    return [("decision_maker_profile", profile_query[:300]), ("decision_maker_signal", signal_query[:300])]
+
+
+def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> tuple[list[dict], list[str]]:
+    company = business_profiles.row_value(row, "business", "company", "name", "current_company")
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
+    person = decision_maker_name(row)
+    person_terms = _tokens(person)
+    person_company_terms = _tokens(" ".join((
+        business_profiles.row_value(row, "decision_maker_current_company", "current_company") or company,
+        business_profiles.row_value(row, "decision_maker_last_company", "last_company", "previous_company"),
+    )))
+    signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal", "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
+    role_candidates = business_profiles.infer_decision_roles(signal, decision_role)
+    role_match_terms = set().union(*(_tokens(business_profiles.DECISION_ROLES[r]["terms"]) for r in role_candidates), _tokens(custom_role))
     found, seen = [], set()
     errors = []
-    for kind, query in queries_for(row):
+    queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role) + decision_maker_queries_for(row, decision_maker, custom_role)
+    for kind, query in queries:
         try:
             results = search(query)
         except Exception as e:
@@ -128,16 +185,29 @@ def gather(row: dict, max_signals: int = 6) -> tuple[list[dict], list[str]]:
             seen.add(key)
             text = f"{item['title']} {item['snippet']} {key}".lower()
             match = len(terms & _tokens(text))
-            if terms and match == 0:
+            matched_person_terms = sorted(person_terms & _tokens(text))
+            matched_person_company_terms = person_company_terms & _tokens(text)
+            if terms and match == 0 and (kind not in ("decision_maker_profile", "decision_maker_signal") or not matched_person_company_terms):
+                continue
+            # A personal profile result must match every supplied name token and the business.
+            if kind in ("decision_maker_profile", "decision_maker_signal") and (not person_terms or len(matched_person_terms) < len(person_terms) or not matched_person_company_terms):
+                continue
+            if kind == "decision_maker_role_discovery" and not (role_match_terms & _tokens(text)):
                 continue
             host = urllib.parse.urlparse(key).hostname or ""
             social = any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS)
-            found.append({"id": f"S{len(found)+1:02d}", "type": "social search result" if social or kind == "social" else kind,
+            found.append({"id": f"S{len(found)+1:02d}", "type": kind, "social_platform_result": social,
                           "title": item["title"], "snippet": item["snippet"], "url": key,
                           "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
-                          "match_terms": sorted(terms & _tokens(text))})
+                          "match_terms": sorted(terms & _tokens(text)), "matched_person_terms": matched_person_terms if kind.startswith("decision_maker") else [],
+                          "matched_person_company_terms": sorted(matched_person_company_terms) if kind.startswith("decision_maker") else []})
         time.sleep(1.0)
-    return found[:max_signals], errors
+    company_found = [s for s in found if not s["type"].startswith("decision_maker")]
+    person_found = [s for s in found if s["type"].startswith("decision_maker")]
+    if person_found and max_signals > 1:
+        selected = company_found[:max_signals - min(2, len(person_found))] + person_found[:2]
+        return selected[:max_signals], errors
+    return company_found[:max_signals], errors
 
 
 def presence_queries_for(row: dict) -> list[tuple[str, str]]:
@@ -210,15 +280,21 @@ def _ollama_model() -> str:
 def draft(row: dict, signals: list[dict], model: str) -> dict:
     if not signals or not model:
         return {}
-    evidence = [{"id": s["id"], "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:5]]
+    evidence = [{"id": s["id"], "subject": "decision maker" if str(s.get("type", "")).startswith("decision_maker") else "company",
+                 "evidence_type": s.get("type", "business"), "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
     company = (row.get("business") or row.get("company") or row.get("Company") or "").strip()
     user = {"company": company, "city": row.get("city") or row.get("City") or "", "offer": row.get("offer") or row.get("gap_line") or row.get("lead_why") or "",
+            "target_business_profile": row.get("enrichment_target_profile", "any"), "target_decision_maker": row.get("enrichment_target_decision_maker", "any"),
+            "target_role": row.get("enrichment_target_role", "signal_based"), "signal_based_role_candidates": row.get("herald_role_candidates", "[]"),
+            "legal_form_search_hint": row.get("enrichment_target_legal_form", "any"),
             "evidence": evidence}
     payload = json.dumps({"model": model, "stream": False, "keep_alive": "30m", "format": "json",
         "options": {"num_ctx": 8192, "num_predict": 450, "temperature": 0.2},
         "messages": [{"role": "system", "content": (
             "Draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
-            "Search snippets can be wrong: do not state a claim as fact unless its source ID is returned. Never claim prior contact, "
+            "Search snippets can be wrong: do not state a claim as fact unless its source ID is returned. Target profiles are search preferences, not verified company facts; "
+            "never claim a business is a franchise, SaaS company, enterprise or C-Corp/S-Corp without clear supplied evidence. Keep company facts and named-person facts distinct. "
+            "Only describe a current or former position/company when the cited evidence explicitly supports it. Never claim prior contact, "
             "personal familiarity, urgency, private knowledge, or guaranteed results. If evidence is weak, return empty subject/body. "
             "Do not include citations in the email text. Return JSON only with subject, body, evidence_ids. The body should be under 90 words, "
             "plain and low-pressure, with one clear question and an easy opt-out."
@@ -248,7 +324,8 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True) -> str:
+def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
+                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> str:
     p = Path(source)
     if not p.is_absolute():
         p = (ROOT / source) if (ROOT / source).is_file() else p
@@ -259,6 +336,14 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         raise ValueError("That CSV has no rows.")
     if not 1 <= max_rows <= 50:
         raise ValueError("--max must be between 1 and 50 leads for this first research stage.")
+    try:
+        bp, dm, lf = business_profiles.normalize_profiles(business_profile, decision_maker, legal_form)
+    except ValueError as e:
+        raise ValueError(str(e)) from None
+    if decision_role not in business_profiles.DECISION_ROLES:
+        raise ValueError("Choose a decision-maker role from the listed options.")
+    custom_role = re.sub(r"[^A-Za-z0-9 /&'-]", "", custom_role).strip()[:80]
+    strategy = business_profiles.strategy_text(business_profile, decision_maker, legal_form, decision_role) + (f" Custom role target: {custom_role}." if custom_role else "")
     model = _ollama_model() if use_ai else ""
     normalized_rows, _report = importer.normalize(p)
     out, errors, drafted = [], [], 0
@@ -269,11 +354,31 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             if normalized.get(key) and not row.get(key):
                 row[key] = normalized[key]
         print(f"[{i}/{min(len(rows), max_rows)}] researching {row.get('business') or row.get('website') or 'lead'}", file=sys.stderr, flush=True)
-        signals, row_errors = gather(row)
+        row["enrichment_target_profile"] = business_profile
+        row["enrichment_target_decision_maker"] = decision_maker
+        row["enrichment_target_role"] = custom_role or decision_role
+        role_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal", "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
+        roles = business_profiles.infer_decision_roles(role_signal, decision_role)
+        role_items = [{"role": r, "label": business_profiles.DECISION_ROLES[r]["label"], "terms": business_profiles.DECISION_ROLES[r]["terms"]} for r in roles]
+        if custom_role:
+            role_items.insert(0, {"role": "custom", "label": custom_role, "terms": custom_role})
+        row["herald_role_candidates"] = json.dumps(role_items, ensure_ascii=False, separators=(",", ":"))
+        row["herald_people_candidates"] = ""
+        row["enrichment_target_legal_form"] = legal_form
+        row["enrichment_search_strategy"] = strategy
+        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role)
         errors.extend(row_errors)
+        company_signals = [s for s in signals if not str(s.get("type", "")).startswith("decision_maker")]
+        person_signals = [s for s in signals if str(s.get("type", "")).startswith("decision_maker")]
         row["herald_findings"] = row["research_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in signals)
         sources_json = json.dumps(signals, ensure_ascii=False, separators=(",", ":"))
         row["herald_sources"] = row["research_sources"] = sources_json
+        row["herald_company_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in company_signals)
+        row["herald_company_sources"] = json.dumps(company_signals, ensure_ascii=False, separators=(",", ":"))
+        row["herald_person_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in person_signals)
+        row["herald_person_sources"] = json.dumps(person_signals, ensure_ascii=False, separators=(",", ":"))
+        people = [s for s in person_signals if "/company/" not in urllib.parse.urlparse(s["url"]).path.casefold()]
+        row["herald_people_candidates"] = json.dumps([{"source_id": s["id"], "title": s["title"], "snippet": s["snippet"], "url": s["url"], "role_candidates": roles} for s in people], ensure_ascii=False, separators=(",", ":"))
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
@@ -302,6 +407,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
     dest = LISTS / f"{date}-researched-{stem}.csv"
     _write_csv(dest, out)
     report = [f"# Lead signals: {p.name}", "", f"- Searched: {min(len(rows), max_rows)} of {len(rows)} rows",
+              f"- Business profile target: {bp['label']}", f"- Decision-maker path: {dm['label']}", f"- Decision-maker role target: {custom_role or business_profiles.DECISION_ROLES[decision_role]['label']}", f"- Legal-form search: {lf['label']}",
+              "- Target selections guide search queries only; they are not business classifications or legal verification.",
               f"- Leads with public results: {sum(bool(r['research_sources']) for r in out[:min(len(rows), max_rows)])}",
               f"- Local AI drafts ready for review: {drafted}", f"- Local model: {model or 'not used / unavailable'}", "",
               "## Review before use", "", "Search snippets are leads for human review, not verified facts. Open the linked source before using a claim in outreach. Nothing was sent.", ""]

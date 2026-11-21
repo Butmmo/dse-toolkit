@@ -5,8 +5,6 @@ from pathlib import Path
 p = Path(__file__).resolve().parent / "catalog.json"
 c = json.loads(p.read_text(encoding="utf-8"))
 T = c["tools"]
-for k in [k for k in T if k.startswith("dse.enrich")]:
-    del T[k]
 
 ENG_OPT = {"name": "engine", "label": "Also save an import-ready copy in this engine (optional)", "type": "choice", "required": False, "choices_from": "engines", "choices": []}
 PROV = {"name": "provider", "label": "Paid provider with YOUR own key (optional, empty = free only)", "type": "choice", "required": False, "choices_from": "providers", "choices": []}
@@ -27,12 +25,25 @@ T["dse.enrich"] = tool("Lead enrichment: find emails, owners and phones", "Takes
 T["dse.enrich_signals"] = {
     "label": "Lead signals: research and draft outreach",
     "group": "Grow",
-    "help": "Researches public company, product and news results for the Herald-facing lane, recording source URLs and retrieval time. If Ollama is running on this PC, a local model can draft an email subject and body using those business signals. The draft is advisory, cites evidence IDs in the CSV, and is never sent. Public social signals are handled by a separate Presence tool.",
-    "script": "dse.py", "args": [{"lit": "signals"}, {"field": "csv"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}, {"flag": "--no-ai", "field": "no_ai"}],
+    "help": "Researches public company, product and news results for the Herald-facing lane. Choose a business type, decision-maker path and optional US legal-form search hint to steer the queries. These choices are not verified classifications; the CSV records them separately from sourced findings. If Ollama is running on this PC, a local model can draft an email subject and body using the retrieved evidence. The draft is advisory and is never sent. Public social signals are handled by a separate Presence tool.",
+    "script": "dse.py", "args": [{"lit": "signals"}, {"field": "csv"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}, {"opt": "--profile", "field": "profile"}, {"opt": "--decision-maker", "field": "decision_maker"}, {"opt": "--decision-role", "field": "decision_role"}, {"opt": "--custom-role", "field": "custom_role"}, {"opt": "--legal-form", "field": "legal_form"}, {"flag": "--no-ai", "field": "no_ai"}],
     "fields": [
         {"name": "csv", "label": "Lead CSV", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "researched"},
         {"name": "engine", "label": "Also save a copy to this engine (optional)", "type": "choice", "required": False, "choices_from": "engines", "choices": []},
         {"name": "max", "label": "Most leads to research in this stage", "type": "int", "min": 1, "max": 50, "default": 25},
+        {"name": "profile", "label": "Business type to prioritize (search hint, not a classification)", "type": "choice", "required": False, "default": "any", "choices": [
+            {"value": "any", "label": "Any business"}, {"value": "franchise_group", "label": "Franchise or multi-location group"}, {"value": "local_smb", "label": "Local or owner-led SMB"},
+            {"value": "saas", "label": "SaaS or software company"}, {"value": "online_store", "label": "Online store or ecommerce business"}, {"value": "enterprise", "label": "Mid-market or enterprise company"}]},
+        {"name": "decision_maker", "label": "Decision-maker path to prioritize", "type": "choice", "required": False, "default": "any", "choices": [
+            {"value": "any", "label": "Any decision maker"}, {"value": "owner_compact", "label": "Owner, founder or compact team"}, {"value": "franchise_operator", "label": "Franchise operator and parent group"},
+            {"value": "functional_leader", "label": "Functional leader or department head"}, {"value": "specialist_director", "label": "Specialised director or executive"}]},
+        {"name": "decision_role", "label": "Role to find (signal-based discovers several; optional to target one)", "type": "choice", "required": False, "default": "signal_based", "choices": [
+            {"value": "signal_based", "label": "Infer several roles from the lead signal"}, {"value": "hr", "label": "HR / People leader"}, {"value": "vp_sales", "label": "VP of Sales / Sales leader"},
+            {"value": "dev_hiring_manager", "label": "Development hiring manager"}, {"value": "director", "label": "Relevant functional director"}, {"value": "lead_coach", "label": "Lead coach"},
+            {"value": "president", "label": "President"}, {"value": "ceo", "label": "CEO"}, {"value": "coo", "label": "COO"}, {"value": "cto", "label": "CTO"}, {"value": "founder", "label": "Founder"}]},
+        {"name": "custom_role", "label": "Additional or custom role title (optional)", "type": "text", "required": False, "max": 80},
+        {"name": "legal_form", "label": "US legal-form search hint only (not verified)", "type": "choice", "required": False, "default": "any", "choices": [
+            {"value": "any", "label": "Any or unknown legal form"}, {"value": "us_c_corp", "label": "US C corporation"}, {"value": "us_s_corp", "label": "US S corporation"}]},
         {"name": "no_ai", "label": "Only collect signals (do not draft with local AI)", "type": "bool", "default": False}
     ],
     "timeout_min": 240, "outputs": ["my-lists/*-researched-*.csv", "my-lists/*-researched-*.md"]

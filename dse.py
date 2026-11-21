@@ -15,7 +15,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
   python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
-  python dse.py signals leads.csv [--engine x] [--max 25] [--no-ai]           Herald business/news research plus optional local-AI email draft
+  python dse.py signals leads.csv [--engine x] [--max 25] [--profile saas] [--decision-maker functional_leader] [--decision-role signal_based] [--custom-role "VP of Sales"] [--legal-form us_c_corp] [--no-ai]  Herald research with signal-based role discovery
   python dse.py presence-signals leads.csv [--engine x] [--max 25]             separate public professional/social evidence for Presence
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
   python dse.py preflight <engine|list> [--domain yourdomain.com] [--clean]  check a send list and your sending domain before anything goes out
@@ -227,6 +227,11 @@ def main():
     se.add_argument("source", help="CSV with a company name; city and website improve matching")
     se.add_argument("--engine", default="", help="also save the researched CSV to this engine's imports")
     se.add_argument("--max", type=int, default=25, help="most leads to research in this stage, 1 to 50")
+    se.add_argument("--profile", choices=["any", "franchise_group", "local_smb", "saas", "online_store", "enterprise"], default="any", help="business type to prioritize in search; this is not a verified classification")
+    se.add_argument("--decision-maker", choices=["any", "owner_compact", "franchise_operator", "functional_leader", "specialist_director"], default="any", help="decision-maker path to prioritize")
+    se.add_argument("--decision-role", choices=list(signal_enrichment.business_profiles.DECISION_ROLES), default="signal_based", help="role to find, or infer several role targets from the supplied lead signal")
+    se.add_argument("--custom-role", default="", help="optional role title to search in addition to inferred or preset roles")
+    se.add_argument("--legal-form", choices=["any", "us_c_corp", "us_s_corp"], default="any", help="US C-Corp/S-Corp search hint only; results are not legal verification")
     se.add_argument("--no-ai", action="store_true", help="collect sourced search signals without asking local Ollama to draft email")
     ps = sub.add_parser("presence-signals", help="collect separate public professional/social signals for Presence (no outreach draft)")
     ps.add_argument("source", help="CSV with a company name; contact name and city improve matching")
@@ -303,7 +308,7 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "signals":
         try:
-            print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai))
+            print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "presence-signals":
