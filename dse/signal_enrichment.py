@@ -367,13 +367,25 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
     if errors:
         report += ["Search errors: " + ", ".join(errors[:12]), ""]
     dest.with_suffix(".md").write_text("\n".join(report), encoding="utf-8")
-    shelf = {"kind": "presence-signals", "v": 1, "business": f"{p.stem} ({min(len(rows), max_rows)} leads)"[:120],
-             "made": dt.date.today().isoformat(), "source": "Public professional/business social search", "signals": []}
-    for row in out[:min(len(rows), max_rows)]:
-        for signal in json.loads(row.get("presence_signals") or "[]"):
-            if len(shelf["signals"]) >= 60:
-                break
-            shelf["signals"].append({"business": str(row.get("business") or row.get("company") or "")[:120], **signal})
+    shelf = {"kind": "presence-signals", "v": 2, "business": f"{p.stem} ({min(len(rows), max_rows)} leads)"[:120],
+             "made": dt.date.today().isoformat(), "source": "Public professional/business social search",
+             "engine": engine or "", "leads": []}
+    for i, row in enumerate(out[:min(len(rows), max_rows)]):
+        signals = json.loads(row.get("presence_signals") or "[]")
+        if not signals or len(shelf["leads"]) >= 60:
+            continue
+        normalized = normalized_rows[i] if i < len(normalized_rows) else {}
+        shelf["leads"].append({
+            "ref": f"{stem}-{i+1}",
+            "business": str(normalized.get("business") or row.get("business") or row.get("company") or "")[:160],
+            "website": str(normalized.get("website") or row.get("website") or "")[:500],
+            "city": str(normalized.get("city") or row.get("city") or "")[:120],
+            "contact_name": str(normalized.get("contact_name") or row.get("contact_name") or "")[:160],
+            "contact_title": str(normalized.get("contact_title") or row.get("contact_title") or "")[:160],
+            "email": str(normalized.get("email") or row.get("email") or "")[:254],
+            "status": row.get("presence_status", ""),
+            "signals": signals[:8],
+        })
     dest.with_name(dest.stem + "-shelf.json").write_text(json.dumps(shelf, ensure_ascii=False, indent=2), encoding="utf-8")
     extra = ""
     if engine:
