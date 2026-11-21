@@ -72,7 +72,10 @@ def _assessment(strong: list[dict], medium: list[dict]) -> dict:
 
 def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_hint: str = "any", checked_at: str = "") -> dict:
     """Return cautious archetype, role, and legal-form mention assessments with source IDs."""
-    signal_text = {str(s.get("id", "")): f"{s.get('title', '')} {s.get('snippet', '')}" for s in signals}
+    company_sources = [s for s in signals if s.get("identity_subject") == "company"]
+    person_sources = [s for s in signals if s.get("identity_subject") == "person" and s.get("identity_strength") != "insufficient"]
+    signal_text = {str(s.get("id", "")): f"{s.get('title', '')} {s.get('snippet', '')}"
+                   for s in company_sources}
     business = {}
     for key, rules in BUSINESS_RULES.items():
         strong, medium = [], []
@@ -91,11 +94,12 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
     if custom_role.strip():
         role_keys.insert(0, "custom")
     role_results = []
-    person_sources = [s for s in signals if str(s.get("type", "")).startswith("decision_maker")]
+    role_sources = [s for s in signals if s.get("identity_strength") != "insufficient"
+                    and (s.get("type") == "decision_maker_role_discovery" or s.get("identity_subject") == "person")]
     for role in role_keys:
         patterns = (re.escape(custom_role.strip()),) if role == "custom" and custom_role.strip() else ROLE_RULES.get(role, ())
         matches = []
-        for source in person_sources:
+        for source in role_sources:
             text = f"{source.get('title', '')} {source.get('snippet', '')}"
             cues = _matches(text, patterns) if patterns else []
             if cues:
@@ -111,7 +115,8 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
     }
     legal_mentions = {}
     for key, patterns in legal_patterns.items():
-        matches = [{"id": source_id, "cues": _matches(text, patterns)} for source_id, text in signal_text.items()]
+        matches = [{"id": str(source.get("id", "")), "cues": _matches(f"{source.get('title', '')} {source.get('snippet', '')}", patterns)}
+                   for source in company_sources for _unused in (0,)]
         matches = [m for m in matches if m["cues"]]
         legal_mentions[key] = {"status": "unverified mention found" if matches else "no mention found", "evidence_ids": [m["id"] for m in matches], "matched_cues": list(dict.fromkeys(c for m in matches for c in m["cues"]))}
 

@@ -134,6 +134,77 @@ def decision_maker_name(row: dict) -> str:
     return f"{first} {last}".strip() or full
 
 
+def _domain(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    parsed = urllib.parse.urlparse(value if "://" in value else "//" + value)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    return host
+
+
+def _ratio(expected: set[str], observed: set[str]) -> tuple[float, list[str]]:
+    matched = sorted(expected & observed)
+    return (len(matched) / len(expected) if expected else 0.0), matched
+
+
+def _source_identity(row: dict, kind: str, url: str, text: str) -> dict:
+    """Attach explicit company/person match cues before evidence reaches assessments."""
+    observed = _tokens(text)
+    company = business_profiles.row_value(row, "business", "company", "name", "current_company", "website", "domain")
+    company_terms = _tokens(company)
+    company_ratio, company_matches = _ratio(company_terms, observed)
+    city_terms = _tokens(business_profiles.row_value(row, "city"))
+    _, city_matches = _ratio(city_terms, observed)
+    target_domain = _domain(business_profiles.row_value(row, "website", "domain", "company_website"))
+    source_domain = _domain(url)
+    direct_domain = bool(target_domain and source_domain and (source_domain == target_domain or source_domain.endswith("." + target_domain)))
+
+    if kind in ("decision_maker_profile", "decision_maker_signal"):
+        person_terms = _tokens(decision_maker_name(row))
+        person_ratio, person_matches = _ratio(person_terms, observed)
+        current_company = _tokens(business_profiles.row_value(row, "decision_maker_current_company", "current_company") or company)
+        previous_company = _tokens(business_profiles.row_value(row, "decision_maker_last_company", "last_company", "previous_company"))
+        context_matches = []
+        for expected in (current_company, previous_company):
+            ratio, matches = _ratio(expected, observed)
+            if expected and ratio >= (0.67 if len(expected) > 1 else 1.0):
+                context_matches = matches
+                break
+        name_ok = bool(person_terms and person_ratio >= (0.67 if len(person_terms) > 1 else 1.0))
+        context_ok = bool(context_matches)
+        matched = name_ok and context_ok
+        return {
+            "identity_subject": "person",
+            "identity_match": "person_name_and_company" if matched else "weak",
+            "identity_strength": "strong" if matched and len(person_terms) > 1 else "moderate" if matched else "insufficient",
+            "identity_score": round(min(1.0, 0.55 * person_ratio + (0.45 if context_ok else 0)), 2),
+            "person_name_match_ratio": round(person_ratio, 2),
+            "matched_person_terms": person_matches,
+            "matched_person_company_terms": context_matches,
+            "matched_company_terms": company_matches,
+            "matched_city_terms": city_matches,
+            "matched_domain": direct_domain,
+        }
+
+    name_ok = bool(company_terms and company_ratio >= (0.67 if len(company_terms) > 1 else 1.0))
+    location_support = bool(city_matches and company_ratio >= 0.5)
+    matched = direct_domain or name_ok or location_support
+    identity_match = "direct_domain" if direct_domain else "company_name_and_location" if name_ok and city_matches else "company_name" if name_ok else "company_and_location" if location_support else "weak"
+    score = 1.0 if direct_domain else min(0.95, company_ratio + (0.15 if city_matches else 0))
+    return {
+        "identity_subject": "company",
+        "identity_match": identity_match,
+        "identity_strength": "strong" if direct_domain or (name_ok and city_matches) else "moderate" if matched else "insufficient",
+        "identity_score": round(score, 2),
+        "company_name_match_ratio": round(company_ratio, 2),
+        "matched_company_terms": company_matches,
+        "matched_city_terms": city_matches,
+        "matched_domain": direct_domain,
+        "target_domain": target_domain,
+    }
+
+
 def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_role: str = "") -> list[tuple[str, str]]:
     """Target a named professional and keep personal-profile evidence distinct from company evidence."""
     company = business_profiles.row_value(row, "business", "company", "name", "current_company")
@@ -159,15 +230,10 @@ def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_ro
 
 
 def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> tuple[list[dict], list[str]]:
-    company = business_profiles.row_value(row, "business", "company", "name", "current_company")
+    company = business_profiles.row_value(row, "business", "company", "name", "current_company", "website", "domain")
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
     person = decision_maker_name(row)
-    person_terms = _tokens(person)
-    person_company_terms = _tokens(" ".join((
-        business_profiles.row_value(row, "decision_maker_current_company", "current_company") or company,
-        business_profiles.row_value(row, "decision_maker_last_company", "last_company", "previous_company"),
-    )))
     signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal", "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
     role_candidates = business_profiles.infer_decision_roles(signal, decision_role)
     role_match_terms = set().union(*(_tokens(business_profiles.DECISION_ROLES[r]["terms"]) for r in role_candidates), _tokens(custom_role))
@@ -186,23 +252,20 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
                 continue
             seen.add(key)
             text = f"{item['title']} {item['snippet']} {key}".lower()
-            match = len(terms & _tokens(text))
-            matched_person_terms = sorted(person_terms & _tokens(text))
-            matched_person_company_terms = person_company_terms & _tokens(text)
-            if terms and match == 0 and (kind not in ("decision_maker_profile", "decision_maker_signal") or not matched_person_company_terms):
-                continue
-            # A personal profile result must match every supplied name token and the business.
-            if kind in ("decision_maker_profile", "decision_maker_signal") and (not person_terms or len(matched_person_terms) < len(person_terms) or not matched_person_company_terms):
+            identity = _source_identity(row, kind, key, text)
+            if identity["identity_strength"] == "insufficient":
                 continue
             if kind == "decision_maker_role_discovery" and not (role_match_terms & _tokens(text)):
                 continue
             host = urllib.parse.urlparse(key).hostname or ""
             social = any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS)
             found.append({"id": f"S{len(found)+1:02d}", "type": kind, "social_platform_result": social,
+                          **identity,
                           "title": item["title"], "snippet": item["snippet"], "url": key,
                           "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
-                          "match_terms": sorted(terms & _tokens(text)), "matched_person_terms": matched_person_terms if kind.startswith("decision_maker") else [],
-                          "matched_person_company_terms": sorted(matched_person_company_terms) if kind.startswith("decision_maker") else []})
+                          "match_terms": sorted(terms & _tokens(text)),
+                          "matched_person_terms": identity.get("matched_person_terms", []),
+                          "matched_person_company_terms": identity.get("matched_person_company_terms", [])})
         time.sleep(1.0)
     company_found = [s for s in found if not s["type"].startswith("decision_maker")]
     person_found = [s for s in found if s["type"].startswith("decision_maker")]
