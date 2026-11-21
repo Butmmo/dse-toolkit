@@ -10503,6 +10503,78 @@
       ],
       "timeout_min": 6,
       "outputs": []
+    },
+    "dse.formula_assist": {
+      "label": "Grids: suggest a formula (local AI)",
+      "group": "Grow",
+      "help": "Suggests a grid formula from your plain-language description using an Ollama model installed on this PC. Your request passes through Citadel's HQ job queue to this PC, then goes to local Ollama, not a cloud AI. The formula is only a suggestion; review and validate it in the grid before saving.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "formula-assist"
+        },
+        {
+          "opt": "--request",
+          "field": "request"
+        },
+        {
+          "opt": "--columns",
+          "field": "columns"
+        },
+        {
+          "opt": "--result-type",
+          "field": "result_type"
+        },
+        {
+          "opt": "--model",
+          "field": "model"
+        },
+        {
+          "opt": "--current-formula",
+          "field": "current_formula"
+        }
+      ],
+      "fields": [
+        {
+          "name": "request",
+          "label": "Formula description",
+          "type": "text",
+          "required": true,
+          "max": 2000
+        },
+        {
+          "name": "columns",
+          "label": "Available grid columns (JSON)",
+          "type": "text",
+          "required": true,
+          "max": 5000
+        },
+        {
+          "name": "result_type",
+          "label": "Expected result type",
+          "type": "text",
+          "required": false,
+          "default": "text",
+          "max": 20
+        },
+        {
+          "name": "model",
+          "label": "Local Ollama model",
+          "type": "text",
+          "required": false,
+          "default": "auto",
+          "max": 80
+        },
+        {
+          "name": "current_formula",
+          "label": "Current formula to improve",
+          "type": "text",
+          "required": false,
+          "max": 500
+        }
+      ],
+      "timeout_min": 5,
+      "outputs": []
     }
   },
   "periodic": [

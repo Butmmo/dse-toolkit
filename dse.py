@@ -76,6 +76,9 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "digest":      # your week in numbers: python dse.py digest [--week YYYY-MM-DD]
         from dse import digest
         sys.exit(digest.run_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "formula-assist":
+        from dse.formula_assist import main as formula_assist_main
+        sys.exit(formula_assist_main(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "claude":      # connect your own Claude key (kept on this PC only): python dse.py claude --help
         from dse import claudekey
         sys.exit(claudekey.run_cli(sys.argv[2:]))
