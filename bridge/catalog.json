@@ -10064,7 +10064,7 @@
     "dse.enrich_signals": {
       "label": "Lead signals: research and draft outreach",
       "group": "Grow",
-      "help": "Researches company, product and news signals. Choose a business type and role path, or let the lead signal suggest roles. Results include source-linked heuristic business and role assessments. Scores are evidence cues, not probabilities or verified facts; legal form is never verified here. Optional local AI email drafts cite retrieved evidence and are never sent. Public social signals are handled by a separate Presence tool.",
+      "help": "Researches public company, product and news results for the Herald-facing lane. Choose a business type and role path to steer searches, or let the lead signal suggest several roles. Choose DuckDuckGo for the default search source, or Brave Search with a key stored on this PC; Brave API usage can incur prepaid charges. Configure BRAVE_SEARCH_API_KEY and set it locally before selecting Brave. The CSV includes source-linked heuristic business and role assessments. Scores are evidence cues, not probabilities or verified facts; legal form is never verified here. If Ollama is running on this PC, a local model can draft an email subject and body using retrieved evidence. The draft is advisory and is never sent. Public social signals are handled by a separate Presence tool.",
       "script": "dse.py",
       "args": [
         {
@@ -10100,6 +10100,10 @@
         {
           "opt": "--legal-form",
           "field": "legal_form"
+        },
+        {
+          "opt": "--search-provider",
+          "field": "search_provider"
         },
         {
           "flag": "--no-ai",
@@ -10252,6 +10256,23 @@
           "type": "text",
           "required": false,
           "max": 80
+        },
+        {
+          "name": "search_provider",
+          "label": "Public search source (Brave requires PC key; API use may be chargeable)",
+          "type": "choice",
+          "required": false,
+          "default": "duckduckgo",
+          "choices": [
+            {
+              "value": "duckduckgo",
+              "label": "DuckDuckGo (default)"
+            },
+            {
+              "value": "brave",
+              "label": "Brave Search API (my PC-local key)"
+            }
+          ]
         },
         {
           "name": "legal_form",
@@ -10481,6 +10502,78 @@
         }
       ],
       "timeout_min": 6,
+      "outputs": []
+    },
+    "dse.formula_assist": {
+      "label": "Grids: suggest a formula (local AI)",
+      "group": "Grow",
+      "help": "Suggests a grid formula from your plain-language description using an Ollama model installed on this PC. Your request passes through Citadel's HQ job queue to this PC, then goes to local Ollama, not a cloud AI. The formula is only a suggestion; review and validate it in the grid before saving.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "formula-assist"
+        },
+        {
+          "opt": "--request",
+          "field": "request"
+        },
+        {
+          "opt": "--columns",
+          "field": "columns"
+        },
+        {
+          "opt": "--result-type",
+          "field": "result_type"
+        },
+        {
+          "opt": "--model",
+          "field": "model"
+        },
+        {
+          "opt": "--current-formula",
+          "field": "current_formula"
+        }
+      ],
+      "fields": [
+        {
+          "name": "request",
+          "label": "Formula description",
+          "type": "text",
+          "required": true,
+          "max": 2000
+        },
+        {
+          "name": "columns",
+          "label": "Available grid columns (JSON)",
+          "type": "text",
+          "required": true,
+          "max": 5000
+        },
+        {
+          "name": "result_type",
+          "label": "Expected result type",
+          "type": "text",
+          "required": false,
+          "default": "text",
+          "max": 20
+        },
+        {
+          "name": "model",
+          "label": "Local Ollama model",
+          "type": "text",
+          "required": false,
+          "default": "auto",
+          "max": 80
+        },
+        {
+          "name": "current_formula",
+          "label": "Current formula to improve",
+          "type": "text",
+          "required": false,
+          "max": 500
+        }
+      ],
+      "timeout_min": 5,
       "outputs": []
     }
   },

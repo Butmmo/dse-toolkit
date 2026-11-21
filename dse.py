@@ -76,6 +76,9 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "digest":      # your week in numbers: python dse.py digest [--week YYYY-MM-DD]
         from dse import digest
         sys.exit(digest.run_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "formula-assist":
+        from dse.formula_assist import main as formula_assist_main
+        sys.exit(formula_assist_main(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "claude":      # connect your own Claude key (kept on this PC only): python dse.py claude --help
         from dse import claudekey
         sys.exit(claudekey.run_cli(sys.argv[2:]))
@@ -232,6 +235,7 @@ def main():
     se.add_argument("--decision-role", choices=list(signal_enrichment.business_profiles.DECISION_ROLES), default="signal_based", help="role to find, or infer several role targets from the supplied lead signal")
     se.add_argument("--custom-role", default="", help="optional role title to search in addition to inferred or preset roles")
     se.add_argument("--legal-form", choices=["any", "us_c_corp", "us_s_corp"], default="any", help="US C-Corp/S-Corp search hint only; results are not legal verification")
+    se.add_argument("--search-provider", choices=["duckduckgo", "brave"], default="duckduckgo", help="public search provider; Brave requires a PC-local key and uses your API allowance")
     se.add_argument("--no-ai", action="store_true", help="collect sourced search signals without asking local Ollama to draft email")
     ps = sub.add_parser("presence-signals", help="collect separate public professional/social signals for Presence (no outreach draft)")
     ps.add_argument("source", help="CSV with a company name; contact name and city improve matching")
@@ -308,7 +312,7 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "signals":
         try:
-            print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role))
+                print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role, a.search_provider))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "presence-signals":

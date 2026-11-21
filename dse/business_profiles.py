@@ -41,6 +41,40 @@ DECISION_ROLES = {
     "founder": {"label": "Founder", "terms": "founder co-founder owner"},
 }
 
+# Signal phrases are research cues, not proof that an event occurred.
+SIGNAL_EVENT_RULES = {
+    "hiring": {"label": "Hiring or talent need", "patterns": (r"\bhir(?:e|ing|es|ed)\b", r"\brecruit(?:ing|ment|er)?\b", r"\bjob opening\b", r"\bopen roles?\b"), "roles": ("hr", "dev_hiring_manager", "director")},
+    "funding": {"label": "Funding or financing", "patterns": (r"\bfundrais(?:e|ing)\b", r"\bfunding\b", r"\braised?\s+(?:\$|\w+\s+)?(?:seed|series\s+[a-f])\b", r"\bseries\s+[a-f]\b", r"\bventure capital\b"), "roles": ("ceo", "founder", "president")},
+    "expansion": {"label": "Market or location expansion", "patterns": (r"\bexpand(?:ing|ed|s)?\b", r"\bnew location\b", r"\bopening (?:a |an )?(?:new )?(?:office|store|location)\b", r"\bentering (?:the )?\w+ market\b"), "roles": ("coo", "ceo", "director")},
+    "product_launch": {"label": "Product or service launch", "patterns": (r"\blaunch(?:ed|es|ing)?\b", r"\bnew product\b", r"\bproduct release\b", r"\bnow available\b"), "roles": ("cto", "vp_sales", "director")},
+    "leadership_change": {"label": "Leadership change", "patterns": (r"\bappointed\b", r"\bnamed (?:as|the)\b", r"\bjoins? as\b", r"\bpromoted to\b", r"\bsteps? down\b", r"\bnew (?:ceo|coo|cto|president|chief executive)\b"), "roles": ("ceo", "president", "coo", "director")},
+    "technology_security": {"label": "Technology or security change", "patterns": (r"\bcyber ?security\b", r"\bdata breach\b", r"\bcloud migration\b", r"\btechnology stack\b", r"\btech stack\b", r"\bimplements? (?:a )?(?:new )?(?:erp|crm|platform)\b"), "roles": ("cto", "dev_hiring_manager", "director")},
+    "revenue_growth": {"label": "Revenue or sales growth", "patterns": (r"\brevenue growth\b", r"\bsales growth\b", r"\brevenue increased\b", r"\bsales increased\b", r"\bcustomer growth\b"), "roles": ("vp_sales", "ceo", "director")},
+    "operations": {"label": "Operations or fulfillment", "patterns": (r"\bsupply chain\b", r"\bfulfil?ment\b", r"\bwarehouse\b", r"\boperational efficiency\b", r"\boperations? expansion\b"), "roles": ("coo", "director")},
+    "regulatory_compliance": {"label": "Regulatory or compliance", "patterns": (r"\bcompliance\b", r"\bregulat(?:ion|ory)\b", r"\bcertif(?:ication|ied)\b", r"\blicen[cs]e[sd]?\b", r"\bdata protection\b", r"\baudit\b"), "roles": ("director", "coo", "ceo")},
+    "customer_trust": {"label": "Customer trust or review signal", "patterns": (r"\bcustomer reviews?\b", r"\bonline reviews?\b", r"\breputation\b", r"\bcustomer satisfaction\b", r"\bsupport complaints?\b", r"\brating[s]?\b"), "roles": ("vp_sales", "director", "ceo")},
+    "franchise_growth": {"label": "Franchise or multi-unit growth", "patterns": (r"\bfranchis(?:e|es|ing|or|ee|ees)\b", r"\bmulti[- ]unit\b", r"\bmultiple locations\b"), "roles": ("founder", "ceo", "coo", "president")},
+}
+
+
+def assess_signal_events(text: str, *, subject: str, source: dict | None = None) -> list[dict]:
+    """Map a text cue to event categories and role families without asserting it is verified."""
+    import re
+    source = source or {}
+    content = str(text or "")
+    events = []
+    for key, rule in SIGNAL_EVENT_RULES.items():
+        matched = [pattern for pattern in rule["patterns"] if re.search(pattern, content, re.IGNORECASE)]
+        if matched:
+            events.append({"category": key, "label": rule["label"], "subject": subject,
+                           "matched_cues": matched, "suggested_roles": list(rule["roles"]),
+                           "source_id": str(source.get("id", "")), "source_type": str(source.get("type") or source.get("source_type", "")),
+                           "source_host": str(source.get("source_host", "")), "url": str(source.get("url", "")),
+                           "publication_date": str(source.get("publication_date", "")),
+                           "freshness_status": str(source.get("freshness_status", "undated")),
+                           "evidence_status": "unverified research cue"})
+    return events
+
 
 def infer_decision_role(signal: str, selected: str = "signal_based") -> tuple[str, str]:
     """Choose a role from the lead signal; explicit user choice always takes precedence."""
@@ -71,6 +105,8 @@ def infer_decision_roles(signal: str, selected: str = "signal_based") -> list[st
         roles.extend(("founder", "ceo", "president"))
     if any(n in text for n in ("enterprise", "board", "executive leadership")):
         roles.extend(("ceo", "president", "coo"))
+    for event in assess_signal_events(signal, subject="company"):
+        roles.extend(event["suggested_roles"])
     return list(dict.fromkeys(roles or ["director", "ceo", "founder"]))
 
 

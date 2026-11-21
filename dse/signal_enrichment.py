@@ -12,6 +12,7 @@ import re
 import sys
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -26,11 +27,17 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_company_findings", "herald_company_sources", "herald_person_findings", "herald_person_sources",
               "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_assessed_at", "herald_assessment_note",
               "herald_identity_summary",
-              "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
+              "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
+              "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
+BRAVE_SEARCH_REQUESTS = 0
+
+
+class SearchProviderError(RuntimeError):
+    """A safe-to-display provider configuration or response error."""
 
 
 class Results(HTMLParser):
@@ -82,8 +89,51 @@ def _clean_url(url: str) -> str:
     return url if p.scheme in ("https", "http") and p.hostname else ""
 
 
-def search(query: str, limit: int = 2) -> list[dict]:
-    """Fetch result snippets only. Search-result targets are recorded but never crawled here."""
+def search(query: str, limit: int = 2, provider: str = "duckduckgo") -> list[dict]:
+    """Fetch search snippets only; the selected provider is explicit and recorded."""
+    global BRAVE_SEARCH_REQUESTS
+    provider = (provider or "duckduckgo").strip().casefold()
+    if provider not in ("duckduckgo", "brave"):
+        raise SearchProviderError("Choose DuckDuckGo or Brave Search as the public search provider.")
+    if provider == "brave":
+        api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
+        if not api_key:
+            raise SearchProviderError("Brave Search was selected, but BRAVE_SEARCH_API_KEY is not set on this PC.")
+        try:
+            request_limit = int(os.environ.get("DSE_BRAVE_SEARCH_QUERY_LIMIT", "150"))
+        except ValueError:
+            request_limit = 150
+        request_limit = max(1, min(1000, request_limit))
+        if BRAVE_SEARCH_REQUESTS >= request_limit:
+            raise SearchProviderError(f"Brave Search reached this run's query cap ({request_limit}).")
+        BRAVE_SEARCH_REQUESTS += 1
+        params = urllib.parse.urlencode({"q": query, "count": max(1, min(20, limit)), "safesearch": "moderate"})
+        req = urllib.request.Request(
+            "https://api.search.brave.com/res/v1/web/search?" + params,
+            headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                data = json.loads(response.read(1_500_000))
+        except urllib.error.HTTPError as error:
+            raise SearchProviderError(f"Brave Search API returned HTTP {error.code}.") from None
+        except (urllib.error.URLError, TimeoutError):
+            raise SearchProviderError("Brave Search API could not be reached from this PC.") from None
+        except (ValueError, TypeError):
+            raise SearchProviderError("Brave Search API returned an unreadable response.") from None
+        out, seen = [], set()
+        for item in (data.get("web") or {}).get("results", []):
+            target = _clean_url(item.get("url", ""))
+            title = re.sub(r"\s+", " ", str(item.get("title", ""))).strip()
+            snippet = re.sub(r"\s+", " ", str(item.get("description", ""))).strip()
+            if target and title and target not in seen:
+                seen.add(target)
+                out.append({"title": title[:240], "snippet": snippet[:700], "url": target,
+                            "provider": "Brave Search API", "publication_date_hint": item.get("page_age") or item.get("age") or ""})
+            if len(out) >= limit:
+                break
+        return out
+
     url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
     with urllib.request.urlopen(req, timeout=15) as response:
@@ -97,7 +147,8 @@ def search(query: str, limit: int = 2) -> list[dict]:
         snippet = re.sub(r"\s+", " ", html.unescape(item.get("snippet", ""))).strip()
         if target and title and target not in seen:
             seen.add(target)
-            out.append({"title": title[:240], "snippet": snippet[:700], "url": target})
+            out.append({"title": title[:240], "snippet": snippet[:700], "url": target,
+                        "provider": "DuckDuckGo public web results"})
         if len(out) >= limit:
             break
     return out
@@ -123,7 +174,7 @@ def queries_for(row: dict, business_profile: str = "any", decision_maker: str = 
     person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
     signal_terms = re.sub(r"\s+", " ", company_signal)[:100] or "hiring funding launch expansion new product leadership"
     q.append(("company_signal", f'"{company}"{suffix} {signal_terms}'[:300]))
-    roles = business_profiles.infer_decision_roles(supplied_signal, decision_role)
+    roles = business_profiles.infer_decision_roles(company_signal, decision_role)
     role_terms = " ".join([*(business_profiles.DECISION_ROLES[r]["terms"] for r in roles), custom_role.strip()[:80]])
     q.append(("decision_maker_role_discovery", f'"{company}" {role_terms} {signal_terms} site:linkedin.com/in OR site:linkedin.com/company'[:300]))
     if person_signal:
@@ -152,6 +203,61 @@ def _domain(value: str) -> str:
 def _ratio(expected: set[str], observed: set[str]) -> tuple[float, list[str]]:
     matched = sorted(expected & observed)
     return (len(matched) / len(expected) if expected else 0.0), matched
+
+
+def _publication_date(title: str, snippet: str, date_hint: str = "") -> dict:
+    """Extract only an explicit or relative publication date; search time is not publication time."""
+    text = html.unescape(f"{date_hint or ''} {title or ''} {snippet or ''}")
+    now = dt.datetime.now(dt.timezone.utc).date()
+    published = None
+    precision = "unknown"
+    basis = ""
+    iso = re.search(r"\b(20\d{2})-(0?[1-9]|1[0-2])-([0-2]?\d|3[01])\b", text)
+    if iso:
+        try:
+            published = dt.date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+            precision, basis = "day", iso.group(0)
+        except ValueError:
+            pass
+    if not published:
+        month_day = re.search(r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(20\d{2})\b", text, re.IGNORECASE)
+        if month_day:
+            value = f"{month_day.group(1).rstrip('.')[:3]} {month_day.group(2)} {month_day.group(3)}"
+            for fmt in ("%b %d %Y",):
+                try:
+                    published = dt.datetime.strptime(value, fmt).date()
+                    precision, basis = "day", month_day.group(0)
+                    break
+                except ValueError:
+                    continue
+    if not published:
+        month_year = re.search(r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(20\d{2})\b", text, re.IGNORECASE)
+        if month_year:
+            try:
+                published = dt.datetime.strptime(f"{month_year.group(1).rstrip('.')[:3]} {month_year.group(2)}", "%b %Y").date().replace(day=1)
+                precision, basis = "month", month_year.group(0)
+            except ValueError:
+                pass
+    if not published:
+        relative = re.search(r"\b(\d{1,3})\s+(day|week|month|year)s?\s+ago\b", text, re.IGNORECASE)
+        if relative:
+            amount = int(relative.group(1))
+            unit = relative.group(2).lower()
+            days = amount if unit == "day" else amount * 7 if unit == "week" else amount * 30 if unit == "month" else amount * 365
+            published = now - dt.timedelta(days=days)
+            precision, basis = f"relative_{unit}", relative.group(0)
+        elif re.search(r"\byesterday\b", text, re.IGNORECASE):
+            published, precision, basis = now - dt.timedelta(days=1), "relative_day", "yesterday"
+        elif re.search(r"\btoday\b", text, re.IGNORECASE):
+            published, precision, basis = now, "relative_day", "today"
+    if not published:
+        return {"publication_date": "", "date_precision": "unknown", "date_evidence": "",
+                "freshness_status": "undated", "age_days": None, "freshness_score": 0.0}
+    age_days = (now - published).days
+    status = "future_dated" if age_days < 0 else "recent" if age_days <= 90 else "aging" if age_days <= 365 else "stale"
+    score = 0.0 if age_days < 0 else 1.0 if age_days <= 90 else 0.55 if age_days <= 365 else 0.15
+    return {"publication_date": published.isoformat(), "date_precision": precision, "date_evidence": basis,
+            "freshness_status": status, "age_days": max(0, age_days), "freshness_score": score}
 
 
 def _source_identity(row: dict, kind: str, url: str, text: str) -> dict:
@@ -235,7 +341,7 @@ def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_ro
     return [("decision_maker_profile", profile_query[:300]), ("decision_maker_signal", signal_query[:300])]
 
 
-def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> tuple[list[dict], list[str]]:
+def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo") -> tuple[list[dict], list[str]]:
     company = business_profiles.row_value(row, "business", "company", "name", "current_company", "website", "domain")
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
@@ -254,7 +360,11 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
     queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role) + decision_maker_queries_for(row, decision_maker, custom_role)
     for kind, query in queries:
         try:
-            results = search(query)
+            results = search(query, provider=search_provider)
+        except SearchProviderError as e:
+            if str(e) not in errors:
+                errors.append(str(e))
+            continue
         except Exception as e:
             errors.append(type(e).__name__)
             continue
@@ -270,11 +380,13 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             if kind.startswith("decision_maker_role_discovery") and not (role_match_terms & _tokens(text)):
                 continue
             host = urllib.parse.urlparse(key).hostname or ""
+            host = host.lower().removeprefix("www.")
             social = any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS)
             source = {"id": f"S{len(found)+1:02d}", "type": kind, "query_matches": [{"type": kind, "query": query}], "social_platform_result": social,
                           **identity,
-                          "title": item["title"], "snippet": item["snippet"], "url": key,
-                          "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
+                          **_publication_date(item["title"], item["snippet"], item.get("publication_date_hint", "")),
+                          "source_host": host, "title": item["title"], "snippet": item["snippet"], "url": key,
+                          "query": query, "provider": item.get("provider", "DuckDuckGo public web results"), "retrieved_at": searched_at,
                           "match_terms": sorted(terms & _tokens(text)),
                           "matched_person_terms": identity.get("matched_person_terms", []),
                           "matched_person_company_terms": identity.get("matched_person_company_terms", [])}
@@ -359,24 +471,57 @@ def _ollama_model() -> str:
 def draft(row: dict, signals: list[dict], model: str) -> dict:
     if not signals or not model:
         return {}
-    evidence = [{"id": s["id"], "subject": "decision maker" if str(s.get("type", "")).startswith("decision_maker") else "company",
-                 "evidence_type": s.get("type", "business"), "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
-    company = (row.get("business") or row.get("company") or row.get("Company") or "").strip()
-    user = {"company": company, "city": row.get("city") or row.get("City") or "", "offer": row.get("offer") or row.get("gap_line") or row.get("lead_why") or "",
+    evidence = [{"id": s["id"], "subject": s.get("identity_subject", "unknown"),
+                 "evidence_type": s.get("type", "business"), "identity_match": s.get("identity_match", ""),
+                 "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
+                 "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
+                 "matched_company_terms": s.get("matched_company_terms", []), "matched_person_terms": s.get("matched_person_terms", []),
+                 "source_host": s.get("source_host", ""), "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
+    company = business_profiles.row_value(row, "business", "company", "Company", "name")
+    person_context = {
+        "first_name": business_profiles.row_value(row, "decision_maker_first_name", "contact_first_name", "first_name", "contact_first"),
+        "last_name": business_profiles.row_value(row, "decision_maker_last_name", "contact_last_name", "last_name", "contact_last"),
+        "current_position": business_profiles.row_value(row, "current_position", "contact_title", "decision_maker_title"),
+        "previous_position": business_profiles.row_value(row, "last_position", "previous_position", "decision_maker_last_position"),
+        "current_company": business_profiles.row_value(row, "decision_maker_current_company", "current_company") or company,
+        "previous_company": business_profiles.row_value(row, "decision_maker_last_company", "last_company", "previous_company"),
+        "lead_signal": business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal"),
+    }
+    company_context = {
+        "name": company,
+        "lead_signal": business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal"),
+    }
+    try:
+        candidate_context = json.loads(row.get("herald_people_candidates") or "[]")[:5]
+    except (ValueError, TypeError):
+        candidate_context = []
+    user = {"company": company, "person_context": person_context, "company_context": company_context,
+            "city": business_profiles.row_value(row, "city"), "offer": business_profiles.row_value(row, "offer", "gap_line", "lead_why"),
             "target_business_profile": row.get("enrichment_target_profile", "any"), "target_decision_maker": row.get("enrichment_target_decision_maker", "any"),
             "target_role": row.get("enrichment_target_role", "signal_based"), "signal_based_role_candidates": row.get("herald_role_candidates", "[]"),
             "legal_form_search_hint": row.get("enrichment_target_legal_form", "any"),
-            "evidence": evidence}
+            "ranked_people_candidates": candidate_context,
+            "role_evidence_assessment": row.get("herald_role_assessment", "{}"), "evidence": evidence,
+            "allowed_role_labels": [item.get("label", "") for item in json.loads(row.get("herald_role_candidates") or "[]") if isinstance(item, dict)]}
     payload = json.dumps({"model": model, "stream": False, "keep_alive": "30m", "format": "json",
         "options": {"num_ctx": 8192, "num_predict": 450, "temperature": 0.2},
         "messages": [{"role": "system", "content": (
-            "Draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
+            "Review the evidence and draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
+            "Keep company evidence, named-person evidence, personal lead signals, and company lead signals distinct. "
+            "A signal supplied as search context is not proof: mention it only if an identity-matched source snippet independently supports it. "
+            "Do not describe aging or stale evidence as recent; when a source date is absent, do not imply recency. "
+            "Prefer a supported current position over a previous position; never present a previous role as current. "
+            "Use a candidate's name or role only when person evidence is explicitly matched; company role-discovery results alone do not verify an individual's identity. "
             "Search snippets can be wrong: do not state a claim as fact unless its source ID is returned. Target profiles and heuristic assessments are review aids, not verified company facts; "
             "never claim a business is a franchise, SaaS company, enterprise or C-Corp/S-Corp without clear supplied evidence. Keep company facts and named-person facts distinct. "
             "Only describe a current or former position/company when the cited evidence explicitly supports it. Never claim prior contact, "
             "personal familiarity, urgency, private knowledge, or guaranteed results. If evidence is weak, return empty subject/body. "
-            "Do not include citations in the email text. Return JSON only with subject, body, evidence_ids. The body should be under 90 words, "
-            "plain and low-pressure, with one clear question and an easy opt-out."
+            "Also return a source-grounded review: company_summary and company_evidence_ids; person_summary and person_evidence_ids; "
+            "role_observations as objects with role (choose only an exact allowed_role_labels value) and evidence_ids; and open_questions as short strings. "
+            "Summaries must be empty when there is no matching subject evidence. Use only supplied source IDs, and never use a person source to support a company summary or vice versa. "
+            "Do not include citations in email text. Return JSON only with subject, body, evidence_ids, company_summary, company_evidence_ids, "
+            "person_summary, person_evidence_ids, role_observations, and open_questions. The body should be under 90 words, plain and low-pressure, "
+            "with one clear question and an easy opt-out."
         )}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]}, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request("http://localhost:11434/api/chat", payload, {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=120) as response:
@@ -387,12 +532,60 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
     except (ValueError, TypeError):
         return {}
     ids = {s["id"] for s in signals}
+    company_ids = {s["id"] for s in signals if s.get("identity_subject") == "company"}
+    person_ids = {s["id"] for s in signals if s.get("identity_subject") == "person"}
     used = [x for x in result.get("evidence_ids", []) if isinstance(x, str) and x in ids]
     subject = re.sub(r"\s+", " ", str(result.get("subject", ""))).strip()[:120]
     body = str(result.get("body", "")).strip()[:1200]
-    if not subject or not body or not used:
-        return {}
-    return {"outreach_subject": subject, "outreach_body": body, "outreach_evidence": ", ".join(used), "outreach_model": model}
+    cited = [s for s in signals if s.get("id") in used]
+    evidence_detail = [{"id": s["id"], "subject": s.get("identity_subject", "unknown"),
+                        "evidence_type": s.get("type", ""), "identity_match": s.get("identity_match", ""),
+                        "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
+                        "source_host": s.get("source_host", ""),
+                        "title": s.get("title", ""), "url": s.get("url", ""),
+                        "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
+                        "retrieved_at": s.get("retrieved_at", "")} for s in cited]
+    basis = "; ".join(f"{s['id']} ({s.get('identity_subject', 'unknown')}: {s.get('identity_strength', 'unknown')} {s.get('identity_match', 'match')})" for s in cited)
+    def valid_ids(value, allowed):
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(item for item in value if isinstance(item, str) and item in allowed))
+    company_review_ids = valid_ids(result.get("company_evidence_ids"), company_ids)
+    person_review_ids = valid_ids(result.get("person_evidence_ids"), person_ids)
+    company_summary = str(result.get("company_summary", "")).strip()[:500] if company_review_ids else ""
+    person_summary = str(result.get("person_summary", "")).strip()[:500] if person_review_ids else ""
+    role_review = []
+    try:
+        role_assessment = json.loads(row.get("herald_role_assessment") or "{}")
+    except (ValueError, TypeError):
+        role_assessment = {}
+    allowed_roles = {str(item.get("label", "")): set(item.get("evidence_ids", []))
+                     for item in role_assessment.get("roles", []) if isinstance(item, dict)}
+    for item in result.get("role_observations", []) if isinstance(result.get("role_observations", []), list) else []:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "")).strip()
+        role_ids = valid_ids(item.get("evidence_ids"), ids)
+        validated_role_ids = [source_id for source_id in role_ids if source_id in allowed_roles.get(role, set())]
+        if validated_role_ids:
+            role_review.append({"role": role, "evidence_ids": validated_role_ids})
+    open_questions = [re.sub(r"\s+", " ", str(question)).strip()[:240]
+                      for question in result.get("open_questions", []) if isinstance(question, str)][:5] if isinstance(result.get("open_questions", []), list) else []
+    has_review = bool(company_summary or person_summary or role_review or open_questions)
+    output = {}
+    if has_review:
+        ai_review = {"company_summary": company_summary, "company_evidence_ids": company_review_ids,
+                     "person_summary": person_summary, "person_evidence_ids": person_review_ids,
+                     "role_observations": role_review, "open_questions": open_questions,
+                     "basis": "Local-model synthesis constrained to returned public snippets; verify all cited sources."}
+        output.update({"herald_ai_review": json.dumps(ai_review, ensure_ascii=False, separators=(",", ":")),
+                       "herald_ai_reviewed_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                       "herald_ai_review_model": model})
+    if subject and body and used:
+        output.update({"outreach_subject": subject, "outreach_body": body, "outreach_evidence": ", ".join(used),
+                       "outreach_evidence_detail": json.dumps(evidence_detail, ensure_ascii=False, separators=(",", ":")),
+                       "outreach_personalization_basis": basis, "outreach_model": model})
+    return output
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -404,7 +597,7 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 
 
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
-                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> str:
+                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo") -> str:
     p = Path(source)
     if not p.is_absolute():
         p = (ROOT / source) if (ROOT / source).is_file() else p
@@ -421,6 +614,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         raise ValueError(str(e)) from None
     if decision_role not in business_profiles.DECISION_ROLES:
         raise ValueError("Choose a decision-maker role from the listed options.")
+    if search_provider not in ("duckduckgo", "brave"):
+        raise ValueError("Choose DuckDuckGo or Brave Search as the public search provider.")
     custom_role = re.sub(r"[^A-Za-z0-9 /&'-]", "", custom_role).strip()[:80]
     strategy = business_profiles.strategy_text(business_profile, decision_maker, legal_form, decision_role) + (f" Custom role target: {custom_role}." if custom_role else "")
     model = _ollama_model() if use_ai else ""
@@ -460,15 +655,17 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_people_candidates"] = ""
         row["enrichment_target_legal_form"] = legal_form
         row["enrichment_search_strategy"] = strategy
-        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role)
+        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role, search_provider=search_provider)
         errors.extend(row_errors)
         identity_summary = {}
         for subject in ("company", "person"):
             subject_signals = [s for s in signals if s.get("identity_subject") == subject]
             counts = {strength: sum(s.get("identity_strength") == strength for s in subject_signals)
                       for strength in ("strong", "moderate", "insufficient")}
+            hosts = sorted({s.get("source_host", "") for s in subject_signals if s.get("source_host")})
             identity_summary[subject] = {
                 "matched_sources": len(subject_signals), "strength_counts": counts,
+                "distinct_source_hosts": len(hosts), "source_hosts": hosts,
                 "best_match_score": max((s.get("identity_score", 0) for s in subject_signals), default=0),
                 "match_types": list(dict.fromkeys(s.get("identity_match", "") for s in subject_signals)),
             }
@@ -487,19 +684,23 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_people_candidates"] = json.dumps(assessment["people_candidates"], ensure_ascii=False, separators=(",", ":"))
         row["herald_business_assessment"] = json.dumps(assessment["business_profiles"], ensure_ascii=False, separators=(",", ":"))
         row["herald_role_assessment"] = json.dumps({"roles": assessment["decision_maker_roles"], "people": assessment["people_candidates"]}, ensure_ascii=False, separators=(",", ":"))
+        row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "events": assessment["signal_events"]}, ensure_ascii=False, separators=(",", ":"))
         row["herald_legal_form_assessment"] = json.dumps(assessment["legal_form_mentions"], ensure_ascii=False, separators=(",", ":"))
         row["herald_assessed_at"] = checked_at
         row["herald_assessment_note"] = assessment["basis"]
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
-        row.update({k: "" for k in ("outreach_subject", "outreach_body", "outreach_evidence", "outreach_model")})
+        row.update({k: "" for k in ("herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model", "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
         if model and signals:
             try:
                 generated = draft(row, signals, model)
                 if generated:
                     row.update(generated)
-                    row["herald_status"] = row["research_status"] = "draft ready for human review"
-                    drafted += 1
+                    if generated.get("outreach_body"):
+                        row["herald_status"] = row["research_status"] = "draft ready for human review"
+                        drafted += 1
+                    elif generated.get("herald_ai_review"):
+                        row["herald_status"] = row["research_status"] = "local AI evidence review ready"
             except Exception as e:
                 errors.append(type(e).__name__)
         out.append(row)
@@ -516,11 +717,19 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
     date = dt.date.today().isoformat()
     dest = LISTS / f"{date}-researched-{stem}.csv"
     _write_csv(dest, out)
+    processed = out[:min(len(rows), max_rows)]
+    collected_sources = [source for row in processed for source in json.loads(row.get("herald_sources") or "[]")]
+    dated_sources = sum(bool(source.get("publication_date")) for source in collected_sources)
+    stale_sources = sum(source.get("freshness_status") == "stale" for source in collected_sources)
     report = [f"# Lead signals: {p.name}", "", f"- Searched: {min(len(rows), max_rows)} of {len(rows)} rows",
+              f"- Public search provider: {search_provider}",
+              f"- Brave API queries used: {BRAVE_SEARCH_REQUESTS}" if search_provider == "brave" else "- Brave API queries used: 0",
               f"- Business profile target: {bp['label']}", f"- Decision-maker path: {dm['label']}", f"- Decision-maker role target: {custom_role or business_profiles.DECISION_ROLES[decision_role]['label']}", f"- Legal-form search: {lf['label']}",
               "- Target selections guide search queries only; they are not business classifications or legal verification.",
               f"- Leads with public results: {sum(bool(r['research_sources']) for r in out[:min(len(rows), max_rows)])}",
               f"- Leads with at least one strong identity match: {sum(bool(r.get('herald_identity_summary') and any(json.loads(r['herald_identity_summary'])[subject]['strength_counts']['strong'] for subject in ('company', 'person'))) for r in out[:min(len(rows), max_rows)])}",
+              f"- Sources with an explicit or relative publication date: {dated_sources} of {len(collected_sources)}",
+              f"- Sources marked stale by the date heuristic: {stale_sources}",
               f"- Local AI drafts ready for review: {drafted}", f"- Local model: {model or 'not used / unavailable'}", "",
               "## Review before use", "", "Search snippets are leads for human review, not verified facts. Open the linked source before using a claim in outreach. Nothing was sent.", ""]
     if errors:
