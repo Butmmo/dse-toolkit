@@ -15,8 +15,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 from .common import DATA, ROOT
 
@@ -27,6 +29,9 @@ RESTART = "Stop the runner (close its window, or end the task) and start it agai
 # What the newest toolkit offers: tool key -> the feature it carries (a catalog without it is older than this toolkit)
 EXPECTED_TOOLS = {"dse.brief": "the Daily Brief", "dse.crm": "CRM sync", "dse.voices_setup": "the Voices library", "dse.mypack": "your own website checks", "dse.call_prep": "the Call Desk",
                   "chat.ask": "DBI-AI", "dse.mytool_check": "My tools"}
+UPDATE_CACHE = DATA / "toolkit-update-check.json"
+UPDATE_CACHE_S = 3600
+UPDATE_API = "https://api.github.com/repos/Butmmo/dse-toolkit/compare"
 
 # Database probes: (function, the arguments of a call that the function refuses before changing anything, the SQL file, what it turns on)
 PROBES = [
@@ -81,6 +86,7 @@ def check_runner(status: dict, now: float, files: dict[str, float], periodic: li
     if not status:
         out.append(item(a, "The runner", "fix", "This runner has never reported its status (it is not running, or it is an older version that does not report).",
                         RESTART + " If it was never set up: python bridge/runner.py setup"))
+        out.extend(check_toolkit_update(now))
         return out
     age = now - status.get("heartbeat", 0)
     if age > 120:
@@ -102,7 +108,70 @@ def check_runner(status: dict, now: float, files: dict[str, float], periodic: li
         out.append(item(a, "The tool list is complete", "fix", "Missing: " + "; ".join(missing) + ". This toolkit is older than the one these features come from.", "Update the toolkit (git pull in the dse-toolkit folder, or download it again from github.com/Butmmo/dse-toolkit), then restart the runner."))
     else:
         out.append(item(a, "The tool list is complete", "ok", f"{len(tools)} tools, including the Brief, CRM sync, Voices and the Call Desk"))
+    out.extend(check_toolkit_update(now))
     return out
+
+
+def _git(root: Path, *args: str) -> str:
+    try:
+        result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=4)
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def check_toolkit_update(now: float) -> list[dict]:
+    """Compare this clone with public GitHub main without pulling or changing user files."""
+    a = "Runner and tools"
+    root = ROOT.resolve()
+    if not (root / ".git").exists():
+        return [item(a, "GitHub toolkit updates", "unknown", "This PC's toolkit folder is not a Git checkout, so GitHub updates cannot be compared automatically.",
+                     "Use the System Check instructions to download the newest toolkit from github.com/Butmmo/dse-toolkit, then restart the runner.")]
+    remote = _git(root, "remote", "get-url", "origin").lower().removesuffix(".git")
+    if not remote.endswith("github.com/butmmo/dse-toolkit") and not remote.endswith("github.com:butmmo/dse-toolkit"):
+        return [item(a, "GitHub toolkit updates", "unknown", "This clone's origin is not the DBI DSE Toolkit repository, so its version cannot be compared with DBI's GitHub release.")]
+    local = _git(root, "rev-parse", "HEAD")
+    if not local:
+        return [item(a, "GitHub toolkit updates", "unknown", "Could not read this clone's current Git revision.")]
+    branch = _git(root, "branch", "--show-current")
+    if branch != "main":
+        return [item(a, "GitHub toolkit updates", "unknown", f"This checkout is on branch '{branch or 'detached'}'; the safe main-branch update instructions do not apply to it.")]
+    cached = {}
+    try:
+        cached = json.loads(UPDATE_CACHE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    try:
+        cache_age = now - float(cached.get("checked_at", 0) or 0)
+    except (TypeError, ValueError):
+        cache_age = UPDATE_CACHE_S + 1
+    if cache_age < UPDATE_CACHE_S and cached.get("local") == local and cached.get("remote") and cached.get("relation"):
+        latest = str(cached["remote"])
+        relation = str(cached["relation"])
+    else:
+        try:
+            req = Request(f"{UPDATE_API}/{local}...main", headers={"Accept": "application/vnd.github+json", "User-Agent": "DBI-Citadel-PC-Toolkit"})
+            with urlopen(req, timeout=5) as response:
+                compare = json.loads(response.read(128_000))
+            latest = str((compare.get("head_commit") or {}).get("sha", ""))
+            relation = str(compare.get("status", ""))
+            if not latest or not all(ch in "0123456789abcdef" for ch in latest.lower()) or relation not in {"ahead", "behind", "identical", "diverged"}:
+                raise ValueError("GitHub returned no usable commit comparison")
+            UPDATE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            UPDATE_CACHE.write_text(json.dumps({"checked_at": now, "local": local, "remote": latest, "relation": relation, "ahead_by": int(compare.get("ahead_by", 0))}, separators=(",", ":")), encoding="utf-8")
+        except Exception as e:
+            return [item(a, "GitHub toolkit updates", "unknown", f"Could not check GitHub now ({type(e).__name__}); the PC's files were not changed.",
+                         "When online, run python dse.py doctor again to check for updates.")]
+    if relation == "identical":
+        return [item(a, "GitHub toolkit updates", "ok", f"This toolkit checkout matches the latest published DBI main commit ({local[:10]}).")]
+    if relation == "behind":
+        return [item(a, "GitHub toolkit updates", "ok", f"This local main branch is ahead of GitHub main ({local[:10]} vs {latest[:10]}).")]
+    if relation == "diverged":
+        return [item(a, "GitHub toolkit updates", "fix", f"This PC's main branch and GitHub main have diverged ({local[:10]} vs {latest[:10]}). Local work is untouched.",
+                     "Do not force-pull or reset this folder. Ask the toolkit maintainer to reconcile the branches while preserving PC data.")]
+    path = str(root).replace(chr(34), chr(96))
+    fix = f"In PowerShell: Set-Location \"{path}\"; git status --short; git pull --ff-only origin main; python bridge/runner.py check. If pull refuses, stop and ask for help. In Citadel HQ Tools, run 'Restart the HQ runner'; after it reconnects, new tools appear."
+    return [item(a, "A DBI Toolkit update is available", "fix", f"GitHub main has {int(cached.get('ahead_by', 1))} newer commit(s); this PC is at {local[:10]}. No files were changed or pulled automatically.", fix)]
 
 
 # ------------------------------------------------------------------ 2. the database

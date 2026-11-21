@@ -464,6 +464,13 @@ def build_command(cat: dict, tool_key: str, params: dict) -> tuple[list[str], di
         raise Bad(f"unknown values: {', '.join(sorted(extra))}")
     vals = {n: check_value(f, params.get(n)) for n, f in fields.items()}
     script = (ROOT / tool["script"]).resolve()
+    # The HQ bridge lives at the workspace root; shared DSE tools live in its
+    # dse-toolkit child. Resolve only this known entrypoint when HQ's root copy
+    # does not exist. Both resolved paths still have to stay inside ROOT.
+    if tool["script"] == "dse.py" and not script.is_file():
+        toolkit_script = (ROOT / "dse-toolkit" / "dse.py").resolve()
+        if ROOT.resolve() in toolkit_script.parents and toolkit_script.is_file():
+            script = toolkit_script
     if ROOT.resolve() not in script.parents or not script.is_file():
         raise Bad(f"script missing: {tool['script']}")
     argv = [sys.executable, "-u", str(script)]
