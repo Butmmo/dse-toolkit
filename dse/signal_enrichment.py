@@ -119,12 +119,17 @@ def queries_for(row: dict, business_profile: str = "any", decision_maker: str = 
         q.append(("decision_maker", f'"{company}"{suffix} {dm["terms"]}'[:300]))
     if lf["terms"]:
         q.append(("legal_form_search", f'"{company}" {lf["terms"]}'[:300]))
-    supplied_signal = business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal", "recent_signal", "news_signal")
-    signal_terms = re.sub(r"\s+", " ", supplied_signal)[:100] or "hiring funding launch expansion new product leadership"
+    company_signal = business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal", "recent_signal", "news_signal")
+    person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
+    signal_terms = re.sub(r"\s+", " ", company_signal)[:100] or "hiring funding launch expansion new product leadership"
     q.append(("company_signal", f'"{company}"{suffix} {signal_terms}'[:300]))
     roles = business_profiles.infer_decision_roles(supplied_signal, decision_role)
     role_terms = " ".join([*(business_profiles.DECISION_ROLES[r]["terms"] for r in roles), custom_role.strip()[:80]])
     q.append(("decision_maker_role_discovery", f'"{company}" {role_terms} {signal_terms} site:linkedin.com/in OR site:linkedin.com/company'[:300]))
+    if person_signal:
+        person_roles = business_profiles.infer_decision_roles(person_signal, decision_role)
+        person_role_terms = " ".join([*(business_profiles.DECISION_ROLES[r]["terms"] for r in person_roles), custom_role.strip()[:80]])
+        q.append(("decision_maker_role_discovery_person_signal", f'"{company}" {person_role_terms} {person_signal[:100]} site:linkedin.com/in OR site:linkedin.com/company'[:300]))
     return [(kind, text) for kind, text in q if company]
 
 
@@ -235,10 +240,16 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
     person = decision_maker_name(row)
-    signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal", "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
-    role_candidates = business_profiles.infer_decision_roles(signal, decision_role)
+    person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
+    company_signal = business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
+    role_candidates = ([decision_role] if decision_role != "signal_based" else list(dict.fromkeys(
+        (business_profiles.infer_decision_roles(person_signal) if person_signal else [])
+        + (business_profiles.infer_decision_roles(company_signal) if company_signal else [])
+    )))
+    if not role_candidates:
+        role_candidates = business_profiles.infer_decision_roles("", decision_role)
     role_match_terms = set().union(*(_tokens(business_profiles.DECISION_ROLES[r]["terms"]) for r in role_candidates), _tokens(custom_role))
-    found, seen = [], set()
+    found, seen = [], {}
     errors = []
     queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role) + decision_maker_queries_for(row, decision_maker, custom_role)
     for kind, query in queries:
@@ -250,23 +261,25 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
         for item in results:
             key = item["url"]
             if key in seen:
+                seen[key].setdefault("query_matches", []).append({"type": kind, "query": query})
                 continue
-            seen.add(key)
             text = f"{item['title']} {item['snippet']} {key}".lower()
             identity = _source_identity(row, kind, key, text)
             if identity["identity_strength"] == "insufficient":
                 continue
-            if kind == "decision_maker_role_discovery" and not (role_match_terms & _tokens(text)):
+            if kind.startswith("decision_maker_role_discovery") and not (role_match_terms & _tokens(text)):
                 continue
             host = urllib.parse.urlparse(key).hostname or ""
             social = any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS)
-            found.append({"id": f"S{len(found)+1:02d}", "type": kind, "social_platform_result": social,
+            source = {"id": f"S{len(found)+1:02d}", "type": kind, "query_matches": [{"type": kind, "query": query}], "social_platform_result": social,
                           **identity,
                           "title": item["title"], "snippet": item["snippet"], "url": key,
                           "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": searched_at,
                           "match_terms": sorted(terms & _tokens(text)),
                           "matched_person_terms": identity.get("matched_person_terms", []),
-                          "matched_person_company_terms": identity.get("matched_person_company_terms", [])})
+                          "matched_person_company_terms": identity.get("matched_person_company_terms", [])}
+            found.append(source)
+            seen[key] = source
         time.sleep(1.0)
     company_found = [s for s in found if not s["type"].startswith("decision_maker")]
     person_found = [s for s in found if s["type"].startswith("decision_maker")]
@@ -423,11 +436,26 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["enrichment_target_profile"] = business_profile
         row["enrichment_target_decision_maker"] = decision_maker
         row["enrichment_target_role"] = custom_role or decision_role
-        role_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal", "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
-        roles = business_profiles.infer_decision_roles(role_signal, decision_role)
-        role_items = [{"role": r, "label": business_profiles.DECISION_ROLES[r]["label"], "terms": business_profiles.DECISION_ROLES[r]["terms"]} for r in roles]
+        person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
+        company_signal = business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
+        role_origins = {}
+        if decision_role != "signal_based":
+            role_origins[decision_role] = ["user_selected"]
+        else:
+            if person_signal:
+                for role in business_profiles.infer_decision_roles(person_signal):
+                    role_origins.setdefault(role, []).append("person_signal")
+            if company_signal:
+                for role in business_profiles.infer_decision_roles(company_signal):
+                    role_origins.setdefault(role, []).append("company_signal")
+        roles = list(role_origins)
+        if not roles:
+            roles = business_profiles.infer_decision_roles("", decision_role)
+            role_origins = {r: ["default_fallback"] for r in roles}
+        role_items = [{"role": r, "label": business_profiles.DECISION_ROLES[r]["label"],
+                       "terms": business_profiles.DECISION_ROLES[r]["terms"], "derived_from": role_origins.get(r, [])} for r in roles]
         if custom_role:
-            role_items.insert(0, {"role": "custom", "label": custom_role, "terms": custom_role})
+            role_items.insert(0, {"role": "custom", "label": custom_role, "terms": custom_role, "derived_from": ["custom_role"]})
         row["herald_role_candidates"] = json.dumps(role_items, ensure_ascii=False, separators=(",", ":"))
         row["herald_people_candidates"] = ""
         row["enrichment_target_legal_form"] = legal_form
@@ -445,8 +473,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
                 "match_types": list(dict.fromkeys(s.get("identity_match", "") for s in subject_signals)),
             }
         row["herald_identity_summary"] = json.dumps(identity_summary, ensure_ascii=False, separators=(",", ":"))
-        company_signals = [s for s in signals if not str(s.get("type", "")).startswith("decision_maker")]
-        person_signals = [s for s in signals if str(s.get("type", "")).startswith("decision_maker")]
+        company_signals = [s for s in signals if s.get("identity_subject") == "company"]
+        person_signals = [s for s in signals if s.get("identity_subject") == "person"]
         row["herald_findings"] = row["research_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in signals)
         sources_json = json.dumps(signals, ensure_ascii=False, separators=(",", ":"))
         row["herald_sources"] = row["research_sources"] = sources_json
@@ -455,7 +483,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_person_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in person_signals)
         row["herald_person_sources"] = json.dumps(person_signals, ensure_ascii=False, separators=(",", ":"))
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        assessment = classification.assess(signals, roles, custom_role, legal_form, checked_at)
+        assessment = classification.assess(signals, roles, custom_role, legal_form, checked_at, context=row)
         row["herald_people_candidates"] = json.dumps(assessment["people_candidates"], ensure_ascii=False, separators=(",", ":"))
         row["herald_business_assessment"] = json.dumps(assessment["business_profiles"], ensure_ascii=False, separators=(",", ":"))
         row["herald_role_assessment"] = json.dumps({"roles": assessment["decision_maker_roles"], "people": assessment["people_candidates"]}, ensure_ascii=False, separators=(",", ":"))

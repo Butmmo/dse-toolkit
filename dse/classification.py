@@ -55,6 +55,14 @@ def _matches(text: str, patterns: tuple[str, ...]) -> list[str]:
     return [pattern for pattern in patterns if re.search(pattern, text, flags=re.IGNORECASE)]
 
 
+def _overlap(expected: str, observed: str) -> tuple[float, list[str]]:
+    ignored = {"the", "and", "for", "with", "from", "current", "last", "company", "business"}
+    left = {x for x in re.findall(r"[a-z0-9]{2,}", (expected or "").casefold()) if x not in ignored}
+    right = {x for x in re.findall(r"[a-z0-9]{2,}", (observed or "").casefold()) if x not in ignored}
+    matched = sorted(left & right)
+    return (len(matched) / len(left) if left else 0.0), matched
+
+
 def _assessment(strong: list[dict], medium: list[dict]) -> dict:
     evidence = strong or medium
     if not evidence:
@@ -70,8 +78,15 @@ def _assessment(strong: list[dict], medium: list[dict]) -> dict:
     }
 
 
-def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_hint: str = "any", checked_at: str = "") -> dict:
+def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_hint: str = "any", checked_at: str = "", context: dict | None = None) -> dict:
     """Return cautious archetype, role, and legal-form mention assessments with source IDs."""
+    context_values = {"".join(ch for ch in str(key).lower() if ch.isalnum()): value for key, value in (context or {}).items()}
+    def context_value(*keys: str) -> str:
+        for key in keys:
+            value = context_values.get("".join(ch for ch in key.lower() if ch.isalnum()))
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return ""
     company_sources = [s for s in signals if s.get("identity_subject") == "company"]
     person_sources = [s for s in signals if s.get("identity_subject") == "person" and s.get("identity_strength") != "insufficient"]
     signal_text = {str(s.get("id", "")): f"{s.get('title', '')} {s.get('snippet', '')}"
@@ -95,7 +110,7 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
         role_keys.insert(0, "custom")
     role_results = []
     role_sources = [s for s in signals if s.get("identity_strength") != "insufficient"
-                    and (s.get("type") == "decision_maker_role_discovery" or s.get("identity_subject") == "person")]
+                    and (str(s.get("type", "")).startswith("decision_maker_role_discovery") or s.get("identity_subject") == "person")]
     for role in role_keys:
         patterns = (re.escape(custom_role.strip()),) if role == "custom" and custom_role.strip() else ROLE_RULES.get(role, ())
         matches = []
@@ -124,7 +139,7 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
     candidate_sources = list(person_sources)
     candidate_sources.extend(
         s for s in signals
-        if s.get("type") == "decision_maker_role_discovery"
+        if str(s.get("type", "")).startswith("decision_maker_role_discovery")
         and "/in/" in urlparse(str(s.get("url", ""))).path.casefold()
         and s not in candidate_sources
     )
@@ -141,9 +156,37 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
                 candidate_roles.append({"role": role["role"], "label": role["label"], "matched_cues": cues})
         identity_score = float(source.get("identity_score") or 0)
         role_score = 1.0 if candidate_roles else 0.0
-        person_identity_bonus = 0.10 if source.get("identity_subject") == "person" else 0.0
-        candidate_score = round(min(1.0, identity_score * 0.45 + role_score * 0.45 + person_identity_bonus), 2)
-        is_company_discovery = source.get("type") == "decision_maker_role_discovery"
+        current_position = context_value("current_position", "contact_title", "decision_maker_title")
+        last_position = context_value("last_position", "previous_position", "decision_maker_last_position")
+        current_ratio, current_terms = _overlap(current_position, text)
+        last_ratio, last_terms = _overlap(last_position, text)
+        query_types = {str(match.get("type", "")) for match in source.get("query_matches", [])}
+        person_signal = context_value("decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
+        company_signal = context_value("company_last_signal", "company_signal", "last_lead_signal", "last_signal")
+        signal_targets = []
+        if person_signal and (source.get("identity_subject") == "person" or "decision_maker_role_discovery_person_signal" in query_types):
+            signal_targets.append(("person", person_signal))
+        if company_signal and (source.get("identity_subject") == "company" or "decision_maker_role_discovery" in query_types):
+            signal_targets.append(("company", company_signal))
+        signal_matches = []
+        for subject, target in signal_targets:
+            ratio, matched_terms = _overlap(target, text)
+            signal_matches.append({"subject": subject, "ratio": round(ratio, 2), "matched_terms": matched_terms})
+        best_signal = max(signal_matches, key=lambda match: match["ratio"], default={"subject": "none", "ratio": 0.0, "matched_terms": []})
+        signal_subject = best_signal["subject"]
+        signal_ratio, signal_terms = best_signal["ratio"], best_signal["matched_terms"]
+        active_weights = [(identity_score, 0.30), (role_score, 0.30)]
+        if current_position:
+            active_weights.append((current_ratio, 0.20))
+        if last_position:
+            active_weights.append((last_ratio, 0.05))
+        if signal_targets:
+            active_weights.append((signal_ratio, 0.15))
+        total_weight = sum(weight for _, weight in active_weights)
+        candidate_score = round(sum(value * weight for value, weight in active_weights) / total_weight, 2) if total_weight else 0.0
+        active_weight_names = ["identity", "targeted_role"] + (["current_position"] if current_position else []) + (["previous_position"] if last_position else []) + (["lead_signal"] if signal_targets else [])
+        effective_weights = {name: round(weight / total_weight, 3) for name, (_, weight) in zip(active_weight_names, active_weights)} if total_weight else {}
+        is_company_discovery = str(source.get("type", "")).startswith("decision_maker_role_discovery")
         people.append({
             "source_id": source.get("id", ""), "title": source.get("title", ""),
             "snippet": source.get("snippet", ""), "url": source.get("url", ""),
@@ -151,6 +194,13 @@ def assess(signals: list[dict], roles: list[str], custom_role: str = "", legal_h
             "identity_score": round(identity_score, 2), "candidate_score": candidate_score,
             "candidate_score_kind": "heuristic review ordering, not a probability",
             "source_type": source.get("type", ""), "role_candidates": candidate_roles,
+            "evidence_relevance": {
+                "current_position_match": {"ratio": round(current_ratio, 2), "matched_terms": current_terms},
+                "previous_position_match": {"ratio": round(last_ratio, 2), "matched_terms": last_terms},
+                "lead_signal_subject": signal_subject,
+                "lead_signal_matches": signal_matches,
+                "effective_ranking_weights": effective_weights,
+            },
             "review_reasons": (["company/person identity matched"] if identity_score else [])
                               + (["title or snippet matches a targeted role"] if candidate_roles else [])
                               + (["individual identity needs manual confirmation"] if is_company_discovery else []),
