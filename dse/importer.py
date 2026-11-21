@@ -127,7 +127,7 @@ def normalize(path: Path) -> tuple[list[dict], dict]:
                       "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy",
                       "research_findings", "research_sources", "research_searched_at", "research_status",
                       "presence_signals", "presence_sources", "presence_checked_at", "presence_status",
-                      "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model"):
+                      "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model"):
             header = next((h for h in headers if squash(h) == squash(field)), None)
             if header:
                 rows[-1][field] = (r.get(header) or "").strip()

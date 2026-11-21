@@ -26,7 +26,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_company_findings", "herald_company_sources", "herald_person_findings", "herald_person_sources",
               "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_assessed_at", "herald_assessment_note",
               "herald_identity_summary",
-              "outreach_subject", "outreach_body", "outreach_evidence", "outreach_model",
+              "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
@@ -359,18 +359,43 @@ def _ollama_model() -> str:
 def draft(row: dict, signals: list[dict], model: str) -> dict:
     if not signals or not model:
         return {}
-    evidence = [{"id": s["id"], "subject": "decision maker" if str(s.get("type", "")).startswith("decision_maker") else "company",
-                 "evidence_type": s.get("type", "business"), "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
-    company = (row.get("business") or row.get("company") or row.get("Company") or "").strip()
-    user = {"company": company, "city": row.get("city") or row.get("City") or "", "offer": row.get("offer") or row.get("gap_line") or row.get("lead_why") or "",
+    evidence = [{"id": s["id"], "subject": s.get("identity_subject", "unknown"),
+                 "evidence_type": s.get("type", "business"), "identity_match": s.get("identity_match", ""),
+                 "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
+                 "matched_company_terms": s.get("matched_company_terms", []), "matched_person_terms": s.get("matched_person_terms", []),
+                 "title": s["title"], "snippet": s["snippet"], "url": s["url"]} for s in signals[:6]]
+    company = business_profiles.row_value(row, "business", "company", "Company", "name")
+    person_context = {
+        "first_name": business_profiles.row_value(row, "decision_maker_first_name", "contact_first_name", "first_name", "contact_first"),
+        "last_name": business_profiles.row_value(row, "decision_maker_last_name", "contact_last_name", "last_name", "contact_last"),
+        "current_position": business_profiles.row_value(row, "current_position", "contact_title", "decision_maker_title"),
+        "previous_position": business_profiles.row_value(row, "last_position", "previous_position", "decision_maker_last_position"),
+        "current_company": business_profiles.row_value(row, "decision_maker_current_company", "current_company") or company,
+        "previous_company": business_profiles.row_value(row, "decision_maker_last_company", "last_company", "previous_company"),
+        "lead_signal": business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal"),
+    }
+    company_context = {
+        "name": company,
+        "lead_signal": business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal"),
+    }
+    try:
+        candidate_context = json.loads(row.get("herald_people_candidates") or "[]")[:5]
+    except (ValueError, TypeError):
+        candidate_context = []
+    user = {"company": company, "person_context": person_context, "company_context": company_context,
+            "city": business_profiles.row_value(row, "city"), "offer": business_profiles.row_value(row, "offer", "gap_line", "lead_why"),
             "target_business_profile": row.get("enrichment_target_profile", "any"), "target_decision_maker": row.get("enrichment_target_decision_maker", "any"),
             "target_role": row.get("enrichment_target_role", "signal_based"), "signal_based_role_candidates": row.get("herald_role_candidates", "[]"),
             "legal_form_search_hint": row.get("enrichment_target_legal_form", "any"),
-            "evidence": evidence}
+            "ranked_people_candidates": candidate_context, "evidence": evidence}
     payload = json.dumps({"model": model, "stream": False, "keep_alive": "30m", "format": "json",
         "options": {"num_ctx": 8192, "num_predict": 450, "temperature": 0.2},
         "messages": [{"role": "system", "content": (
             "Draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
+            "Keep company evidence, named-person evidence, personal lead signals, and company lead signals distinct. "
+            "A signal supplied as search context is not proof: mention it only if an identity-matched source snippet independently supports it. "
+            "Prefer a supported current position over a previous position; never present a previous role as current. "
+            "Use a candidate's name or role only when person evidence is explicitly matched; company role-discovery results alone do not verify an individual's identity. "
             "Search snippets can be wrong: do not state a claim as fact unless its source ID is returned. Target profiles and heuristic assessments are review aids, not verified company facts; "
             "never claim a business is a franchise, SaaS company, enterprise or C-Corp/S-Corp without clear supplied evidence. Keep company facts and named-person facts distinct. "
             "Only describe a current or former position/company when the cited evidence explicitly supports it. Never claim prior contact, "
@@ -392,7 +417,16 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
     body = str(result.get("body", "")).strip()[:1200]
     if not subject or not body or not used:
         return {}
-    return {"outreach_subject": subject, "outreach_body": body, "outreach_evidence": ", ".join(used), "outreach_model": model}
+    cited = [s for s in signals if s.get("id") in used]
+    evidence_detail = [{"id": s["id"], "subject": s.get("identity_subject", "unknown"),
+                        "evidence_type": s.get("type", ""), "identity_match": s.get("identity_match", ""),
+                        "identity_strength": s.get("identity_strength", "unknown"), "identity_score": s.get("identity_score", 0),
+                        "title": s.get("title", ""), "url": s.get("url", ""),
+                        "retrieved_at": s.get("retrieved_at", "")} for s in cited]
+    basis = "; ".join(f"{s['id']} ({s.get('identity_subject', 'unknown')}: {s.get('identity_strength', 'unknown')} {s.get('identity_match', 'match')})" for s in cited)
+    return {"outreach_subject": subject, "outreach_body": body, "outreach_evidence": ", ".join(used),
+            "outreach_evidence_detail": json.dumps(evidence_detail, ensure_ascii=False, separators=(",", ":")),
+            "outreach_personalization_basis": basis, "outreach_model": model}
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -492,7 +526,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_assessment_note"] = assessment["basis"]
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
-        row.update({k: "" for k in ("outreach_subject", "outreach_body", "outreach_evidence", "outreach_model")})
+        row.update({k: "" for k in ("outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
         if model and signals:
             try:
                 generated = draft(row, signals, model)
