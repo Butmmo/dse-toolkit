@@ -8355,7 +8355,7 @@
     "dse.presence_signals": {
       "label": "Presence: check public social signals for leads",
       "group": "Grow",
-      "help": "Searches public indexed business social profiles and posts, plus a supplied contact's public professional profile when it matches the company. Saves Presence-specific source links, match terms and check time in separate CSV columns. It does not read private posts, infer sensitive traits, draft outreach or send anything. Search snippets can be stale or misidentify an account: review each source directly.",
+      "help": "Searches public indexed business social profiles and posts, plus a supplied contact's public professional profile when it matches the company. Set a per-lead search-query cap and minimum identity-match score; query-by-query calls, returns, rejections and retained signals are recorded in the shared field-result metadata. A budget-limited history check is marked partial so missing results are not treated as disappearances. The score is heuristic, not a probability. It does not read private posts, infer sensitive traits, draft outreach or send anything. Search snippets can be stale or misidentify an account: review each source directly.",
       "script": "dse.py",
       "args": [
         {
@@ -8371,6 +8371,14 @@
         {
           "opt": "--max",
           "field": "max"
+        },
+        {
+          "opt": "--search-budget",
+          "field": "search_budget"
+        },
+        {
+          "opt": "--minimum-identity-score",
+          "field": "minimum_identity_score"
         }
       ],
       "fields": [
@@ -8397,6 +8405,22 @@
           "min": 1,
           "max": 50,
           "default": 25
+        },
+        {
+          "name": "search_budget",
+          "label": "Maximum public search queries per lead",
+          "type": "int",
+          "min": 0,
+          "max": 10,
+          "default": 3
+        },
+        {
+          "name": "minimum_identity_score",
+          "label": "Minimum identity match score (heuristic 0 to 1, not a probability)",
+          "type": "float",
+          "min": 0,
+          "max": 1,
+          "default": 0
         }
       ],
       "timeout_min": 240,
@@ -8413,7 +8437,7 @@
       "cost": "PC-run public search; no paid data provider is selected by this tool.",
       "outputs_summary": [
         "Public profile/post links",
-        "Shared field-result records with identity and freshness",
+        "Shared field-result records with identity, freshness and per-query waterfall metrics",
         "New, changed and not-returned source comparison",
         "Presence signals CSV"
       ],
@@ -10113,7 +10137,7 @@
     "dse.enrich_signals": {
       "label": "Lead signals: research and draft outreach",
       "group": "Grow",
-      "help": "Researches public company, product and news results for Herald. The selected Engine automatically supplies its path's research focus; without one, choose a path. Each path prioritizes its own proof signals, likely buyer roles and commercial model, and labels findings as priority, supporting or general. These are research directions, not verified pains or budgets. Ledgers, grids and workflows retain path metadata for later review and automation. Choose a business type and role path to refine the search. DuckDuckGo is default; Brave requires your local key and can incur charges. A local Ollama model may draft evidence-based email, never send it. Public social signals remain in Presence.",
+      "help": "Researches public company, product and news results for Herald. The selected Engine automatically supplies its path's research focus; without one, choose a path. Each path prioritizes its own proof signals, likely buyer roles and commercial model, and labels findings as priority, supporting or general. These are research directions, not verified pains or budgets. Set a per-lead search-query cap and a minimum identity-match score; every query rung records returned, filtered and retained evidence in the shared field-result metadata. The score is heuristic, not a probability. Ledgers, grids and workflows retain path metadata for later review and automation. DuckDuckGo is default; Brave requires your local key and can incur charges. A local Ollama model may draft evidence-based email, never send it. Public social signals remain in Presence.",
       "script": "dse.py",
       "args": [
         {
@@ -10133,6 +10157,14 @@
         {
           "opt": "--max",
           "field": "max"
+        },
+        {
+          "opt": "--search-budget",
+          "field": "search_budget"
+        },
+        {
+          "opt": "--minimum-identity-score",
+          "field": "minimum_identity_score"
         },
         {
           "opt": "--profile",
@@ -10228,6 +10260,22 @@
               "label": "The Ascent"
             }
           ]
+        },
+        {
+          "name": "search_budget",
+          "label": "Maximum search queries per lead (in listed priority order)",
+          "type": "int",
+          "min": 0,
+          "max": 30,
+          "default": 12
+        },
+        {
+          "name": "minimum_identity_score",
+          "label": "Minimum identity match score (heuristic 0 to 1, not a probability)",
+          "type": "float",
+          "min": 0,
+          "max": 1,
+          "default": 0
         },
         {
           "name": "max",
@@ -10414,7 +10462,8 @@
       "cost": "DuckDuckGo mode has no search-provider fee. Brave uses your own API key and may charge; Ollama runs locally.",
       "outputs_summary": [
         "Sourced company/person signals",
-        "Shared field-result records with evidence and identity cues",
+        "Shared field-result records with evidence, identity cues and per-query waterfall metrics",
+        "Configurable per-lead query budget and minimum identity score",
         "Path-fit tags",
         "Research CSV and report"
       ],

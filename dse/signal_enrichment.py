@@ -33,8 +33,10 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
+OUT_FIELDS.insert(-1, "herald_search_waterfall")
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status",
                    "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "field_results"]
+PRESENCE_FIELDS.insert(-1, "presence_search_waterfall")
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
 PRESENCE_HISTORY_DAYS = 180
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
@@ -352,7 +354,7 @@ def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_ro
     return [("decision_maker_profile", profile_query[:300]), ("decision_maker_signal", signal_query[:300])]
 
 
-def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any") -> tuple[list[dict], list[str]]:
+def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any", search_budget: int = 12, minimum_identity_score: float = 0.0, metrics_out: list[dict] | None = None) -> tuple[list[dict], list[str]]:
     company = business_profiles.row_value(row, "business", "company", "name", "current_company", "website", "domain")
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
@@ -372,26 +374,44 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
     found, seen = [], {}
     errors = []
     queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role, path_key) + decision_maker_queries_for(row, decision_maker, custom_role)
-    for kind, query in queries:
+    for query_index, (kind, query) in enumerate(queries):
+        metric = {"rung": kind, "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
+                  "duplicates": 0, "identity_rejected": 0, "role_rejected": 0, "score_rejected": 0, "errors": 0,
+                  "status": "not_run"}
+        if metrics_out is not None:
+            metrics_out.append(metric)
+        if query_index >= search_budget:
+            metric["status"] = "skipped_budget"
+            continue
+        metric["attempted"], metric["status"] = 1, "running"
         try:
             results = search(query, provider=search_provider)
+            metric["search_calls"], metric["results_returned"] = 1, len(results)
         except SearchProviderError as e:
+            metric["errors"], metric["status"] = 1, "error"
             if str(e) not in errors:
                 errors.append(str(e))
             continue
         except Exception as e:
+            metric["errors"], metric["status"] = 1, "error"
             errors.append(type(e).__name__)
             continue
         for item in results:
             key = item["url"]
             if key in seen:
+                metric["duplicates"] += 1
                 seen[key].setdefault("query_matches", []).append({"type": kind, "query": query})
                 continue
             text = f"{item['title']} {item['snippet']} {key}".lower()
             identity = _source_identity(row, kind, key, text)
             if identity["identity_strength"] == "insufficient":
+                metric["identity_rejected"] += 1
                 continue
             if kind.startswith("decision_maker_role_discovery") and not (role_match_terms & _tokens(text)):
+                metric["role_rejected"] += 1
+                continue
+            if float(identity.get("identity_score", 0) or 0) < minimum_identity_score:
+                metric["score_rejected"] += 1
                 continue
             host = urllib.parse.urlparse(key).hostname or ""
             host = host.lower().removeprefix("www.")
@@ -405,7 +425,10 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
                           "matched_person_terms": identity.get("matched_person_terms", []),
                           "matched_person_company_terms": identity.get("matched_person_company_terms", [])}
             found.append(source)
+            metric["retained"] += 1
             seen[key] = source
+        if metric["status"] == "running":
+            metric["status"] = "hit" if metric["retained"] else "miss"
         time.sleep(1.0)
     company_found = [s for s in found if not s["type"].startswith("decision_maker")]
     person_found = [s for s in found if s["type"].startswith("decision_maker")]
@@ -430,21 +453,33 @@ def presence_queries_for(row: dict) -> list[tuple[str, str]]:
     return [(kind, query) for kind, query in queries if company]
 
 
-def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[str]]:
+def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, minimum_identity_score: float = 0.0,
+                    metrics_out: list[dict] | None = None) -> tuple[list[dict], list[str]]:
     company = (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip()
     contact = (row.get("contact_name") or row.get("decision_maker") or row.get("person") or "").strip()
     company_terms, contact_terms = _tokens(company), _tokens(contact)
     checked_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     found, seen, errors = [], set(), []
-    for kind, query in presence_queries_for(row):
+    for query_index, (kind, query) in enumerate(presence_queries_for(row)):
+        metric = {"rung": kind, "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
+                  "duplicates": 0, "identity_rejected": 0, "score_rejected": 0, "errors": 0, "status": "not_run"}
+        if metrics_out is not None:
+            metrics_out.append(metric)
+        if query_index >= search_budget:
+            metric["status"] = "skipped_budget"
+            continue
+        metric["attempted"], metric["status"] = 1, "running"
         try:
             results = search(query)
+            metric["search_calls"], metric["results_returned"] = 1, len(results)
         except Exception as e:
+            metric["errors"], metric["status"] = 1, "error"
             errors.append(type(e).__name__)
             continue
         for item in results:
             url = item["url"]
             if url in seen:
+                metric["duplicates"] += 1
                 continue
             text = f"{item['title']} {item['snippet']} {url}".lower()
             terms = _tokens(text)
@@ -452,6 +487,7 @@ def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[s
             contact_matches = contact_terms & terms
             # When a named contact was supplied, require both the business and person to match.
             if not company_matches or (kind == "professional_contact" and contact_terms and not contact_matches):
+                metric["identity_rejected"] += 1
                 continue
             seen.add(url)
             parsed = urllib.parse.urlparse(url)
@@ -463,6 +499,9 @@ def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[s
             subject = "person" if kind == "professional_contact" else "company"
             identity_score = (0.55 * company_ratio + 0.45 * contact_ratio) if subject == "person" else (1.0 if direct_domain else company_ratio)
             identity_score = round(min(1.0, identity_score), 2)
+            if identity_score < minimum_identity_score:
+                metric["score_rejected"] += 1
+                continue
             match_strength = "strong" if (subject == "person" and contact_ratio >= 0.67 and company_ratio >= 0.5) or (subject == "company" and (direct_domain or company_ratio >= 0.75)) else "moderate"
             freshness = _publication_date(item["title"], item["snippet"], item.get("publication_date_hint", ""))
             found.append({"id": f"P{len(found)+1:02d}", "type": kind, "identity_subject": subject,
@@ -473,15 +512,29 @@ def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[s
                           **freshness, "title": item["title"], "snippet": item["snippet"],
                           "url": url, "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": checked_at,
                           "matched_company_terms": sorted(company_matches), "matched_contact_terms": sorted(contact_matches)})
+            metric["retained"] += 1
+        if metric["status"] == "running":
+            metric["status"] = "hit" if metric["retained"] else "miss"
         time.sleep(1.0)
     return found[:max_signals], errors
 
 
-def build_herald_field_results(row: dict, signals: list[dict], search_provider: str) -> str:
+def _waterfall_metrics(metrics: list[dict], budget: int, minimum_identity_score: float, provider: str) -> dict:
+    return {"schema": "dbi.search-waterfall.v1", "budget": budget, "minimum_identity_score": minimum_identity_score,
+            "provider": provider, "total_search_calls": sum(int(x.get("search_calls", 0)) for x in metrics),
+            "total_results_returned": sum(int(x.get("results_returned", 0)) for x in metrics),
+            "total_retained": sum(int(x.get("retained", 0)) for x in metrics),
+            "total_rejected": sum(int(x.get("identity_rejected", 0)) + int(x.get("role_rejected", 0)) + int(x.get("score_rejected", 0)) for x in metrics),
+            "rungs": metrics}
+
+
+def build_herald_field_results(row: dict, signals: list[dict], search_provider: str, search_metrics: list[dict] | None = None,
+                               search_budget: int = 12, minimum_identity_score: float = 0.0) -> str:
     """Map research and reviewed-draft outputs to the shared field-result contract."""
     results = []
     now = row.get("herald_checked_at", "")
     provider_fee = 0.0 if search_provider == "duckduckgo" else None
+    search_metrics = search_metrics or []
     for subject in ("company", "person"):
         matching = [s for s in signals if s.get("identity_subject") == subject]
         field = f"{subject}_signal_evidence"
@@ -501,6 +554,11 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                 cost_units="search_provider_fee" if provider_fee is not None else "provider_query_cost_unknown",
                 cost_quantity=0 if provider_fee is not None else None, cost_estimated=False if provider_fee is not None else None,
                 miss_reason="Search result is a research candidate, not a verified event."))
+        relevant_rungs = [m for m in search_metrics if (str(m.get("rung", "")).startswith("decision_maker") == (subject == "person"))]
+        metrics = _waterfall_metrics(relevant_rungs, search_budget, minimum_identity_score, search_provider)
+        for result in results:
+            if result.get("field") == field:
+                result.setdefault("metadata", {})["search_waterfall"] = metrics
     try:
         events_doc = json.loads(row.get("herald_signal_events") or "{}")
     except (ValueError, TypeError):
@@ -541,13 +599,15 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
     return fr.dump_results(results)
 
 
-def build_presence_field_results(signals: list[dict], checked_at: str) -> str:
+def build_presence_field_results(signals: list[dict], checked_at: str, search_metrics: list[dict] | None = None,
+                                  search_budget: int = 3, minimum_identity_score: float = 0.0) -> str:
     """Map public social search snippets to contract records without calling them verified reputation."""
     results = []
     if not signals:
         missing = fr.make_result(field="presence_social_signal", status="not_found", observed_at=checked_at,
                                  identity_subject="company", miss_reason="No identity-matched public social result was retained.",
-                                 verification_status="not_found", metadata={"lane": "presence_research"})
+                                 verification_status="not_found", metadata={"lane": "presence_research",
+                                     "search_waterfall": _waterfall_metrics(search_metrics or [], search_budget, minimum_identity_score, "duckduckgo")})
         return fr.dump_results([missing])
     for signal in signals:
         subject = signal.get("identity_subject", "company")
@@ -563,7 +623,7 @@ def build_presence_field_results(signals: list[dict], checked_at: str) -> str:
             cost_amount=0.0, cost_currency="USD", cost_units="search_provider_fee", cost_quantity=0, cost_estimated=False,
             miss_reason="Search result is a candidate public profile/post, not verified identity or reputation."))
     for result in results:
-        result.setdefault("metadata", {})["lane"] = "presence_research"
+        result.setdefault("metadata", {}).update({"lane": "presence_research", "search_waterfall": _waterfall_metrics(search_metrics or [], search_budget, minimum_identity_score, "duckduckgo")})
     return fr.dump_results(results)
 
 
@@ -772,7 +832,8 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 
 
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
-                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any") -> str:
+                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any",
+                search_budget: int = 12, minimum_identity_score: float = 0.0) -> str:
     p = Path(source)
     if not p.is_absolute():
         p = (ROOT / source) if (ROOT / source).is_file() else p
@@ -791,6 +852,10 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         raise ValueError("Choose a decision-maker role from the listed options.")
     if search_provider not in ("duckduckgo", "brave"):
         raise ValueError("Choose DuckDuckGo or Brave Search as the public search provider.")
+    if not 0 <= search_budget <= 30:
+        raise ValueError("--search-budget must be between 0 and 30 queries per lead.")
+    if not 0 <= minimum_identity_score <= 1:
+        raise ValueError("--minimum-identity-score must be between 0 and 1.")
     selected_path = path_signals.known_path(path_key)
     if engine:
         from . import engines
@@ -842,7 +907,11 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_people_candidates"] = ""
         row["enrichment_target_legal_form"] = legal_form
         row["enrichment_search_strategy"] = strategy
-        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role, search_provider=search_provider, path_key=selected_path or "any")
+        query_metrics = []
+        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role,
+                                     search_provider=search_provider, path_key=selected_path or "any", search_budget=search_budget,
+                                     minimum_identity_score=minimum_identity_score, metrics_out=query_metrics)
+        row["herald_search_waterfall"] = json.dumps(_waterfall_metrics(query_metrics, search_budget, minimum_identity_score, search_provider), ensure_ascii=False, separators=(",", ":"))
         errors.extend(row_errors)
         identity_summary = {}
         for subject in ("company", "person"):
@@ -897,7 +966,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
                         row["herald_status"] = row["research_status"] = "local AI evidence review ready"
             except Exception as e:
                 errors.append(type(e).__name__)
-        row["field_results"] = fr.merge_results(row.get("field_results"), build_herald_field_results(row, signals, search_provider))
+        row["field_results"] = fr.merge_results(row.get("field_results"), build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score))
         out.append(row)
         if i < min(len(rows), max_rows):
             time.sleep(0.8)
@@ -920,6 +989,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
               f"- Public search provider: {search_provider}",
               f"- Engine path focus: {path['label']}", f"- Path method: {path['method']}", f"- Likely buyer to research: {path['buyer']}", f"- Commercial model to verify: {path['revenue_model']}",
               f"- Brave API queries used: {BRAVE_SEARCH_REQUESTS}" if search_provider == "brave" else "- Brave API queries used: 0",
+              f"- Search waterfall: {sum(json.loads(r.get('herald_search_waterfall') or '{}').get('total_search_calls', 0) for r in out[:min(len(rows), max_rows)])} queries used; cap {search_budget} per lead; minimum identity score {minimum_identity_score:.2f}",
               f"- Business profile target: {bp['label']}", f"- Decision-maker path: {dm['label']}", f"- Decision-maker role target: {custom_role or business_profiles.DECISION_ROLES[decision_role]['label']}", f"- Legal-form search: {lf['label']}",
               "- Target selections guide search queries only; they are not business classifications or legal verification.",
               f"- Leads with public results: {sum(bool(r['research_sources']) for r in out[:min(len(rows), max_rows)])}",
@@ -943,7 +1013,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
     return ("\n".join(report) + f"\nSaved: {dest.relative_to(ROOT).as_posix()} and its Markdown run summary.{extra}\n")
 
 
-def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> str:
+def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, search_budget: int = 3,
+                         minimum_identity_score: float = 0.0) -> str:
     """Create an independent Presence social-evidence CSV; never draft or send outreach."""
     p = Path(source)
     if not p.is_absolute():
@@ -955,6 +1026,10 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
         raise ValueError("That CSV has no rows.")
     if not 1 <= max_rows <= 50:
         raise ValueError("--max must be between 1 and 50 leads for this Presence research stage.")
+    if not 0 <= search_budget <= 10:
+        raise ValueError("--search-budget must be between 0 and 10 queries per lead.")
+    if not 0 <= minimum_identity_score <= 1:
+        raise ValueError("--minimum-identity-score must be between 0 and 1.")
     normalized_rows, _report = importer.normalize(p)
     out, errors = [], []
     history = _load_presence_history()
@@ -967,20 +1042,25 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
             if normalized.get(key) and not row.get(key):
                 row[key] = normalized[key]
         print(f"[{i}/{min(len(rows), max_rows)}] checking public social presence for {row.get('business') or row.get('website') or 'lead'}", file=sys.stderr, flush=True)
-        signals, row_errors = gather_presence(row)
+        query_metrics = []
+        signals, row_errors = gather_presence(row, search_budget=search_budget, minimum_identity_score=minimum_identity_score, metrics_out=query_metrics)
         errors.extend(row_errors)
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         history_key = _presence_history_key(row)
-        comparison = _presence_comparison(previous_history.get(history_key) if history_key else None, signals, checked_at, row_errors)
+        comparison_errors = list(row_errors)
+        if any(m.get("status") == "skipped_budget" for m in query_metrics):
+            comparison_errors.append("search budget limited this check")
+        comparison = _presence_comparison(previous_history.get(history_key) if history_key else None, signals, checked_at, comparison_errors)
         snapshot = comparison.pop("_snapshot")
-        if history_key and not row_errors:
+        if history_key and not comparison_errors:
             next_history[history_key] = snapshot
         row["presence_signals"] = json.dumps(signals, ensure_ascii=False, separators=(",", ":"))
         row["presence_sources"] = "\n".join(f"[{s['id']}] {s['title']} | {s['url']}" for s in signals)
         row["presence_checked_at"] = checked_at
         row["presence_status"] = "public professional/social results found" if signals else "no matching public social results"
+        row["presence_search_waterfall"] = json.dumps(_waterfall_metrics(query_metrics, search_budget, minimum_identity_score, "duckduckgo"), ensure_ascii=False, separators=(",", ":"))
         row.update(comparison)
-        row["field_results"] = fr.merge_results(row.get("field_results"), build_presence_field_results(signals, checked_at))
+        row["field_results"] = fr.merge_results(row.get("field_results"), build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score))
         out.append(row)
         if i < min(len(rows), max_rows):
             time.sleep(0.8)
@@ -1014,6 +1094,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
     collected = [signal for row in out[:min(len(rows), max_rows)] for signal in json.loads(row.get("presence_signals") or "[]")]
     report = [f"# Presence public social signals: {p.name}", "", f"- Checked: {min(len(rows), max_rows)} of {len(rows)} rows",
               f"- Rows with public social results: {sum(bool(r['presence_signals']) for r in out[:min(len(rows), max_rows)])}",
+              f"- Search waterfall: {sum(json.loads(r.get('presence_search_waterfall') or '{}').get('total_search_calls', 0) for r in out[:min(len(rows), max_rows)])} queries used; cap {search_budget} per lead; minimum identity score {minimum_identity_score:.2f}",
               f"- Results with publication date evidence: {sum(bool(s.get('publication_date')) for s in collected)} of {len(collected)}",
               f"- Results marked stale by the date heuristic: {sum(s.get('freshness_status') == 'stale' for s in collected)}",
               f"- Newly returned source links: {sum(len((r.get('presence_new_source_urls') or '').splitlines()) for r in out[:min(len(rows), max_rows)])}",

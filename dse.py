@@ -238,11 +238,15 @@ def main():
     se.add_argument("--custom-role", default="", help="optional role title to search in addition to inferred or preset roles")
     se.add_argument("--legal-form", choices=["any", "us_c_corp", "us_s_corp"], default="any", help="US C-Corp/S-Corp search hint only; results are not legal verification")
     se.add_argument("--search-provider", choices=["duckduckgo", "brave"], default="duckduckgo", help="public search provider; Brave requires a PC-local key and uses your API allowance")
+    se.add_argument("--search-budget", type=int, default=12, help="maximum ordered search queries per lead (0 to 30)")
+    se.add_argument("--minimum-identity-score", type=float, default=0.0, help="discard results below this heuristic 0 to 1 score; not a probability")
     se.add_argument("--no-ai", action="store_true", help="collect sourced search signals without asking local Ollama to draft email")
     ps = sub.add_parser("presence-signals", help="collect separate public professional/social signals for Presence (no outreach draft)")
     ps.add_argument("source", help="CSV with a company name; contact name and city improve matching")
     ps.add_argument("--engine", default="", help="also save the Presence-specific CSV to this engine's imports")
     ps.add_argument("--max", type=int, default=25, help="most leads to check in this stage, 1 to 50")
+    ps.add_argument("--search-budget", type=int, default=3, help="maximum ordered public search queries per lead (0 to 10)")
+    ps.add_argument("--minimum-identity-score", type=float, default=0.0, help="discard results below this heuristic 0 to 1 score; not a probability")
     gl = sub.add_parser("goal"); gl.add_argument("engine"); gl.add_argument("--month", default=""); gl.add_argument("--stretch", type=float, default=goals.STRETCH_DEFAULT)
     gl.add_argument("--apply", action="store_true", help="save the suggestion as that month's goal"); gl.add_argument("--set", type=float, default=0, dest="set_to")
     rv = sub.add_parser("review"); rv.add_argument("engine", help="an engine, or all"); rv.add_argument("--top", type=int, default=5)
@@ -316,12 +320,13 @@ def main():
             sys.exit(str(e))
     elif a.cmd == "signals":
         try:
-                print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role, a.search_provider, a.path))
+                print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role,
+                                                    a.search_provider, a.path, a.search_budget, a.minimum_identity_score))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "presence-signals":
         try:
-            print(signal_enrichment.enrich_presence_file(a.source, a.engine, a.max))
+            print(signal_enrichment.enrich_presence_file(a.source, a.engine, a.max, a.search_budget, a.minimum_identity_score))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "reply":
