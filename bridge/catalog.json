@@ -8413,8 +8413,7 @@
       "cost": "PC-run public search; no paid data provider is selected by this tool.",
       "outputs_summary": [
         "Public profile/post links",
-        "Person or company identity match cues",
-        "Publication dates and freshness labels",
+        "Shared field-result records with identity and freshness",
         "New, changed and not-returned source comparison",
         "Presence signals CSV"
       ],
@@ -10085,7 +10084,7 @@
       "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
       "outputs_summary": [
         "Website-sourced contact and business fields",
-        "Per-field source and selection audit",
+        "Shared per-field provenance, identity, freshness, verification and cost records",
         "Provider lookup and cache counts",
         "Enriched CSV and report"
       ]
@@ -10394,6 +10393,7 @@
       "cost": "DuckDuckGo mode has no search-provider fee. Brave uses your own API key and may charge; Ollama runs locally.",
       "outputs_summary": [
         "Sourced company/person signals",
+        "Shared field-result records with evidence and identity cues",
         "Path-fit tags",
         "Research CSV and report"
       ],

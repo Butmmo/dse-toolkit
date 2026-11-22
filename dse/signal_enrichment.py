@@ -21,6 +21,7 @@ from . import importer
 from . import business_profiles
 from . import classification
 from . import path_signals
+from . import field_results as fr
 from .common import LISTS, ROOT
 
 USER_AGENT = "DFamociousHQ/1.0 (local user-requested business research)"
@@ -31,9 +32,9 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_identity_summary",
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy"]
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status",
-                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at"]
+                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "field_results"]
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
 PRESENCE_HISTORY_DAYS = 180
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
@@ -476,6 +477,96 @@ def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[s
     return found[:max_signals], errors
 
 
+def build_herald_field_results(row: dict, signals: list[dict], search_provider: str) -> str:
+    """Map research and reviewed-draft outputs to the shared field-result contract."""
+    results = []
+    now = row.get("herald_checked_at", "")
+    provider_fee = 0.0 if search_provider == "duckduckgo" else None
+    for subject in ("company", "person"):
+        matching = [s for s in signals if s.get("identity_subject") == subject]
+        field = f"{subject}_signal_evidence"
+        if not matching:
+            results.append(fr.make_result(field=field, status="not_found", observed_at=now,
+                                          identity_subject=subject, miss_reason=f"No identity-matched {subject} search result was retained."))
+        for signal in matching:
+            results.append(fr.make_result(
+                field=field, value={"title": signal.get("title", ""), "snippet": signal.get("snippet", ""), "type": signal.get("type", "")},
+                status="candidate", source_type="public_web_search", source_name=signal.get("provider", search_provider),
+                source_url=signal.get("url", ""), source_record_id=signal.get("id", ""), observed_at=signal.get("retrieved_at", now),
+                publication_date=signal.get("publication_date", ""), freshness_status=signal.get("freshness_status", "undated"), age_days=signal.get("age_days"),
+                identity_subject=subject, identity_match=signal.get("identity_match", ""), identity_strength=signal.get("identity_strength", "unknown"),
+                identity_score=signal.get("identity_score"), identity_score_kind="heuristic identity score, not a probability",
+                verification_status="unverified_search_snippet", verification_method="Open the source URL and review the full page.",
+                cost_amount=provider_fee, cost_currency="USD" if provider_fee is not None else None,
+                cost_units="search_provider_fee" if provider_fee is not None else "provider_query_cost_unknown",
+                cost_quantity=0 if provider_fee is not None else None, cost_estimated=False if provider_fee is not None else None,
+                miss_reason="Search result is a research candidate, not a verified event."))
+    try:
+        events_doc = json.loads(row.get("herald_signal_events") or "{}")
+    except (ValueError, TypeError):
+        events_doc = {}
+    events = events_doc.get("events", []) if isinstance(events_doc, dict) else []
+    for event in events if isinstance(events, list) else []:
+        source = next((s for s in signals if s.get("id") == event.get("source_id")), {})
+        subject = event.get("subject", "unknown")
+        results.append(fr.make_result(
+            field="lead_signal_event", value={"category": event.get("category", ""), "label": event.get("label", ""), "path_fit": event.get("path_fit", "general")},
+            status="candidate", source_type=event.get("source_type", "signal_taxonomy"), source_name=source.get("provider", "lead CSV or public search"),
+            source_url=event.get("url", ""), source_record_id=event.get("source_id", ""), observed_at=source.get("retrieved_at", now),
+            publication_date=event.get("publication_date", ""), freshness_status=event.get("freshness_status", "undated"), age_days=source.get("age_days"),
+            identity_subject=subject, identity_match=source.get("identity_match", "supplied lead context"),
+            identity_strength=source.get("identity_strength", "unknown"), identity_score=source.get("identity_score"),
+            identity_score_kind="heuristic identity score, not a probability" if source else "",
+            verification_status="unverified_phrase_match", verification_method="matched a signal taxonomy cue; review source",
+            cost_amount=provider_fee, cost_currency="USD" if provider_fee is not None else None,
+            cost_units="search_provider_fee" if provider_fee is not None else "provider_query_cost_unknown",
+            cost_quantity=0 if provider_fee is not None else None, cost_estimated=False if provider_fee is not None else None,
+            miss_reason="Phrase match is a research cue, not a verified event."))
+    for field in ("outreach_subject", "outreach_body"):
+        value = row.get(field, "")
+        evidence_ids = [x.strip() for x in (row.get("outreach_evidence") or "").split(",") if x.strip()]
+        evidence = [s for s in signals if s.get("id") in evidence_ids]
+        results.append(fr.make_result(
+            field=field, value=value or None, status="candidate" if value and evidence else "not_found",
+            source_type="local_ai" if value else "", source_name=row.get("outreach_model", "") if value else "",
+            observed_at=row.get("herald_ai_reviewed_at", now) if value else "",
+            verification_status="human_review_required" if value else "not_generated",
+            verification_method="AI draft cites the following public research evidence; review before use." if value else "",
+            cost_units="local_model_inference" if value else "", cost_estimated=False if value else None,
+            candidates=[fr.source_ref(source_type="public_web_search", source_name=s.get("provider", ""), source_url=s.get("url", ""),
+                                     source_record_id=s.get("id", ""), value={"title": s.get("title", ""), "snippet": s.get("snippet", "")}) for s in evidence],
+            miss_reason="No cited AI draft value was produced." if not value else "AI output is a draft; human review is required."))
+    for result in results:
+        result.setdefault("metadata", {})["lane"] = "herald_research"
+    return fr.dump_results(results)
+
+
+def build_presence_field_results(signals: list[dict], checked_at: str) -> str:
+    """Map public social search snippets to contract records without calling them verified reputation."""
+    results = []
+    if not signals:
+        missing = fr.make_result(field="presence_social_signal", status="not_found", observed_at=checked_at,
+                                 identity_subject="company", miss_reason="No identity-matched public social result was retained.",
+                                 verification_status="not_found", metadata={"lane": "presence_research"})
+        return fr.dump_results([missing])
+    for signal in signals:
+        subject = signal.get("identity_subject", "company")
+        results.append(fr.make_result(
+            field="presence_person_signal" if subject == "person" else "presence_company_signal",
+            value={"title": signal.get("title", ""), "snippet": signal.get("snippet", ""), "type": signal.get("type", "")},
+            status="candidate", source_type="public_web_search", source_name=signal.get("provider", "DuckDuckGo public web results"),
+            source_url=signal.get("url", ""), source_record_id=signal.get("id", ""), observed_at=signal.get("retrieved_at", checked_at),
+            publication_date=signal.get("publication_date", ""), freshness_status=signal.get("freshness_status", "undated"), age_days=signal.get("age_days"),
+            identity_subject=subject, identity_match=signal.get("identity_match", ""), identity_strength=signal.get("identity_strength", "unknown"),
+            identity_score=signal.get("identity_score"), identity_score_kind=signal.get("confidence_kind", "heuristic, not a probability"),
+            verification_status="unverified_search_snippet", verification_method="Open the source URL and review the full page.",
+            cost_amount=0.0, cost_currency="USD", cost_units="search_provider_fee", cost_quantity=0, cost_estimated=False,
+            miss_reason="Search result is a candidate public profile/post, not verified identity or reputation."))
+    for result in results:
+        result.setdefault("metadata", {})["lane"] = "presence_research"
+    return fr.dump_results(results)
+
+
 def _presence_history_key(row: dict) -> str:
     """Hash stable lead identity so locally retained comparison history stores no clear lead identifiers."""
     parts = (
@@ -806,6 +897,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
                         row["herald_status"] = row["research_status"] = "local AI evidence review ready"
             except Exception as e:
                 errors.append(type(e).__name__)
+        row["field_results"] = fr.merge_results(row.get("field_results"), build_herald_field_results(row, signals, search_provider))
         out.append(row)
         if i < min(len(rows), max_rows):
             time.sleep(0.8)
@@ -888,6 +980,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
         row["presence_checked_at"] = checked_at
         row["presence_status"] = "public professional/social results found" if signals else "no matching public social results"
         row.update(comparison)
+        row["field_results"] = fr.merge_results(row.get("field_results"), build_presence_field_results(signals, checked_at))
         out.append(row)
         if i < min(len(rows), max_rows):
             time.sleep(0.8)

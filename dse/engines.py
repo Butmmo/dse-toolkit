@@ -282,6 +282,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
                          "enrichment_search_strategy": r.get("enrichment_search_strategy", ""),
                          "herald_status": r.get("herald_status", r.get("research_status", "")),
                          "presence_signals": r.get("presence_signals", ""), "presence_sources": r.get("presence_sources", ""),
+                         "field_results": r.get("field_results", ""),
                          "outreach_subject": ai_subject, "outreach_body": ai_body,
                          "outreach_evidence": r.get("outreach_evidence", ""),
                          "outreach_evidence_detail": r.get("outreach_evidence_detail", ""),

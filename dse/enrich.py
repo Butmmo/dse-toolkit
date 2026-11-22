@@ -33,6 +33,7 @@ import urllib.robotparser
 from pathlib import Path
 
 from . import enrich_providers as ep
+from . import field_results as fr
 from . import importer
 from .common import LISTS, ROOT, fetch, log, norm_url, read_csv, render_dom, write_csv
 from .common import UA as _UA
@@ -377,7 +378,7 @@ def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool =
         for k, v in extract_socials(pg_html).items():
             if v and not out["socials"].get(k):
                 out["socials"][k] = v
-                out["field_sources"].setdefault("social_profiles", pg_url)
+                out["field_sources"].setdefault(f"social_profile:{k}", pg_url)
         for t in detect_tech(pg_html):
             if t not in out["tech"]:
                 out["tech"].append(t)
@@ -434,7 +435,7 @@ def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool =
         except ep.ProviderError as e:
             found = []
             out["provider_note"] = str(e)
-        out["provider_usage"] = {"api_calls": budget.used - calls_before, "cache_hits": budget.cached - cache_before}
+        out["provider_usage"] = {"provider": provider.get("name", ""), "api_calls": budget.used - calls_before, "cache_hits": budget.cached - cache_before}
         if found:
             steps.append("paid")
             have = {x["email"] for x in out["emails"]}
@@ -514,7 +515,7 @@ def score(site: dict, given_email: str = "") -> tuple[int, str]:
 
 ADDED = ["found_email", "email_kind", "email_source", "other_emails", "email_guesses", "best_email", "best_email_source", "email_check", "phone_found", "decision_maker", "decision_maker_title",
          "decision_maker_source", "contact_form_url", "contact_page_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found",
-         "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "enrich_status", "steps", "lead_score", "lead_why", "enriched_on", "enrichment_audit"]
+         "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "enrich_status", "steps", "lead_score", "lead_why", "enriched_on", "enrichment_audit", "field_results"]
 
 
 def email_belongs(email: str, site_domain: str) -> bool:
@@ -565,6 +566,89 @@ def field_audit(site: dict, row_email: str, best_email: str, best_email_source: 
     return json.dumps(audit, ensure_ascii=False, separators=(",", ":"))
 
 
+def shared_field_results(site: dict, row_email: str, best_email: str, best_email_source: str, today: dt.date) -> str:
+    """Emit the shared contract while retaining enrichment_audit for older consumers."""
+    observed = dt.datetime.combine(today, dt.time.min, tzinfo=dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    fields = []
+    provider_usage = site.get("provider_usage") or {}
+    calls = int(provider_usage.get("api_calls", 0) or 0)
+    cache_hits = int(provider_usage.get("cache_hits", 0) or 0)
+    provider_name = provider_usage.get("provider", "")
+
+    def add(field: str, value, url: str = "", source_type: str = "company_website", source_name: str = "Company website",
+            subject: str = "company", strength: str = "strong", verification: str = "not_checked", miss: str = ""):
+        fields.append(fr.make_result(field=field, value=value if value not in ("", None, [], {}) else None,
+                                     status="accepted" if value not in ("", None, [], {}) else "not_found",
+                                     source_type=source_type if value not in ("", None, [], {}) else "",
+                                     source_name=source_name if value not in ("", None, [], {}) else "", source_url=url if value else "",
+                                     observed_at=observed if value else "", freshness_status="unknown" if value else "unknown",
+                                     identity_subject=subject if value else "unknown", identity_match="retrieved from supplied company domain" if value else "",
+                                     identity_strength=strength if value else "unknown", identity_score=1.0 if value and strength == "strong" else None,
+                                     identity_score_kind="source-domain match cue; not a probability" if value else "",
+                                     verification_status=verification if value else "not_applicable",
+                                     verification_method="mailbox deliverability was not checked" if field == "best_email" and value else "",
+                                     cost_amount=None if field == "best_email" and source_type == "configured_provider" else 0.0,
+                                     cost_currency=None if field == "best_email" and source_type == "configured_provider" else "USD",
+                                     cost_units="provider_api_calls" if field == "best_email" and source_type == "configured_provider" else "external_provider_fee",
+                                     cost_quantity=float(calls) if field == "best_email" and source_type == "configured_provider" else None,
+                                     cost_estimated=False,
+                                     miss_reason=(miss or "No value found in the inspected company pages.") if not value else ""))
+
+    email_source = best_email_source or ""
+    if best_email_source == "your file":
+        email_type, email_name = "input_csv", "Input CSV"
+    elif best_email_source and best_email_source.startswith("http"):
+        email_type, email_name = "company_website", "Company website"
+    elif best_email_source:
+        email_type, email_name = "configured_provider", provider_name or best_email_source
+    else:
+        email_type, email_name = "", ""
+    email_candidates = [fr.source_ref(source_type="input_csv", source_name="Input CSV", status="accepted" if best_email_source == "your file" else "rejected",
+                                       value=row_email)] if row_email else []
+    email_candidates.extend(fr.source_ref(source_type="company_website" if str(e.get("source", "")).startswith("http") else "configured_provider",
+                                          source_name=provider_name if not str(e.get("source", "")).startswith("http") else "Company website",
+                                          source_url=e.get("source", "") if str(e.get("source", "")).startswith("http") else "",
+                                          status="accepted" if e.get("email") == best_email and best_email_source != "your file" else "candidate", value=e.get("email"))
+                            for e in site.get("emails", []))
+    if site.get("guesses"):
+        email_candidates.extend(fr.source_ref(source_type="pattern_guess", source_name="Email pattern inference", status="candidate", value=g) for g in site["guesses"])
+    fields.append(fr.make_result(field="best_email", value=best_email or None, status="accepted" if best_email else "not_found",
+                                 source_type=email_type, source_name=email_name, source_url=email_source if email_type == "company_website" else "",
+                                 observed_at=observed if best_email else "", identity_subject="company" if best_email else "unknown",
+                                 identity_match="input accepted by domain policy" if best_email_source == "your file" else "domain-scoped provider/site result" if best_email else "",
+                                 identity_strength="moderate" if best_email else "unknown", verification_status="not_checked" if best_email else "not_found",
+                                 verification_method="MX presence is checked separately; mailbox delivery is not verified" if best_email else "",
+                                 cost_units="provider_api_calls" if email_type == "configured_provider" else "", cost_quantity=float(calls) if email_type == "configured_provider" else None,
+                                 cost_estimated=False if email_type == "configured_provider" else None,
+                                 miss_reason="No accepted email; guesses, if any, remain candidates only." if not best_email else "",
+                                 candidates=email_candidates, metadata={"email_source_label": best_email_source, "provider_cache_hits": cache_hits}))
+    add("phone", (site.get("phones") or [None])[0], (site.get("field_sources") or {}).get("phone", ""))
+    person = (site.get("people") or [None])[0]
+    add("decision_maker", {"name": person.get("name"), "title": person.get("title", "")} if person else None,
+        person.get("source", "") if person else "", strength="moderate", verification="not_checked",
+        miss="No named person found on the inspected pages." if not person else "")
+    add("decision_maker_title", person.get("title") if person else None, person.get("source", "") if person else "",
+        strength="moderate", verification="not_checked", miss="No decision-maker title was found on the inspected pages." if not person or not person.get("title") else "")
+    add("contact_form", site.get("contact_form"), (site.get("field_sources") or {}).get("contact_form", ""))
+    add("booking", site.get("booking"), (site.get("field_sources") or {}).get("booking", ""))
+    for platform in ("linkedin", "instagram", "facebook", "x", "youtube"):
+        add(f"{platform}_profile", (site.get("socials") or {}).get(platform), (site.get("field_sources") or {}).get(f"social_profile:{platform}", ""), strength="moderate")
+    add("technology", site.get("tech") or None, (site.get("field_sources") or {}).get("technology", ""), strength="moderate")
+    add("site_description", site.get("description"), (site.get("field_sources") or {}).get("site_description", ""), strength="moderate")
+    add("icp_term_hits", site.get("icp_hits") or None, "", source_type="heuristic_text_match", source_name="Inspected website text", strength="moderate")
+    add("site_active", site.get("active"), "", source_type="copyright_year_heuristic", source_name="Inspected website text", strength="moderate",
+        verification="heuristic_not_verified", miss="The inspected site did not provide a usable copyright year." if not site.get("active") else "")
+    if calls or cache_hits:
+        fields.append(fr.make_result(field="provider_lookup", value={"provider": provider_name, "api_calls": calls, "cache_hits": cache_hits},
+                                     status="candidate" if calls or cache_hits else "not_found", source_type="configured_provider", source_name=provider_name,
+                                     observed_at=observed, verification_status="not_applicable", cost_units="provider_api_calls", cost_quantity=float(calls),
+                                     cost_estimated=False, miss_reason=site.get("provider_note", ""),
+                                     metadata={"currency_cost": None, "pricing_note": "No provider monetary price is declared."}))
+    for result in fields:
+        result.setdefault("metadata", {})["lane"] = "website_enrichment"
+    return fr.dump_results(fields)
+
+
 def row_columns(site: dict, row_email: str, row_name: str, today: dt.date) -> dict:
     top = site["emails"][0] if site["emails"] else None
     dm = site["people"][0] if site["people"] else None
@@ -588,7 +672,8 @@ def row_columns(site: dict, row_email: str, row_name: str, today: dt.date) -> di
             "x_found": site["socials"].get("x", ""), "youtube_found": site["socials"].get("youtube", ""), "tech_stack": ", ".join(site["tech"]),
             "site_description": site["description"], "site_active": site["active"], "mx_ok": site["mx"], "icp_hits": ", ".join(site["icp_hits"]),
             "enrich_status": site["status"], "steps": site["steps"], "lead_score": sc, "lead_why": why, "enriched_on": today.isoformat(),
-            "enrichment_audit": field_audit(site, row_email, best, best_src)}
+            "enrichment_audit": field_audit(site, row_email, best, best_src),
+            "field_results": shared_field_results(site, row_email, best, best_src, today)}
 
 
 def find_columns(headers: list[str]) -> dict[str, str]:
@@ -628,6 +713,7 @@ def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], rend
         if site.get("provider_note") and site["provider_note"] not in stats["provider_notes"]:
             stats["provider_notes"].append(site["provider_note"])
         cols = row_columns(site, row_email, row_name, today)
+        cols["field_results"] = fr.merge_results(r.get("field_results"), cols["field_results"])
         out.append({**r, **cols})
         if site["status"] == "ok":
             stats["ok"] += 1
