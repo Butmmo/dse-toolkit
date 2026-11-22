@@ -10763,7 +10763,7 @@
     "dse.grid_enrich": {
       "label": "Ledgers: enrich grid rows live",
       "group": "Grow",
-      "help": "Runs the existing lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, or Presence public social signals. The PC reads the grid rows, runs the selected enrichment lane, then creates or reuses result columns and writes the results back into these rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. The original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted.",
+      "help": "Runs the existing lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, or Presence public social signals. The PC reads the grid rows, runs the selected enrichment lane, then creates or reuses result columns and writes the results back into these rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. The original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted. For Herald and Presence, compact source snapshots are saved with each grid row so their check history is shared with the Ledger across devices.",
       "script": "dse.py",
       "args": [
         {
@@ -11178,7 +11178,8 @@
         "Creates/reuses columns for the selected output fields",
         "Preserves original row inputs; existing result cells are kept unless replace is selected",
         "Website, Herald and Presence lanes",
-        "Retains source URLs and compares repeated complete searches; partial runs never imply a source disappeared."
+        "Retains source URLs and compares repeated complete searches; partial runs never imply a source disappeared.",
+        "Persists a compact source-monitoring timeline on each Ledger row for cross-device review"
       ]
     }
   },
