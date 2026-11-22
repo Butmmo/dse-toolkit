@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import gridpush, gridrun
 from .common import LISTS, ROOT
+from . import enrichment_profiles
 
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
@@ -46,23 +47,27 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
               icp: str = "", waterfall_config: str = "", dry_run: bool = False,
               path: str = "any", profile: str = "any", decision_maker: str = "any", legal_form: str = "any",
               decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo",
-              search_budget: int = 12, minimum_identity_score: float = 0.0, use_ai: bool = True):
+              search_budget: int = 12, minimum_identity_score: float = 0.0, use_ai: bool = True,
+              enrichment_profile: str = "", provider_budget: int | None = None):
     if lane == "website":
         from . import enrich
+        active_waterfall = waterfall_config if provider_budget is None or provider_budget > 0 else ""
+        active_dry_run = dry_run if provider_budget is None or provider_budget > 0 else False
         report = enrich.enrich_file(str(source), icp=icp, engine=engine, max_rows=limit, render=False,
-                                    waterfall_config_path=waterfall_config, dry_run=dry_run)
+                                    waterfall_config_path=active_waterfall, dry_run=active_dry_run, budget=provider_budget)
         m = re.search(r"Saved: (\S+\.csv)", report)
     elif lane == "herald":
         from . import signal_enrichment
         report = signal_enrichment.enrich_file(str(source), engine=engine, max_rows=limit, use_ai=use_ai,
             business_profile=profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role,
             custom_role=custom_role, search_provider=search_provider, path_key=path, search_budget=search_budget,
-            minimum_identity_score=minimum_identity_score)
+            minimum_identity_score=minimum_identity_score, enrichment_profile=enrichment_profile)
         m = re.search(r"Saved: (\S+\.csv)", report)
     else:
         from . import signal_enrichment
         report = signal_enrichment.enrich_presence_file(str(source), engine=engine, max_rows=limit,
-            search_budget=min(search_budget, 10), minimum_identity_score=minimum_identity_score)
+            search_budget=min(search_budget, 10), minimum_identity_score=minimum_identity_score,
+            enrichment_profile=enrichment_profile)
         m = re.search(r"Saved: (\S+\.csv)", report)
     if not m:
         raise RuntimeError("The enrichment finished but did not report its result CSV path.")
@@ -428,6 +433,28 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         raise ValueError(f"Process 1 to {lane_limit} {lane} grid rows per run.")
     if output_detail not in ("essentials", "full"):
         raise ValueError("output detail must be essentials or full.")
+    enrichment_profile = str(options.pop("enrichment_profile", "none") or "none")
+    if enrichment_profile == "none":
+        enrichment_profile = ""
+    provider_budget = None
+    if enrichment_profile:
+        plan = enrichment_profiles.build_profile(enrichment_profile)
+        current_path = str(options.get("path", "any") or "any")
+        if current_path not in ("", "any", enrichment_profile):
+            raise ValueError("The selected path and enrichment profile do not match. Choose one path for this run.")
+        if engine:
+            from . import engines, path_signals
+            engine_path = path_signals.known_path(engines.load(engine).get("path", ""))
+            if engine_path and engine_path != enrichment_profile:
+                raise ValueError(f"The selected Engine follows the {path_signals.profile(engine_path)['label']} path. Choose its profile instead.")
+        options["path"] = enrichment_profile
+        profile_cap = plan["limits"]["herald_queries_per_lead"] if lane == "herald" else plan["limits"]["presence_queries_per_lead"] if lane == "presence" else None
+        if profile_cap is not None:
+            options["search_budget"] = min(int(options.get("search_budget", profile_cap)), profile_cap)
+        if lane == "website":
+            provider_budget = plan["limits"]["provider_calls_per_run"]
+        if options.get("profile", "any") == "any" and plan["intent"]["target_business_segment_keys"]:
+            options["profile"] = plan["intent"]["target_business_segment_keys"][0]
     api = api or gridpush.connect()
     if api is None:
         raise RuntimeError("This PC is not connected to Citadel yet (run the HQ Tools setup first).")
@@ -448,12 +475,22 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             writer.writerow({c["label"]: _cell(data.get(c["key"])) for c in columns})
     say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows.")
     try:
-        result_path, output_headers, enriched_rows = _run_lane(input_path, lane, engine, len(source_rows), output_detail, **options)
+        result_path, output_headers, enriched_rows = _run_lane(input_path, lane, engine, len(source_rows), output_detail,
+            enrichment_profile=enrichment_profile, provider_budget=provider_budget, **options)
     finally:
         input_path.unlink(missing_ok=True)
     if len(enriched_rows) != len(source_rows):
         raise RuntimeError(f"The enrichment returned {len(enriched_rows)} rows for {len(source_rows)} inputs; nothing was written to the grid.")
     existing = {gridpush.norm(c["label"]): c for c in columns}
+    if enrichment_profile:
+        profile_record = enrichment_profiles.build_profile(enrichment_profile)
+        profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
+                           "profile_key": enrichment_profile, "path_key": enrichment_profile, "lane": lane,
+                           "limits": profile_record["limits"], "profile_status": "applied"}
+        for enriched_row in enriched_rows:
+            enriched_row["enrichment_profile"] = json.dumps(profile_summary, ensure_ascii=False, separators=(",", ":"))
+        if "enrichment_profile" not in output_headers:
+            output_headers.append("enrichment_profile")
     new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
     evidence_header = f"{lane}_evidence_decisions"
     monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
@@ -520,6 +557,7 @@ def cli(argv: list[str]) -> int:
     parser.add_argument("--waterfall-config", default="")
     parser.add_argument("--dry-run-providers", action="store_true")
     parser.add_argument("--path", default="any")
+    parser.add_argument("--enrichment-profile", choices=["none", *enrichment_profiles.available_paths()], default="none")
     parser.add_argument("--profile", default="any")
     parser.add_argument("--decision-maker", default="any")
     parser.add_argument("--legal-form", default="any")

@@ -15,6 +15,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
   python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
+  python dse.py enrichment-profile list|show|preview|export <path>  inspect a versioned path-specific research plan before enrichment
   python dse.py signals leads.csv [--engine x] [--max 25] [--profile saas] [--decision-maker functional_leader] [--decision-role signal_based] [--custom-role "VP of Sales"] [--legal-form us_c_corp] [--no-ai]  Herald research with signal-based role discovery
   python dse.py presence-signals leads.csv [--engine x] [--max 25]             separate public professional/social evidence for Presence
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
@@ -79,6 +80,12 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "formula-assist":
         from dse.formula_assist import main as formula_assist_main
         sys.exit(formula_assist_main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "eval-enrichment":
+        from dse.enrichment_eval import main as enrichment_eval_main
+        sys.exit(enrichment_eval_main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "enrichment-profile":
+        from dse.enrichment_profiles import main as enrichment_profiles_main
+        sys.exit(enrichment_profiles_main(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "claude":      # connect your own Claude key (kept on this PC only): python dse.py claude --help
         from dse import claudekey
         sys.exit(claudekey.run_cli(sys.argv[2:]))
@@ -231,6 +238,7 @@ def main():
     se.add_argument("source", help="CSV with a company name; city and website improve matching")
     se.add_argument("--engine", default="", help="also save the researched CSV to this engine's imports")
     se.add_argument("--path", choices=list(signal_enrichment.path_signals.PATH_SIGNAL_PROFILES), default="any", help="path focus; a selected Engine path is used automatically")
+    se.add_argument("--enrichment-profile", choices=["none", *signal_enrichment.path_signals.PATH_SIGNAL_PROFILES.keys()], default="none", help="apply this versioned path profile's query cap, segment hint and freshness target")
     se.add_argument("--max", type=int, default=25, help="most leads to research in this stage, 1 to 50")
     se.add_argument("--profile", choices=["any", "franchise_group", "local_smb", "saas", "online_store", "enterprise"], default="any", help="business type to prioritize in search; this is not a verified classification")
     se.add_argument("--decision-maker", choices=["any", "owner_compact", "franchise_operator", "functional_leader", "specialist_director"], default="any", help="decision-maker path to prioritize")
@@ -244,6 +252,7 @@ def main():
     ps = sub.add_parser("presence-signals", help="collect separate public professional/social signals for Presence (no outreach draft)")
     ps.add_argument("source", help="CSV with a company name; contact name and city improve matching")
     ps.add_argument("--engine", default="", help="also save the Presence-specific CSV to this engine's imports")
+    ps.add_argument("--enrichment-profile", choices=["none", *signal_enrichment.path_signals.PATH_SIGNAL_PROFILES.keys()], default="none", help="apply this versioned path profile's query cap and freshness target")
     ps.add_argument("--max", type=int, default=25, help="most leads to check in this stage, 1 to 50")
     ps.add_argument("--search-budget", type=int, default=3, help="maximum ordered public search queries per lead (0 to 10)")
     ps.add_argument("--minimum-identity-score", type=float, default=0.0, help="discard results below this heuristic 0 to 1 score; not a probability")
@@ -321,12 +330,13 @@ def main():
     elif a.cmd == "signals":
         try:
                 print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role,
-                                                    a.search_provider, a.path, a.search_budget, a.minimum_identity_score))
+                                                    a.search_provider, a.path, a.search_budget, a.minimum_identity_score, "" if a.enrichment_profile == "none" else a.enrichment_profile))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "presence-signals":
         try:
-            print(signal_enrichment.enrich_presence_file(a.source, a.engine, a.max, a.search_budget, a.minimum_identity_score))
+            print(signal_enrichment.enrich_presence_file(a.source, a.engine, a.max, a.search_budget, a.minimum_identity_score,
+                                                         "" if a.enrichment_profile == "none" else a.enrichment_profile))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "reply":
