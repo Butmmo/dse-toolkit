@@ -17,6 +17,7 @@ How it stays safe and cheap:
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -116,8 +117,8 @@ def load(name: str, require_key: bool = True) -> dict:
         raise ProviderError(f"{p.name}: the url must start with https://")
     if req.get("method", "GET").upper() not in ("GET", "POST"):
         raise ProviderError(f"{p.name}: method is GET or POST")
-    if not res.get("list") or not res.get("email"):
-        raise ProviderError(f"{p.name}: response needs 'list' (where the emails are) and 'email' (the field with the address)")
+    if not res.get("list") or not (res.get("email") or isinstance(cfg.get("response_fields"), dict)):
+        raise ProviderError(f"{p.name}: response needs 'list' and either the email mapping or response_fields mappings.")
     key_env = cfg.get("key_env", "")
     if not re.fullmatch(r"[A-Z][A-Z0-9_]{2,60}", key_env):
         raise ProviderError(f"{p.name}: key_env is the NAME of a variable, like HUNTER_API_KEY (never the key itself)")
@@ -191,6 +192,40 @@ def parse(cfg: dict, data) -> list[dict]:
     return out
 
 
+def parse_field(cfg: dict, data, field: str) -> list[dict]:
+    """Parse a configured non-email field mapping into canonical candidates."""
+    mapping = (cfg.get("response_fields") or {}).get(field)
+    if not isinstance(mapping, dict) or not mapping.get("list"):
+        raise ProviderError(f"{cfg.get('name', 'Provider')} has no response_fields mapping for {field}.")
+    items = dig(data, mapping["list"])
+    if isinstance(items, dict):
+        items = [items]
+    if isinstance(items, dict):
+        items = [items]
+    candidates = []
+    value_path = mapping.get("value", "")
+    fields_map = mapping.get("fields", {})
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict) and not (field == "phone" and isinstance(item, (str, int))):
+            continue
+        if field == "firmographics":
+            value = {key: dig(item, path) for key, path in fields_map.items() if isinstance(path, str) and path}
+            value = {key: val for key, val in value.items() if val not in (None, "", [], {})}
+        elif field == "person_identity":
+            value = {key: dig(item, path) for key, path in fields_map.items() if isinstance(path, str) and path}
+            value = {key: val for key, val in value.items() if val not in (None, "", [], {})}
+        else:
+            value = dig(item, value_path) if isinstance(item, dict) and value_path else item
+        if value in (None, "", [], {}):
+            continue
+        candidates.append({"value": value, "confidence": dig(item, mapping.get("confidence", "")) if isinstance(item, dict) and mapping.get("confidence") else None,
+                           "identity_score": dig(item, mapping.get("identity_score", "")) if isinstance(item, dict) and mapping.get("identity_score") else None,
+                           "identity_domain": dig(item, mapping.get("identity_domain", "")) if isinstance(item, dict) and mapping.get("identity_domain") else "",
+                           "identity_company": dig(item, mapping.get("identity_company", "")) if isinstance(item, dict) and mapping.get("identity_company") else "",
+                           "source_url": dig(item, mapping.get("source_url", "")) if isinstance(item, dict) and mapping.get("source_url") else ""})
+    return candidates
+
+
 def lookup(cfg: dict, domain: str, company: str, budget: Budget, today: dt.date | None = None) -> list[dict]:
     """Emails the provider knows for a domain. Cached for 30 days; a paid call only when the budget allows. Raises ProviderError for a problem worth telling the person."""
     today = today or dt.date.today()
@@ -236,3 +271,69 @@ def lookup(cfg: dict, domain: str, company: str, budget: Budget, today: dt.date 
     cf.write_text(json.dumps({"date": today.isoformat(), "domain": domain, "results": results}), encoding="utf-8")
     time.sleep(0.2)
     return results
+
+
+def field_cache_file(provider: str, domain: str, field: str, contact_name: str = "") -> Path:
+    suffix = "." + hashlib.sha256(contact_name.casefold().strip().encode("utf-8")).hexdigest()[:12] if field == "person_identity" and contact_name else ""
+    return CACHE / provider / (re.sub(r"[^a-z0-9.-]", "_", domain.lower()) + f".{field}{suffix}.json")
+
+
+def cached_field(cfg: dict, domain: str, field: str, today: dt.date | None = None, contact_name: str = "") -> tuple[bool, list[dict]]:
+    today = today or dt.date.today()
+    cf = field_cache_file(cfg["name"], domain, field, contact_name)
+    try:
+        item = json.loads(cf.read_text(encoding="utf-8"))
+        if (today - dt.date.fromisoformat(item["date"])).days <= CACHE_DAYS and isinstance(item.get("results"), list):
+            return True, item["results"]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return False, []
+
+
+def lookup_field(cfg: dict, field: str, identity: dict, budget: Budget, today: dt.date | None = None) -> list[dict]:
+    """Call a configured adapter for phone, person_identity or firmographics."""
+    today = today or dt.date.today()
+    name = cfg["name"]
+    is_cached, cached_results = cached_field(cfg, identity.get("domain", ""), field, today, identity.get("contact_name", ""))
+    if is_cached:
+        budget.cached += 1
+        return cached_results
+    if budget.left() <= 0:
+        return []
+    req = cfg["request"]
+    values = {**identity, "domain": identity.get("domain", ""), "company": identity.get("company", "") or identity.get("domain", "")}
+    fill = lambda value: re.sub(r"\{([a-z_]+)\}", lambda match: str(values.get(match.group(1), "")), str(value))
+    query = {key: fill(value) for key, value in (req.get("query") or {}).items()}
+    body = {key: fill(value) for key, value in (req.get("body") or {}).items()}
+    headers = {"Accept": "application/json", "User-Agent": "DSEToolkit/1.0"}
+    auth = req.get("auth") or {"in": "header", "name": "Authorization", "prefix": "Bearer "}
+    key = cfg["_key"]
+    if auth.get("in") == "query":
+        query[auth.get("name", "api_key")] = key
+    else:
+        headers[auth.get("name", "Authorization")] = f"{auth.get('prefix', '')}{key}"
+    budget.used += 1
+    try:
+        if req.get("method", "GET").upper() == "POST":
+            response = requests.post(req["url"], params=query if auth.get("in") == "query" else None, json=body or None, headers=headers, timeout=20)
+        else:
+            response = requests.get(req["url"], params=query, headers=headers, timeout=20)
+    except requests.RequestException as error:
+        raise ProviderError(scrub(f"{name}: could not reach the provider ({type(error).__name__}).", key)) from None
+    if response.status_code in (401, 403):
+        budget.stopped = "key rejected"
+        raise ProviderError(f"{name}: the provider rejected its key (HTTP {response.status_code}); check {cfg['key_env']}.")
+    if response.status_code in (402, 429):
+        budget.stopped = "limit or credits reached"
+        raise ProviderError(f"{name}: provider credits or rate limit reached (HTTP {response.status_code}).")
+    if response.status_code >= 400:
+        return []
+    try:
+        candidates = parse_field(cfg, response.json(), field)
+    except (ValueError, TypeError):
+        return []
+    cf = field_cache_file(name, identity.get("domain", ""), field, identity.get("contact_name", ""))
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    cf.write_text(json.dumps({"date": today.isoformat(), "domain": identity.get("domain", ""), "field": field, "results": candidates}), encoding="utf-8")
+    time.sleep(0.2)
+    return candidates

@@ -4,5 +4,10 @@
   "providers": ["hunter"],
   "minimum_confidence": 0.0,
   "stop_when": "personal_email_and_named_person",
-  "max_provider_calls": 25
+  "max_provider_calls": 25,
+  "field_waterfalls": {
+    "phone": {"providers": [], "max_provider_calls": 10, "minimum_confidence": 0.0, "minimum_identity_score": 0.0},
+    "person_identity": {"providers": [], "max_provider_calls": 10, "minimum_confidence": 0.0, "minimum_identity_score": 0.0},
+    "firmographics": {"providers": [], "max_provider_calls": 10, "minimum_confidence": 0.0, "minimum_identity_score": 0.0}
+  }
 }

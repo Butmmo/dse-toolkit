@@ -128,12 +128,14 @@ T["dse.presence_context"] = {
 
 T["dse.presence_signals"] = {
     "label": "Presence: check public social signals for leads", "group": "Grow",
-    "help": "Searches public indexed business social profiles and posts, plus a supplied contact's public professional profile when it matches the company. Saves Presence-specific source links, match terms and check time in separate CSV columns. It does not read private posts, infer sensitive traits, draft outreach or send anything. Search snippets can be stale or misidentify an account: review each source directly.",
-    "script": "dse.py", "args": [{"lit": "presence-signals"}, {"field": "csv"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}],
+    "help": "Searches public indexed business social profiles and posts, plus a supplied contact's public professional profile when it matches the company. Set a per-lead search-query cap and minimum identity-match score; query-by-query calls, returns, rejections and retained signals are recorded in the shared field-result metadata. A budget-limited history check is marked partial so missing results are not treated as disappearances. The score is heuristic, not a probability. It does not read private posts, infer sensitive traits, draft outreach or send anything. Search snippets can be stale or misidentify an account: review each source directly.",
+    "script": "dse.py", "args": [{"lit": "presence-signals"}, {"field": "csv"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}, {"opt": "--search-budget", "field": "search_budget"}, {"opt": "--minimum-identity-score", "field": "minimum_identity_score"}],
     "fields": [
         {"name": "csv", "label": "Lead CSV", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "presence-signals"},
         {"name": "engine", "label": "Also save a copy to this engine (optional)", "type": "choice", "required": False, "choices_from": "engines", "choices": []},
-        {"name": "max", "label": "Most leads to check in this stage", "type": "int", "min": 1, "max": 50, "default": 25}
+        {"name": "max", "label": "Most leads to check in this stage", "type": "int", "min": 1, "max": 50, "default": 25},
+        {"name": "search_budget", "label": "Maximum public search queries per lead", "type": "int", "min": 0, "max": 10, "default": 3},
+        {"name": "minimum_identity_score", "label": "Minimum identity match score (heuristic 0 to 1, not a probability)", "type": "float", "min": 0, "max": 1, "default": 0}
     ],
     "timeout_min": 240, "outputs": ["my-lists/*-presence-signals-*.csv", "my-lists/*-presence-signals-*.md", {"glob": "my-lists/*-presence-signals-*-shelf.json", "upload": True}]}
 

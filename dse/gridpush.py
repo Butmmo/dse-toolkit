@@ -268,6 +268,9 @@ def cli(argv: list[str]) -> int:
     if argv and argv[0] == "run":          # python dse.py grid run <grid> <column>: Run column (dse/gridrun.py)
         from . import gridrun
         return gridrun.cli(argv[1:])
+    if argv and argv[0] == "enrich":       # run website, Herald or Presence enrichment on live grid rows
+        from . import grid_enrich
+        return grid_enrich.cli(argv[1:])
     if argv and argv[0] == "people":       # python dse.py grid people <grid>: first name, last name and work email for every row (dse/gridpeople.py)
         from . import gridpeople
         return gridpeople.cli(argv[1:])

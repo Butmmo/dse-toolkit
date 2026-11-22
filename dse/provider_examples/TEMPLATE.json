@@ -10,6 +10,11 @@
     "auth": {"in": "header", "name": "Authorization", "prefix": "Bearer "}
   },
   "response": {"list": "data.emails", "email": "email", "kind": "type", "first": "first_name", "last": "last_name", "title": "job_title", "confidence": "score"},
+  "response_fields": {
+    "phone": {"list": "data.phones", "value": "number", "confidence": "confidence", "identity_domain": "domain", "identity_company": "company", "source_url": "source_url"},
+    "person_identity": {"list": "data.people", "fields": {"name": "full_name", "title": "current_title", "current_company": "current_company", "profile_url": "profile_url", "domain": "company_domain"}, "confidence": "confidence", "identity_score": "identity_score", "source_url": "profile_url"},
+    "firmographics": {"list": "data.company", "fields": {"company": "name", "domain": "domain", "industry": "industry", "business_type": "business_type", "employee_count": "employee_count", "employee_range": "employee_range", "annual_revenue": "annual_revenue", "revenue_range": "revenue_range", "headquarters": "headquarters", "city": "city", "state": "state", "country": "country", "description": "description", "legal_form": "legal_form", "founded_year": "founded_year"}, "confidence": "confidence", "identity_score": "identity_score", "source_url": "source_url"}
+  },
   "credits": "Say here what one call costs, so the next person knows.",
   "cost_per_call": null,
   "cost_currency": "USD"
