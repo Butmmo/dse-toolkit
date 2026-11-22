@@ -32,7 +32,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_identity_summary",
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
 HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
@@ -601,6 +601,24 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
             cost_units="search_provider_fee" if provider_fee is not None else "provider_query_cost_unknown",
             cost_quantity=0 if provider_fee is not None else None, cost_estimated=False if provider_fee is not None else None,
             miss_reason="Phrase match is a research cue, not a verified event."))
+    try:
+        outcome = json.loads(row.get("dse_path_outcome") or "{}")
+    except (ValueError, TypeError):
+        outcome = {}
+    if isinstance(outcome, dict) and outcome:
+        outcome_refs = outcome.get("evidence", []) if isinstance(outcome.get("evidence"), list) else []
+        results.append(fr.make_result(
+            field="dse_path_outcome", value=outcome,
+            status="candidate",
+            source_type="path_specific_research_plan", source_name=str(outcome.get("path_label", "General lead research")),
+            observed_at=now, verification_status="human_review_required",
+            verification_method="Combines path-specific research directions with cited candidate signals. Manually verify need, buyer, budget/commercial capacity, and baseline outcomes before recommending work.",
+            miss_reason="No path-priority source signal was retained; this plan is guidance, not proof of fit." if not outcome_refs else "Path signal candidates still require source review and commercial qualification.",
+            candidates=[fr.source_ref(source_type="public_web_search", source_name="Path-fit candidate", source_url=item.get("url", ""),
+                                      source_record_id=item.get("id", ""), value={"fit": item.get("fit"), "title": item.get("title", ""), "category": item.get("category", "")})
+                        for item in outcome_refs[:8] if item.get("id")],
+            metadata={"lane": "herald_research", "path_key": outcome.get("path_key", "any"), "decision_status": outcome.get("decision_status", "")}
+        ))
     for field in ("outreach_subject", "outreach_body"):
         value = row.get(field, "")
         evidence_ids = [x.strip() for x in (row.get("outreach_evidence") or "").split(",") if x.strip()]
@@ -1035,6 +1053,26 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             event["path_label"] = path["label"]
             annotated_events.append(event)
         row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "path_focus": {"key": selected_path or "any", "label": path["label"], "method": path["method"], "pain": path["pain"], "buyer": path["buyer"], "revenue_model": path["revenue_model"], "proof_metrics": path["proof_metrics"], "priority_categories": path["priority"], "supporting_categories": path["supporting"]}, "events": annotated_events}, ensure_ascii=False, separators=(",", ":"))
+        outcome_plan = path_signals.outcome_plan(selected_path or "any")
+        known_source_ids = {signal.get("id"): signal for signal in signals if signal.get("id")}
+        path_evidence = []
+        for event in annotated_events:
+            source = known_source_ids.get(event.get("source_id"))
+            if source and event.get("path_fit") in ("priority", "supporting"):
+                path_evidence.append({"id": source["id"], "fit": event["path_fit"], "category": event.get("category", ""),
+                                     "subject": source.get("identity_subject", "unknown"), "title": source.get("title", "")[:140],
+                                     "url": source.get("url", ""), "publication_date": source.get("publication_date", ""),
+                                     "freshness_status": source.get("freshness_status", "undated")})
+        has_priority = any(item["fit"] == "priority" for item in path_evidence)
+        row["dse_path_outcome"] = json.dumps({"schema": "dbi.path-outcome.v1", "path_key": outcome_plan["key"], "path_label": path["label"],
+            "outcome": outcome_plan["outcome"], "customer": path["buyer"], "pain_hypothesis": path["pain"],
+            "monetization_model": path["revenue_model"], "proof_metrics": path["proof_metrics"],
+            "commercial_viability_checks": [{"check": item, "state": "not_assessed"} for item in outcome_plan["viability_checks"]],
+            "decision_status": "priority_signal_needs_human_validation" if has_priority else "insufficient_path_specific_evidence",
+            "priority_evidence_count": sum(item["fit"] == "priority" for item in path_evidence),
+            "supporting_evidence_count": sum(item["fit"] == "supporting" for item in path_evidence),
+            "evidence": path_evidence[:8], "next_step": outcome_plan["next_step"],
+            "limits": ["Signal matches are research cues, not verified pain, buying intent, budget, or ability to pay.", "Complete the listed commercial viability checks with a human before qualifying or pitching."]}, ensure_ascii=False, separators=(",", ":"))
         row["herald_legal_form_assessment"] = json.dumps(assessment["legal_form_mentions"], ensure_ascii=False, separators=(",", ":"))
         row["herald_assessed_at"] = checked_at
         row["herald_assessment_note"] = assessment["basis"]

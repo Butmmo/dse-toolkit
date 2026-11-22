@@ -16,7 +16,7 @@ from .common import LISTS, ROOT
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
-    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_monitor_history", "herald_evidence_decisions", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
+    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
     "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_monitor_history"],
 }
 FULL_OUTPUTS = {
@@ -228,6 +228,7 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
                "status": row.get("herald_status", ""), "comparison_status": row.get("herald_comparison_status", ""),
                "business_profiles": profiles, "roles": roles, "legal_form_mentions": legal, "signal_events": events,
                "people_candidates": person_items, "ai_review": ai,
+               "path_outcome": _decode_json(row.get("dse_path_outcome"), {}),
                "outreach": {"subject": str(row.get("outreach_subject", ""))[:120], "body": str(row.get("outreach_body", ""))[:900],
                             "evidence_ids": outreach_ids[:8], "personalization_basis": str(row.get("outreach_personalization_basis", ""))[:300]},
                "sources": compact_sources}
@@ -244,11 +245,20 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
                                 for k, v in payload["ai_review"].items()}
         payload["outreach"]["body"] = payload["outreach"]["body"][:360]
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > 4800 and isinstance(payload.get("path_outcome"), dict):
+        outcome = payload["path_outcome"]
+        outcome["evidence"] = outcome.get("evidence", [])[:4]
+        outcome["commercial_viability_checks"] = outcome.get("commercial_viability_checks", [])[:3]
+        for key in ("outcome", "customer", "pain_hypothesis", "monetization_model", "next_step"):
+            if isinstance(outcome.get(key), str):
+                outcome[key] = outcome[key][:220]
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     if len(encoded) > 4800:
         payload = {"schema": payload["schema"], "checked_at": payload["checked_at"], "status": payload["status"],
                    "business_profiles": [{k: item.get(k) for k in ("key", "label", "assessment", "evidence_ids")} for item in payload["business_profiles"][:3]],
                    "roles": [{k: item.get(k) for k in ("label", "assessment", "evidence_ids")} for item in payload["roles"][:3]],
                    "signal_events": payload["signal_events"][:3],
+                   "path_outcome": {k: payload["path_outcome"].get(k) for k in ("path_label", "outcome", "customer", "pain_hypothesis", "monetization_model", "proof_metrics", "commercial_viability_checks", "decision_status", "priority_evidence_count", "supporting_evidence_count", "evidence", "next_step", "limits")} if isinstance(payload.get("path_outcome"), dict) else {},
                    "sources": [{k: (str(item.get(k) or "")[:180] if k == "url" else item.get(k)) for k in ("id", "subject", "title", "url")} for item in payload["sources"][:5]]}
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return encoded
