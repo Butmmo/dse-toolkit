@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dbicitadel.app/schemas/field-result-v1.json",
+  "title": "DBI Citadel shared enrichment field result",
+  "description": "A provider-neutral value envelope carrying source, freshness, identity, verification, cost and miss details.",
+  "type": "object",
+  "required": ["schema", "field", "value", "status", "source", "observed_at", "freshness", "identity", "verification", "cost", "miss_reason", "candidates", "metadata"],
+  "properties": {
+    "schema": {"const": "dbi.field-result.v1"},
+    "field": {"type": "string", "minLength": 1},
+    "value": {},
+    "status": {"enum": ["accepted", "candidate", "not_found", "rejected", "error"]},
+    "source": {"$ref": "#/$defs/source"},
+    "observed_at": {"type": "string"},
+    "freshness": {
+      "type": "object", "required": ["publication_date", "status", "age_days"],
+      "properties": {"publication_date": {"type": "string"}, "status": {"type": "string"}, "age_days": {"type": ["integer", "null"]}},
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object", "required": ["subject", "match", "strength", "score", "score_kind"],
+      "properties": {"subject": {"type": "string"}, "match": {"type": "string"}, "strength": {"type": "string"}, "score": {"type": ["number", "null"], "minimum": 0, "maximum": 1}, "score_kind": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object", "required": ["status", "method", "checked_at"],
+      "properties": {"status": {"type": "string"}, "method": {"type": "string"}, "checked_at": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "cost": {
+      "type": "object", "required": ["amount", "currency", "units", "quantity", "estimated"],
+      "properties": {"amount": {"type": ["number", "null"]}, "currency": {"type": ["string", "null"]}, "units": {"type": "string"}, "quantity": {"type": ["number", "null"]}, "estimated": {"type": ["boolean", "null"]}},
+      "additionalProperties": false
+    },
+    "miss_reason": {"type": "string"},
+    "candidates": {"type": "array", "items": {"$ref": "#/$defs/candidate"}},
+    "metadata": {"type": "object"}
+  },
+  "$defs": {
+    "source": {
+      "type": "object", "required": ["type", "name", "url", "record_id"],
+      "properties": {"type": {"type": "string"}, "name": {"type": "string"}, "url": {"type": "string"}, "record_id": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "candidate": {
+      "type": "object", "required": ["status", "value", "source"],
+      "properties": {"status": {"enum": ["accepted", "candidate", "not_found", "rejected", "error"]}, "value": {}, "source": {"$ref": "#/$defs/source"}},
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -10,5 +10,7 @@
     "auth": {"in": "header", "name": "Authorization", "prefix": "Bearer "}
   },
   "response": {"list": "data.emails", "email": "email", "kind": "type", "first": "first_name", "last": "last_name", "title": "job_title", "confidence": "score"},
-  "credits": "Say here what one call costs, so the next person knows."
+  "credits": "Say here what one call costs, so the next person knows.",
+  "cost_per_call": null,
+  "cost_currency": "USD"
 }
