@@ -32,7 +32,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_identity_summary",
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
 HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
@@ -619,6 +619,7 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                         for item in outcome_refs[:8] if item.get("id")],
             metadata={"lane": "herald_research", "path_key": outcome.get("path_key", "any"), "decision_status": outcome.get("decision_status", "")}
         ))
+    advice_status = str(row.get("dse_path_ai_advice_status", "not_run"))
     try:
         path_advice = json.loads(row.get("dse_path_ai_advice") or "{}")
     except (ValueError, TypeError):
@@ -635,6 +636,11 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                                       value={"title": refs[source_id].get("title", ""), "identity_subject": refs[source_id].get("identity_subject", "unknown")}) for source_id in advice_ids],
             metadata={"lane": "herald_research", "advisory_only": True, "changes_findings": False, "takes_actions": False}
         ))
+    if not isinstance(path_advice, dict) or not path_advice:
+        results.append(fr.make_result(field="dse_path_ai_advice", status="not_found", observed_at=now,
+            source_type="local_model_advice", verification_status=advice_status,
+            verification_method="A local advice record was not generated for this run. Existing saved history is retained separately.",
+            miss_reason=advice_status.replace("_", " "), metadata={"lane": "herald_research", "advisory_only": True}))
     for field in ("outreach_subject", "outreach_body"):
         value = row.get(field, "")
         evidence_ids = [x.strip() for x in (row.get("outreach_evidence") or "").split(",") if x.strip()]
@@ -1254,12 +1260,26 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_assessment_note"] = assessment["basis"]
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
+        if not use_ai:
+            row["dse_path_ai_advice_status"] = "disabled"
+        elif not model:
+            row["dse_path_ai_advice_status"] = "local_model_unavailable"
+        elif not signals:
+            row["dse_path_ai_advice_status"] = "no_research_sources"
+        elif not path_evidence:
+            row["dse_path_ai_advice_status"] = "no_path_fit_source_ids"
+        else:
+            row["dse_path_ai_advice_status"] = "awaiting_local_review"
         row.update({k: "" for k in ("herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model", "dse_path_ai_advice", "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
         if model and signals:
             try:
                 generated = draft(row, signals, model)
                 if generated:
                     row.update(generated)
+                    if generated.get("dse_path_ai_advice"):
+                        row["dse_path_ai_advice_status"] = "ready"
+                    elif row["dse_path_ai_advice_status"] == "awaiting_local_review":
+                        row["dse_path_ai_advice_status"] = "no_valid_source_linked_advice"
                     if generated.get("outreach_body"):
                         row["herald_status"] = row["research_status"] = "draft ready for human review"
                         drafted += 1
@@ -1268,6 +1288,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
                     elif generated.get("dse_path_ai_advice"):
                         row["herald_status"] = row["research_status"] = "local AI path advice ready for human review"
             except Exception as e:
+                if row.get("dse_path_ai_advice_status") == "awaiting_local_review":
+                    row["dse_path_ai_advice_status"] = "local_model_error"
                 errors.append(type(e).__name__)
         row["field_results"] = fr.merge_results(row.get("field_results"), build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score))
         out.append(row)
