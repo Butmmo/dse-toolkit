@@ -16,8 +16,8 @@ from .common import LISTS, ROOT
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
-    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
-    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls"],
+    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_monitor_history", "herald_evidence_decisions", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
+    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_monitor_history"],
 }
 FULL_OUTPUTS = {
     "website": ["found_email", "email_source", "other_emails", "email_guesses", "email_check", "contact_page_url", "field_results", "enrichment_audit"],
@@ -73,8 +73,134 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
     selected = list(OUTPUTS[lane])
     if output_detail == "full":
         selected.extend(FULL_OUTPUTS[lane])
-    selected = [h for h in selected if h in headers]
+    history_column = f"{lane}_monitor_history"
+    if lane in ("herald", "presence") and history_column not in selected:
+        selected.append(history_column)
+    if lane == "herald" and "herald_evidence_decisions" not in selected:
+        selected.append("herald_evidence_decisions")
+    selected = [h for h in selected if h in headers or h == history_column or (lane == "herald" and h == "herald_evidence_decisions")]
     return result_path, selected, rows
+
+
+def _decode_json(value, fallback):
+    try:
+        result = json.loads(value) if isinstance(value, str) else value
+        return result if isinstance(result, type(fallback)) else fallback
+    except (ValueError, TypeError):
+        return fallback
+
+
+def _evidence_decisions(row: dict) -> str:
+    """Compact the Herald assessments and their cited source records for an in-grid review panel."""
+    business = _decode_json(row.get("herald_business_assessment"), {})
+    roles_doc = _decode_json(row.get("herald_role_assessment"), {})
+    people = _decode_json(row.get("herald_people_candidates"), [])
+    legal_doc = _decode_json(row.get("herald_legal_form_assessment"), {})
+    events_doc = _decode_json(row.get("herald_signal_events"), {})
+    sources = _decode_json(row.get("herald_sources") or row.get("research_sources"), [])
+    ai_review = _decode_json(row.get("herald_ai_review"), {})
+    outreach_ids = [x.strip() for x in str(row.get("outreach_evidence") or "").split(",") if x.strip()]
+    compact_sources = [{"id": str(s.get("id", ""))[:12], "subject": str(s.get("identity_subject", "unknown"))[:12],
+                        "title": str(s.get("title", ""))[:110], "snippet": str(s.get("snippet", ""))[:135],
+                        "url": str(s.get("url", ""))[:280], "identity_strength": str(s.get("identity_strength", "unknown"))[:16],
+                        "identity_match": str(s.get("identity_match", ""))[:40], "publication_date": str(s.get("publication_date", ""))[:24],
+                        "freshness_status": str(s.get("freshness_status", "undated"))[:20]}
+                       for s in sources[:10] if isinstance(s, dict) and s.get("id")]
+    profiles = [{"key": key, "label": str(value.get("label", key))[:60], "assessment": value.get("assessment", "unclear"),
+                 "confidence": value.get("confidence", 0), "confidence_kind": value.get("confidence_kind", "heuristic evidence score"),
+                 "evidence_ids": value.get("evidence_ids", [])[:8], "matched_cues": value.get("matched_cues", [])[:8]}
+                for key, value in business.items() if isinstance(value, dict)]
+    role_items = roles_doc.get("roles", []) if isinstance(roles_doc, dict) else []
+    roles = [{"label": str(item.get("label", item.get("role", "")))[:80], "assessment": item.get("assessment", "unclear"),
+              "candidate_status": item.get("candidate_status", ""), "confidence": item.get("confidence", 0),
+              "confidence_kind": item.get("confidence_kind", "heuristic evidence score"),
+              "evidence_ids": item.get("evidence_ids", [])[:8], "matched_cues": item.get("matched_cues", [])[:8]}
+             for item in role_items[:12] if isinstance(item, dict)]
+    forms = legal_doc.get("forms", {}) if isinstance(legal_doc, dict) else {}
+    legal = [{"key": key, "status": value.get("status", ""), "evidence_ids": value.get("evidence_ids", [])[:8],
+              "matched_cues": value.get("matched_cues", [])[:8]}
+             for key, value in forms.items() if isinstance(value, dict)]
+    event_items = events_doc.get("events", []) if isinstance(events_doc, dict) else []
+    events = [{k: item.get(k) for k in ("category", "label", "subject", "source_id", "url", "matched_cues", "path_fit", "path_label") if k in item}
+              for item in event_items[:12] if isinstance(item, dict)]
+    person_items = [{"source_id": item.get("source_id", ""), "title": str(item.get("title", ""))[:100],
+                     "url": str(item.get("url", ""))[:280], "candidate_score": item.get("candidate_score", 0),
+                     "candidate_score_kind": item.get("candidate_score_kind", "heuristic review ordering, not a probability"),
+                     "identity_strength": item.get("identity_strength", "unknown"), "status": item.get("status", ""),
+                     "review_reasons": item.get("review_reasons", [])[:4], "evidence_relevance": item.get("evidence_relevance", {})}
+                    for item in people[:5] if isinstance(item, dict)]
+    ai = {k: ai_review.get(k) for k in ("company_summary", "company_evidence_ids", "person_summary", "person_evidence_ids", "role_observations", "open_questions", "basis") if k in ai_review} if isinstance(ai_review, dict) else {}
+    payload = {"schema": "dbi.herald-evidence-decisions.v1", "checked_at": row.get("herald_checked_at", ""),
+               "status": row.get("herald_status", ""), "comparison_status": row.get("herald_comparison_status", ""),
+               "business_profiles": profiles, "roles": roles, "legal_form_mentions": legal, "signal_events": events,
+               "people_candidates": person_items, "ai_review": ai,
+               "outreach": {"subject": str(row.get("outreach_subject", ""))[:120], "body": str(row.get("outreach_body", ""))[:900],
+                            "evidence_ids": outreach_ids[:8], "personalization_basis": str(row.get("outreach_personalization_basis", ""))[:300]},
+               "sources": compact_sources}
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > 4800:
+        for source in payload["sources"]:
+            source["snippet"] = source["snippet"][:60]
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > 4800:
+        payload["people_candidates"] = payload["people_candidates"][:2]
+        payload["signal_events"] = payload["signal_events"][:6]
+        payload["roles"] = payload["roles"][:8]
+        payload["ai_review"] = {k: (v[:180] if isinstance(v, str) else v[:4] if isinstance(v, list) else v)
+                                for k, v in payload["ai_review"].items()}
+        payload["outreach"]["body"] = payload["outreach"]["body"][:360]
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > 4800:
+        payload = {"schema": payload["schema"], "checked_at": payload["checked_at"], "status": payload["status"],
+                   "business_profiles": [{k: item.get(k) for k in ("key", "label", "assessment", "evidence_ids")} for item in payload["business_profiles"][:3]],
+                   "roles": [{k: item.get(k) for k in ("label", "assessment", "evidence_ids")} for item in payload["roles"][:3]],
+                   "signal_events": payload["signal_events"][:3],
+                   "sources": [{k: (str(item.get(k) or "")[:180] if k == "url" else item.get(k)) for k in ("id", "subject", "title", "url")} for item in payload["sources"][:5]]}
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return encoded
+
+
+def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
+    """Append a compact source snapshot to the shared Ledger row history."""
+    if lane == "herald":
+        prefix, sources_field = "herald", "herald_sources"
+    else:
+        prefix, sources_field = "presence", "presence_signals"
+    def urls(field: str) -> list[str]:
+        return [x for x in str(result_row.get(f"{prefix}_{field}") or "").splitlines() if x][:8]
+    try:
+        old = json.loads(str(previous)) if previous else []
+    except (ValueError, TypeError):
+        old = []
+    if not isinstance(old, list):
+        old = []
+    try:
+        raw_sources = json.loads(result_row.get(sources_field) or "[]")
+    except (ValueError, TypeError):
+        raw_sources = []
+    if not isinstance(raw_sources, list):
+        raw_sources = []
+    sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
+               for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
+    record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
+              "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
+              "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
+              "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
+              "not_returned_urls": [u[:220] for u in urls("not_returned_urls")[:4]], "sources": sources}
+    if not record["checked_at"]:
+        record["checked_at"] = result_row.get("presence_checked_at", "")
+    old.append(record)
+    history = old[-6:]
+    value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
+    while len(value) > 4800 and len(history) > 1:
+        history.pop(0)
+        value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
+    if len(value) > 4800:
+        history = [{"checked_at": record["checked_at"], "status": record["status"], "summary": record["summary"],
+                    "new_source_urls": record["new_source_urls"][:2], "changed_source_urls": record["changed_source_urls"][:2],
+                    "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1]}]
+        value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
+    return value
 
 
 def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_detail: str = "essentials",
@@ -113,10 +239,12 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         raise RuntimeError(f"The enrichment returned {len(enriched_rows)} rows for {len(source_rows)} inputs; nothing was written to the grid.")
     existing = {gridpush.norm(c["label"]): c for c in columns}
     new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
+    monitor_priority = [f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary", "herald_evidence_decisions"]
+    new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
     remaining = max(0, 60 - len(columns))
     omitted_columns = new_headers[remaining:]
     new_headers = new_headers[:remaining]
-    added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
+    added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", "herald_evidence_decisions"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
     by_label = {gridpush.norm(c["label"]): c for c in columns}
     for column in added or []:
         by_label[gridpush.norm(column["label"])] = column
@@ -125,11 +253,17 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     for source_row, result_row in zip(source_rows, enriched_rows):
         cells = {}
         data = source_row.get("data") or {}
+        history_header = f"{lane}_monitor_history"
         for header, key in output_to_key.items():
-            value = _cell(result_row.get(header))
+            if header == history_header:
+                value = _monitor_history(lane, result_row, data.get(key))
+            elif header == "herald_evidence_decisions":
+                value = _evidence_decisions(result_row)
+            else:
+                value = _cell(result_row.get(header))
             if not value:
                 continue
-            if not overwrite and data.get(key) not in (None, ""):
+            if not overwrite and header not in {history_header, "herald_evidence_decisions", f"{lane}_comparison_status", f"{lane}_change_summary", f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls", f"{lane}_previous_checked_at"} and data.get(key) not in (None, ""):
                 continue
             if len(value) > 5000:
                 oversized += 1
