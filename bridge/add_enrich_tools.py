@@ -16,15 +16,17 @@ def tool(label, help_, args, fields, tmo):
 
 T["dse.enrich"] = tool("Lead enrichment: find emails, owners and phones", "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here.",
                        [{"lit": "enrich"}, {"field": "csv"}, {"opt": "--icp", "field": "icp"}, {"opt": "--engine", "field": "engine"}, {"opt": "--max", "field": "max"}, {"flag": "--fast", "field": "fast"},
-                        {"opt": "--provider", "field": "provider"}, {"opt": "--budget", "field": "budget"}],
+                        {"opt": "--provider", "field": "provider"}, {"opt": "--waterfall-config", "field": "waterfall_config"}, {"opt": "--budget", "field": "budget"}, {"flag": "--dry-run", "field": "dry_run"}],
                        [{"name": "csv", "label": "List", "type": "file", "required": True, "glob": "my-lists/*.csv", "exclude": "enriched"},
                         {"name": "icp", "label": "Words you want to find on their site (optional, comma separated)", "type": "text", "required": False, "max": 120, "pattern": r"^[A-Za-z0-9][A-Za-z0-9 ,/&'-]{0,119}$"},
                         ENG_OPT, {"name": "max", "label": "Most leads to look at in this run", "type": "int", "min": 1, "max": 2000, "default": 100},
                         {"name": "fast", "label": "Fast (skip the hidden browser: quicker, misses sites drawn by JavaScript)", "type": "bool", "default": False},
-                        PROV, {"name": "budget", "label": "Most paid lookups (only with a provider)", "type": "int", "min": 0, "max": 5000, "default": 25}], 180)
+                        PROV, {"name": "waterfall_config", "label": "Ordered email waterfall config (optional; replaces single provider)", "type": "file", "required": False, "glob": "enrich-waterfalls/*.json"},
+                        {"name": "budget", "label": "Override maximum provider calls (optional)", "type": "int", "min": 0, "max": 5000},
+                        {"name": "dry_run", "label": "Dry run (no optional provider requests; show projected calls)", "type": "bool", "default": False}], 180)
 T["dse.enrich"].update({"category": "enrich", "source": "First-party company websites; optional configured providers",
-                        "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
-                        "outputs_summary": ["Website-sourced contact and business fields", "Shared per-field provenance, identity, freshness, verification and cost records", "Provider lookup and cache counts", "Enriched CSV and report"]})
+                        "cost": "Website checks run on your PC. Optional providers run in configured order with your own keys and call cap; dry run makes no provider requests.",
+                        "outputs_summary": ["Website-sourced contact and business fields", "Shared per-field provenance, identity, freshness and verification records", "Per-rung attempts, cache hits, accepted/rejected candidates and errors", "Dry-run projected calls; configured price estimate only when supplied, otherwise unknown", "Enriched CSV and report"]})
 T["dse.enrich_signals"] = {
     "label": "Lead signals: research and draft outreach",
     "group": "Grow",

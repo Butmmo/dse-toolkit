@@ -224,7 +224,8 @@ def main():
     en = sub.add_parser("enrich"); en.add_argument("source", nargs="?", default="", help="a CSV with a website or domain column"); en.add_argument("--site", default="", help="look at one website instead")
     en.add_argument("--icp", default="", help="words you want to find on their site, comma separated"); en.add_argument("--engine", default="", help="also save an import-ready copy in this engine")
     en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser"); en.add_argument("--result-line", action="store_true", dest="result_line", help="with --site: also print one RESULT line a Ledger workflow reads")
-    en.add_argument("--provider", default="", help="optional: your own paid provider, set up with --add-provider"); en.add_argument("--budget", type=int, default=enrich_providers.DEFAULT_BUDGET)
+    en.add_argument("--provider", default="", help="optional: one paid provider, set up with --add-provider (legacy single-rung mode)"); en.add_argument("--waterfall-config", default="", help="JSON file defining ordered email providers, acceptance policy and call cap")
+    en.add_argument("--budget", type=int, default=None, help="override the provider-call cap in the waterfall config"); en.add_argument("--dry-run", action="store_true", help="project optional provider calls without making provider requests")
     en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
     se = sub.add_parser("signals", help="research public business/search/social signals for leads and draft email with a local AI")
     se.add_argument("source", help="CSV with a company name; city and website improve matching")
@@ -304,9 +305,11 @@ def main():
             elif a.add_provider:
                 print(enrich_providers.add_provider(a.add_provider))
             elif a.site:
-                print(enrich.card(a.site, a.icp, not a.fast, a.provider, a.budget, a.result_line))
+                print(enrich.card(a.site, a.icp, not a.fast, a.provider, a.budget,
+                                  a.result_line, a.waterfall_config, a.dry_run))
             elif a.source:
-                print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget))
+                print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget,
+                                         waterfall_config_path=a.waterfall_config, dry_run=a.dry_run))
             else:
                 sys.exit("Give a CSV to enrich (python dse.py enrich leads.csv), or --site https://their-site.com, or --providers.")
         except ValueError as e:

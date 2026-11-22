@@ -101,7 +101,7 @@ def add_provider(name: str) -> str:
             f"  setx {cfg['key_env']} \"your key\"\nThen open a new terminal (and restart the runner), and use: python dse.py enrich leads.csv --provider {name} --budget 25")
 
 
-def load(name: str) -> dict:
+def load(name: str, require_key: bool = True) -> dict:
     if not NAME.match(name or ""):
         raise ProviderError("A provider name is lower-case letters, digits, dash or underscore.")
     p = PROVIDERS / f"{name}.json"
@@ -122,8 +122,15 @@ def load(name: str) -> dict:
     if not re.fullmatch(r"[A-Z][A-Z0-9_]{2,60}", key_env):
         raise ProviderError(f"{p.name}: key_env is the NAME of a variable, like HUNTER_API_KEY (never the key itself)")
     cfg["_key"] = os.environ.get(key_env, "").strip()
-    if not cfg["_key"]:
+    if not cfg["_key"] and require_key:
         raise ProviderError(f"The key for '{name}' is not set. Put your own key in a Windows user variable, then open a new terminal and restart the runner:\n  setx {key_env} \"your key\"")
+    if cfg.get("cost_per_call") is not None:
+        try:
+            price = float(cfg["cost_per_call"])
+        except (TypeError, ValueError):
+            raise ProviderError(f"{p.name}: cost_per_call must be a non-negative number.") from None
+        if price < 0 or not re.fullmatch(r"[A-Z]{3}", str(cfg.get("cost_currency", ""))):
+            raise ProviderError(f"{p.name}: a price needs non-negative cost_per_call and a three-letter cost_currency.")
     return cfg
 
 
@@ -142,7 +149,7 @@ class Budget:
     """Counts paid lookups for one run. Cached answers are free and do not count."""
 
     def __init__(self, limit: int = DEFAULT_BUDGET):
-        self.limit, self.used, self.cached, self.stopped = max(0, limit), 0, 0, ""
+        self.limit, self.used, self.cached, self.projected, self.stopped = max(0, limit), 0, 0, 0, ""
 
     def left(self) -> int:
         return 0 if self.stopped else max(0, self.limit - self.used)
@@ -150,6 +157,21 @@ class Budget:
 
 def cache_file(provider: str, domain: str) -> Path:
     return CACHE / provider / (re.sub(r"[^a-z0-9.-]", "_", domain.lower()) + ".json")
+
+
+def cached(cfg: dict, domain: str, today: dt.date | None = None) -> tuple[bool, list[dict]]:
+    """Read a fresh provider cache entry without making a network request."""
+    today = today or dt.date.today()
+    cf = cache_file(cfg["name"], domain)
+    if not cf.is_file():
+        return False, []
+    try:
+        item = json.loads(cf.read_text(encoding="utf-8"))
+        if (today - dt.date.fromisoformat(item["date"])).days <= CACHE_DAYS and isinstance(item.get("results"), list):
+            return True, item["results"]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return False, []
 
 
 def parse(cfg: dict, data) -> list[dict]:
@@ -174,14 +196,10 @@ def lookup(cfg: dict, domain: str, company: str, budget: Budget, today: dt.date 
     today = today or dt.date.today()
     name = cfg["name"]
     cf = cache_file(name, domain)
-    if cf.is_file():
-        try:
-            c = json.loads(cf.read_text(encoding="utf-8"))
-            if (today - dt.date.fromisoformat(c["date"])).days <= CACHE_DAYS:
-                budget.cached += 1
-                return c["results"]
-        except (ValueError, KeyError):
-            pass
+    is_cached, cache_results = cached(cfg, domain, today)
+    if is_cached:
+        budget.cached += 1
+        return cache_results
     if budget.left() <= 0:
         return []
     req = cfg["request"]

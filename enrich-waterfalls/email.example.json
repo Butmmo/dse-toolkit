@@ -1,0 +1,8 @@
+{
+  "schema": "dbi.waterfall-config.v1",
+  "field": "email",
+  "providers": ["hunter"],
+  "minimum_confidence": 0.0,
+  "stop_when": "personal_email_and_named_person",
+  "max_provider_calls": 25
+}

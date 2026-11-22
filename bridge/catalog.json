@@ -10014,8 +10014,16 @@
           "field": "provider"
         },
         {
+          "opt": "--waterfall-config",
+          "field": "waterfall_config"
+        },
+        {
           "opt": "--budget",
           "field": "budget"
+        },
+        {
+          "flag": "--dry-run",
+          "field": "dry_run"
         }
       ],
       "fields": [
@@ -10066,12 +10074,24 @@
           "choices": []
         },
         {
+          "name": "waterfall_config",
+          "label": "Ordered email waterfall config (optional; replaces single provider)",
+          "type": "file",
+          "required": false,
+          "glob": "enrich-waterfalls/*.json"
+        },
+        {
           "name": "budget",
-          "label": "Most paid lookups (only with a provider)",
+          "label": "Override maximum provider calls (optional)",
           "type": "int",
           "min": 0,
-          "max": 5000,
-          "default": 25
+          "max": 5000
+        },
+        {
+          "name": "dry_run",
+          "label": "Dry run (no optional provider requests; show projected calls)",
+          "type": "bool",
+          "default": false
         }
       ],
       "timeout_min": 180,
@@ -10081,11 +10101,12 @@
       ],
       "category": "enrich",
       "source": "First-party company websites; optional configured providers",
-      "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
+      "cost": "Website checks run on your PC. Optional providers run in configured order with your own keys and call cap; dry run makes no provider requests.",
       "outputs_summary": [
         "Website-sourced contact and business fields",
-        "Shared per-field provenance, identity, freshness, verification and cost records",
-        "Provider lookup and cache counts",
+        "Shared per-field provenance, identity, freshness and verification records",
+        "Per-rung attempts, cache hits, accepted/rejected candidates and errors",
+        "Dry-run projected calls; configured price estimate only when supplied, otherwise unknown",
         "Enriched CSV and report"
       ]
     },
