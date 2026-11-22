@@ -8413,6 +8413,8 @@
       "cost": "PC-run public search; no paid data provider is selected by this tool.",
       "outputs_summary": [
         "Public profile/post links",
+        "Person or company identity match cues",
+        "Publication dates and freshness labels",
         "Presence signals CSV"
       ],
       "path_keys": [

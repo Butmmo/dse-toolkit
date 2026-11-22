@@ -449,7 +449,23 @@ def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[s
             if not company_matches or (kind == "professional_contact" and contact_terms and not contact_matches):
                 continue
             seen.add(url)
-            found.append({"id": f"P{len(found)+1:02d}", "type": kind, "title": item["title"], "snippet": item["snippet"],
+            parsed = urllib.parse.urlparse(url)
+            host = (parsed.hostname or "").lower().removeprefix("www.")
+            target_domain = _domain(str(row.get("website") or row.get("domain") or ""))
+            direct_domain = bool(target_domain and (host == target_domain or host.endswith("." + target_domain)))
+            company_ratio = len(company_matches) / len(company_terms) if company_terms else 0.0
+            contact_ratio = len(contact_matches) / len(contact_terms) if contact_terms else 0.0
+            subject = "person" if kind == "professional_contact" else "company"
+            identity_score = (0.55 * company_ratio + 0.45 * contact_ratio) if subject == "person" else (1.0 if direct_domain else company_ratio)
+            identity_score = round(min(1.0, identity_score), 2)
+            match_strength = "strong" if (subject == "person" and contact_ratio >= 0.67 and company_ratio >= 0.5) or (subject == "company" and (direct_domain or company_ratio >= 0.75)) else "moderate"
+            freshness = _publication_date(item["title"], item["snippet"], item.get("publication_date_hint", ""))
+            found.append({"id": f"P{len(found)+1:02d}", "type": kind, "identity_subject": subject,
+                          "identity_match": "person_and_company_terms" if subject == "person" else "company_domain" if direct_domain else "company_name_terms",
+                          "identity_strength": match_strength, "identity_score": identity_score,
+                          "confidence_kind": "heuristic identity match score, not a probability",
+                          "source_host": host, "social_platform_result": any(host == d or host.endswith("." + d) for d in SOCIAL_DOMAINS),
+                          **freshness, "title": item["title"], "snippet": item["snippet"],
                           "url": url, "query": query, "provider": "DuckDuckGo public web results", "retrieved_at": checked_at,
                           "matched_company_terms": sorted(company_matches), "matched_contact_terms": sorted(contact_matches)})
         time.sleep(1.0)
@@ -818,8 +834,11 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
     stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
     dest = LISTS / f"{dt.date.today().isoformat()}-presence-signals-{stem}.csv"
     _write_csv(dest, out)
+    collected = [signal for row in out[:min(len(rows), max_rows)] for signal in json.loads(row.get("presence_signals") or "[]")]
     report = [f"# Presence public social signals: {p.name}", "", f"- Checked: {min(len(rows), max_rows)} of {len(rows)} rows",
               f"- Rows with public social results: {sum(bool(r['presence_signals']) for r in out[:min(len(rows), max_rows)])}",
+              f"- Results with publication date evidence: {sum(bool(s.get('publication_date')) for s in collected)} of {len(collected)}",
+              f"- Results marked stale by the date heuristic: {sum(s.get('freshness_status') == 'stale' for s in collected)}",
               "- No outreach copy was drafted or sent.", "", "## Review before use", "",
               "Results are search snippets, not verified identity or reputation. Review each source directly. Only public professional and business-related results are included; do not infer sensitive or personal traits.", ""]
     if errors:

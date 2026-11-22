@@ -77,7 +77,7 @@ T["dse.enrich_providers"].update({"category": "source", "source": "Provider sett
 if T.get("dse.presence_signals"):
     T["dse.presence_signals"].update({"category": "signal", "source": "Public professional/business social search",
                                       "cost": "PC-run public search; no paid data provider is selected by this tool.",
-                                      "outputs_summary": ["Public profile/post links", "Presence signals CSV"],
+                                      "outputs_summary": ["Public profile/post links", "Person or company identity match cues", "Publication dates and freshness labels", "Presence signals CSV"],
                                       "path_keys": ["smb", "search", "voiceai", "automation", "revenue", "authority", "broadcast", "ascent"]})
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
