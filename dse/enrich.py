@@ -328,9 +328,80 @@ def blank(domain: str = "") -> dict:
             "provider_usage": {"api_calls": 0, "cache_hits": 0}, "waterfall_metrics": {}, "waterfall_candidates": [], "field_sources": {}}
 
 
+def run_field_waterfalls(out: dict, fields: dict, company: str, contact_name: str, today: dt.date, dry_run: bool) -> None:
+    """Apply opt-in phone, person and firmographic provider waterfalls after first-party checks."""
+    out.setdefault("firmographics", {})
+    out.setdefault("field_waterfall_metrics", {})
+    out.setdefault("field_waterfall_candidates", {})
+    for field_name, cfg in fields.items():
+        if not cfg.get("provider_configs"):
+            continue
+        if field_name == "phone" and out.get("phones"):
+            continue
+        if field_name == "person_identity" and out.get("people"):
+            continue
+        budget = cfg.setdefault("budget", ep.Budget(cfg["max_provider_calls"]))
+        providers = cfg["provider_configs"]
+        names = contact_name.split(maxsplit=1)
+        identity = {"domain": out.get("domain", ""), "website": "https://" + out.get("domain", "") if out.get("domain") else "",
+                    "company": company or out.get("domain", ""), "contact_name": contact_name,
+                    "first_name": names[0] if names else "", "last_name": names[1] if len(names) > 1 else ""}
+        chain = []
+        for provider in providers:
+            def run(provider=provider):
+                if dry_run:
+                    is_cached, candidates = ep.cached_field(provider, identity["domain"], field_name, today, identity["contact_name"])
+                    if is_cached:
+                        budget.cached += 1
+                        return {"candidates": candidates, "cache_hits": 1}
+                    if budget.used + budget.projected < budget.limit:
+                        budget.projected += 1
+                        return {"candidates": [], "projected": 1}
+                    return {"candidates": []}
+                calls_before, cache_before = budget.used, budget.cached
+                candidates = ep.lookup_field(provider, field_name, identity, budget, today)
+                return {"candidates": candidates, "api_calls": budget.used - calls_before,
+                        "cache_hits": budget.cached - cache_before}
+            chain.append({"name": provider["name"], "run": run})
+        def accept(candidate, _name):
+            return wf.accept_field_candidate(field_name, candidate, out["domain"], company, contact_name,
+                                             cfg["minimum_confidence"], cfg["minimum_identity_score"])
+        result = wf.execute_chain(chain, accept, lambda accepted: bool(accepted))
+        provider_by_name = {p["name"]: p for p in providers}
+        for rung in result["rungs"]:
+            configured_provider = provider_by_name.get(rung.get("rung"), {})
+            rung["cost_per_call"] = configured_provider.get("cost_per_call")
+            rung["cost_currency"] = configured_provider.get("cost_currency", "")
+        out["field_waterfall_metrics"][field_name] = {"field": field_name, "dry_run": dry_run,
+            "minimum_confidence": cfg["minimum_confidence"], "minimum_identity_score": cfg["minimum_identity_score"],
+            "max_provider_calls": budget.limit, "providers": result["rungs"], "stop_reason": result["stop_reason"]}
+        out["field_waterfall_candidates"][field_name] = result["candidates"]
+        if dry_run:
+            continue
+        for candidate in result["accepted"]:
+            value = candidate["value"]
+            source = f"provider:{candidate['waterfall_provider']}"
+            if field_name == "phone":
+                out["phones"].append(str(value).strip())
+                out["field_sources"]["phone"] = candidate.get("source_url") or source
+                break
+            if field_name == "person_identity":
+                person = {**value, "name": value.get("name", value.get("full_name", "")),
+                          "title": value.get("title", value.get("current_position", "")), "source": candidate.get("source_url") or source,
+                          "rank": title_rank(value.get("title", value.get("current_position", "")))}
+                out["people"].append(person)
+                out["field_sources"]["decision_maker"] = person["source"]
+                break
+            if field_name == "firmographics":
+                out["firmographics"] = {**out["firmographics"], **value}
+                out["field_sources"]["firmographics"] = candidate.get("source_url") or source
+                break
+
+
 def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool = True, given_email: str = "", given_name: str = "", today: dt.date | None = None,
                 pause: float = PAGE_PAUSE, provider: dict | None = None, budget: "ep.Budget | None" = None, company: str = "",
-                providers: list[dict] | None = None, waterfall_config: dict | None = None, dry_run: bool = False) -> dict:
+                providers: list[dict] | None = None, waterfall_config: dict | None = None, dry_run: bool = False,
+                field_waterfalls: dict | None = None) -> dict:
     """Run the waterfall on one website. Returns the facts, with the page each came from."""
     today = today or dt.date.today()
     url = norm_url(website)
@@ -430,6 +501,7 @@ def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool =
         out["active"] = "yes" if out["copyright"] >= today.year - 1 else "no"
     low_text = (all_text + "\n" + out["description"]).lower()
     out["icp_hits"] = [t for t in (icp_terms or []) if t and t.lower() in low_text]
+    run_field_waterfalls(out, field_waterfalls or {}, company, given_name, today, dry_run)
     provider_chain = providers if providers is not None else ([provider] if provider else [])
     config = waterfall_config or dict(wf.DEFAULT)
     existing_has_email = bool(out["emails"])
@@ -580,7 +652,7 @@ def score(site: dict, given_email: str = "") -> tuple[int, str]:
 
 ADDED = ["found_email", "email_kind", "email_source", "other_emails", "email_guesses", "best_email", "best_email_source", "email_check", "phone_found", "decision_maker", "decision_maker_title",
          "decision_maker_source", "contact_form_url", "contact_page_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found",
-         "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "enrich_status", "steps", "lead_score", "lead_why", "enriched_on", "enrichment_audit", "field_results", "waterfall_metrics"]
+         "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "enrich_status", "steps", "lead_score", "lead_why", "enriched_on", "enrichment_audit", "field_results", "waterfall_metrics", "firmographics", "field_waterfall_metrics"]
 
 
 def email_belongs(email: str, site_domain: str) -> bool:
@@ -642,6 +714,8 @@ def shared_field_results(site: dict, row_email: str, best_email: str, best_email
 
     def add(field: str, value, url: str = "", source_type: str = "company_website", source_name: str = "Company website",
             subject: str = "company", strength: str = "strong", verification: str = "not_checked", miss: str = ""):
+        if url.startswith("provider:"):
+            source_type, source_name, url = "configured_provider", url.removeprefix("provider:"), ""
         fields.append(fr.make_result(field=field, value=value if value not in ("", None, [], {}) else None,
                                      status="accepted" if value not in ("", None, [], {}) else "not_found",
                                      source_type=source_type if value not in ("", None, [], {}) else "",
@@ -707,6 +781,28 @@ def shared_field_results(site: dict, row_email: str, best_email: str, best_email
     add("icp_term_hits", site.get("icp_hits") or None, "", source_type="heuristic_text_match", source_name="Inspected website text", strength="moderate")
     add("site_active", site.get("active"), "", source_type="copyright_year_heuristic", source_name="Inspected website text", strength="moderate",
         verification="heuristic_not_verified", miss="The inspected site did not provide a usable copyright year." if not site.get("active") else "")
+    for waterfall_field, result_field in (("phone", "phone"), ("person_identity", "decision_maker"), ("firmographics", "firmographics")):
+        metrics = (site.get("field_waterfall_metrics") or {}).get(waterfall_field)
+        candidates = (site.get("field_waterfall_candidates") or {}).get(waterfall_field, [])
+        if metrics:
+            target = next((item for item in fields if item.get("field") == result_field), None)
+            if target:
+                target.setdefault("metadata", {})["provider_waterfall"] = metrics
+                target["candidates"].extend(fr.source_ref(source_type="configured_provider", source_name=c.get("waterfall_provider", ""),
+                    source_url=c.get("source_url", ""), status=c.get("waterfall_status", "candidate"),
+                    value={"value": c.get("value"), "reason": c.get("waterfall_reason", "")}) for c in candidates)
+            if waterfall_field == "firmographics":
+                selected = next((c for c in candidates if c.get("waterfall_status") == "accepted"), None)
+                fields.append(fr.make_result(field="firmographics", value=site.get("firmographics") or None,
+                    status="accepted" if site.get("firmographics") else "not_found",
+                    source_type="configured_provider" if selected else "", source_name=selected.get("waterfall_provider", "") if selected else "",
+                    source_url=selected.get("source_url", "") if selected else "", observed_at=observed if site.get("firmographics") else "",
+                    identity_subject="company" if site.get("firmographics") else "unknown", identity_match="provider company identity policy" if site.get("firmographics") else "",
+                    identity_strength="moderate" if site.get("firmographics") else "unknown", verification_status="provider_returned_unverified" if site.get("firmographics") else "not_found",
+                    miss_reason="No configured provider returned identity-matched firmographic values." if not site.get("firmographics") else "",
+                    candidates=[fr.source_ref(source_type="configured_provider", source_name=c.get("waterfall_provider", ""), source_url=c.get("source_url", ""),
+                        status=c.get("waterfall_status", "candidate"), value={"value": c.get("value"), "reason": c.get("waterfall_reason", "")}) for c in candidates],
+                    metadata={"provider_waterfall": metrics}))
     if calls or cache_hits:
         fields.append(fr.make_result(field="provider_lookup", value={"provider": provider_name, "api_calls": calls, "cache_hits": cache_hits},
                                      status="candidate" if calls or cache_hits else "not_found", source_type="configured_provider", source_name=provider_name,
@@ -743,7 +839,9 @@ def row_columns(site: dict, row_email: str, row_name: str, today: dt.date) -> di
             "enrich_status": site["status"], "steps": site["steps"], "lead_score": sc, "lead_why": why, "enriched_on": today.isoformat(),
             "enrichment_audit": field_audit(site, row_email, best, best_src),
             "field_results": shared_field_results(site, row_email, best, best_src, today),
-            "waterfall_metrics": json.dumps(site.get("waterfall_metrics", {}), ensure_ascii=False, separators=(",", ":"))}
+            "waterfall_metrics": json.dumps(site.get("waterfall_metrics", {}), ensure_ascii=False, separators=(",", ":")),
+            "firmographics": json.dumps(site.get("firmographics", {}), ensure_ascii=False, separators=(",", ":")),
+            "field_waterfall_metrics": json.dumps(site.get("field_waterfall_metrics", {}), ensure_ascii=False, separators=(",", ":"))}
 
 
 def find_columns(headers: list[str]) -> dict[str, str]:
@@ -752,13 +850,13 @@ def find_columns(headers: list[str]) -> dict[str, str]:
 
 def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], render: bool, max_rows: int, today: dt.date | None = None, pause: float = PAGE_PAUSE,
                 provider: dict | None = None, budget: "ep.Budget | None" = None, providers: list[dict] | None = None,
-                waterfall_config: dict | None = None, dry_run: bool = False) -> tuple[list[dict], dict]:
+                waterfall_config: dict | None = None, dry_run: bool = False, field_waterfalls: dict | None = None) -> tuple[list[dict], dict]:
     today = today or dt.date.today()
     m = find_columns(headers)
     if "website" not in m:
         raise ValueError("I could not find a website or domain column. Name a column website, domain or url (Clay, Apollo and HubSpot exports already do).")
     out, stats = [], {"rows": 0, "skipped": 0, "ok": 0, "email": 0, "personal": 0, "decision_maker": 0, "form": 0, "phone": 0, "guess": 0,
-                      "failed": {}, "steps": {}, "provider_notes": [], "waterfall": {}, "provider_eligible": 0, "dry_run": dry_run}
+                      "failed": {}, "steps": {}, "provider_notes": [], "waterfall": {}, "provider_eligible": 0, "dry_run": dry_run, "field_waterfalls": {}}
     seen_domains: dict[str, dict] = {}
     for i, r in enumerate(rows):
         if stats["rows"] >= max_rows:
@@ -776,7 +874,7 @@ def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], rend
             log(f"[{stats['rows']}/{min(len(rows), max_rows)}] {dom or '(no website)'}")
             try:
                 site = enrich_site(dom, icp_terms, render, row_email, row_name, today, pause, provider, budget,
-                                   (r.get(m.get("business", ""), "") or "").strip(), providers, waterfall_config, dry_run)
+                                   (r.get(m.get("business", ""), "") or "").strip(), providers, waterfall_config, dry_run, field_waterfalls)
             except Exception as e:      # one bad site must never stop the list
                 site = blank(dom)
                 site["status"] = f"error: {type(e).__name__}"
@@ -787,6 +885,10 @@ def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], rend
                 total = stats["waterfall"].setdefault(name, {k: 0 for k in ("attempted", "api_calls", "cache_hits", "returned", "accepted", "rejected", "failures", "projected")})
                 for key in total:
                     total[key] += int(rung.get(key, 0) or 0)
+            for field_name, metrics in site.get("field_waterfall_metrics", {}).items():
+                total = stats["field_waterfalls"].setdefault(field_name, {})
+                for key in ("attempted", "api_calls", "cache_hits", "returned", "accepted", "rejected", "failures", "projected"):
+                    total[key] = total.get(key, 0) + sum(int(rung.get(key, 0) or 0) for rung in metrics.get("providers", []))
             if dom:
                 time.sleep(pause)
         if site.get("provider_note") and site["provider_note"] not in stats["provider_notes"]:
@@ -822,10 +924,14 @@ def summary(stats: dict, rows: list[dict], name: str, budget: "ep.Budget | None"
              f"- With a named owner or senior person: {pc(stats['decision_maker'])}",
              f"- With a contact form: {pc(stats['form'])}; with a phone number: {pc(stats['phone'])}",
              f"- Likely-address guesses (marked, never put in the email column): {stats['guess']}"]
-    if dry_run and budget is not None:
-        lines.append(f"- Dry run only: no optional provider requests were made; {stats['provider_eligible']} leads reached the provider-eligible stage; maximum projected calls {budget.projected} of a cap of {budget.limit}.")
+    if dry_run:
+        lines.append("- Dry run only: no optional provider requests were made.")
+        if budget is not None:
+            lines.append(f"- Email waterfall projection: {stats['provider_eligible']} leads reached the provider-eligible stage; maximum projected calls {budget.projected} of a cap of {budget.limit}.")
     elif provider_name and budget is not None:
         lines.append(f"- Optional provider API calls: {budget.used} used of a cap of {budget.limit}; {budget.cached} cache hits (free); provider(s): {provider_name}" + (f"; stopped early: {budget.stopped}" if budget.stopped else ""))
+    elif stats.get("field_waterfalls"):
+        lines.append("- Configured field-provider calls are itemized below; monetary price is unknown unless a provider configuration declares it.")
     else:
         lines.append("- Cost: nothing. Only the free steps ran (no provider named).")
     if stats.get("waterfall"):
@@ -843,6 +949,14 @@ def summary(stats: dict, rows: list[dict], name: str, budget: "ep.Budget | None"
             else:
                 details += "; monetary price unknown"
             lines.append(f"- {rung}: {details}")
+    if stats.get("field_waterfalls"):
+        lines += ["", "## Phone, person and firmographic waterfall results"]
+        for field_name, counts in stats["field_waterfalls"].items():
+            details = (f"{counts.get('attempted', 0)} rung attempts; {counts.get('api_calls', 0)} API calls; "
+                         f"{counts.get('cache_hits', 0)} cache hits; {counts.get('returned', 0)} candidates; "
+                         f"{counts.get('accepted', 0)} accepted; {counts.get('rejected', 0)} rejected; {counts.get('failures', 0)} errors; "
+                         f"{counts.get('projected', 0)} projected calls")
+            lines.append(f"- {field_name}: {details}.")
     for n_ in stats.get("provider_notes", []):
         lines.append(f"- Note: {n_}")
     if stats["steps"]:
@@ -883,16 +997,17 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
     if not 1 <= max_rows <= 2000:
         raise ValueError("--max is between 1 and 2000.")
     terms = [t.strip() for t in (icp or "").split(",") if t.strip()][:8]
+    if budget is not None and not 0 <= budget <= 5000:
+        raise ValueError("--budget is between 0 and 5000 paid lookups.")
     config = wf.load_config(waterfall_config_path, provider, budget)
+    field_configs = wf.load_field_waterfalls(waterfall_config_path, budget, dry_run)
     provs, bud = [], None
     if config["providers"]:
-        if budget is not None and not 0 <= budget <= 5000:
-            raise ValueError("--budget is between 0 and 5000 paid lookups.")
         provs = wf.provider_configs(config, dry_run)
         bud = ep.Budget(config["max_provider_calls"])
-    elif dry_run:
+    elif dry_run and not any(item.get("provider_configs") for item in field_configs.values()):
         raise ValueError("A dry run needs an ordered provider config or --provider.")
-    out_rows, stats = enrich_rows(rows, headers, terms, render, max_rows, today, pause, None, bud, provs, config, dry_run)
+    out_rows, stats = enrich_rows(rows, headers, terms, render, max_rows, today, pause, None, bud, provs, config, dry_run, field_configs)
     LISTS.mkdir(exist_ok=True)
     stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
     out_csv = LISTS / f"{(today or dt.date.today()).isoformat()}-enriched-{stem}.csv"
@@ -925,10 +1040,13 @@ def result_json(s: dict, sc: int | None = None) -> str:
 def card(website: str, icp: str = "", render: bool = True, provider: str = "", budget: int | None = 1,
          result_line: bool = False, waterfall_config_path: str = "", dry_run: bool = False) -> str:
     config = wf.load_config(waterfall_config_path, provider, budget)
+    field_configs = wf.load_field_waterfalls(waterfall_config_path, budget, dry_run)
     provs = wf.provider_configs(config, dry_run) if config["providers"] else []
     bud = ep.Budget(config["max_provider_calls"]) if provs else None
+    if dry_run and not provs and not any(item.get("provider_configs") for item in field_configs.values()):
+        raise ValueError("A dry run needs an ordered provider config or --provider.")
     s = enrich_site(website, [t.strip() for t in icp.split(",") if t.strip()], render, budget=bud,
-                    providers=provs, waterfall_config=config, dry_run=dry_run)
+                    providers=provs, waterfall_config=config, dry_run=dry_run, field_waterfalls=field_configs)
     sc, why = score(s)
     L = [f"# {s['domain'] or website}: {s['status']}", ""]
     if s["status"] != "ok":
@@ -937,6 +1055,8 @@ def card(website: str, icp: str = "", render: bool = True, provider: str = "", b
     L.append(f"Steps run: {s['steps']}")
     if s.get("waterfall_metrics"):
         L.append("Email waterfall: " + json.dumps(s["waterfall_metrics"], ensure_ascii=False, separators=(",", ":")))
+    if s.get("field_waterfall_metrics"):
+        L.append("Other field waterfalls: " + json.dumps(s["field_waterfall_metrics"], ensure_ascii=False, separators=(",", ":")))
     for e in s["emails"]:
         L.append(f"- Email ({e['kind']}): {e['email']}   from {e['source']}")
     if s["guesses"]:
