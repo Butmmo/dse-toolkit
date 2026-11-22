@@ -22,6 +22,9 @@ T["dse.enrich"] = tool("Lead enrichment: find emails, owners and phones", "Takes
                         ENG_OPT, {"name": "max", "label": "Most leads to look at in this run", "type": "int", "min": 1, "max": 2000, "default": 100},
                         {"name": "fast", "label": "Fast (skip the hidden browser: quicker, misses sites drawn by JavaScript)", "type": "bool", "default": False},
                         PROV, {"name": "budget", "label": "Most paid lookups (only with a provider)", "type": "int", "min": 0, "max": 5000, "default": 25}], 180)
+T["dse.enrich"].update({"category": "enrich", "source": "First-party company websites; optional configured providers",
+                        "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
+                        "outputs_summary": ["Website-sourced contact and business fields", "Enriched CSV and report"]})
 T["dse.enrich_signals"] = {
     "label": "Lead signals: research and draft outreach",
     "group": "Grow",
@@ -54,15 +57,28 @@ T["dse.enrich_signals"] = {
     ],
     "timeout_min": 240, "outputs": ["my-lists/*-researched-*.csv", "my-lists/*-researched-*.md"]
 }
+T["dse.enrich_signals"].update({"category": "signal", "source": "Public web search; local Ollama is optional",
+                                "cost": "DuckDuckGo mode has no search-provider fee. Brave uses your own API key and may charge; Ollama runs locally.",
+                                "outputs_summary": ["Sourced company/person signals", "Path-fit tags", "Research CSV and report"],
+                                "path_keys": ["smb", "search", "voiceai", "automation", "revenue", "gtm", "authority", "broadcast", "ascent"]})
 T["dse.enrich_site"] = tool("Lead enrichment: look at one website", "Reads one company website and shows what a lead list would get: emails, owner, phone, form, booking tool, score and why. Nothing is saved.",
                             [{"lit": "enrich"}, {"opt": "--site", "field": "site"}, {"opt": "--icp", "field": "icp"}, {"flag": "--fast", "field": "fast"}],
                             [{"name": "site", "label": "Website", "type": "url", "required": True},
                              {"name": "icp", "label": "Words you want to find (optional)", "type": "text", "required": False, "max": 120, "pattern": r"^[A-Za-z0-9][A-Za-z0-9 ,/&'-]{0,119}$"},
                              {"name": "fast", "label": "Fast (skip the hidden browser)", "type": "bool", "default": False}], 5)
 T["dse.enrich_site"]["outputs"] = []
+T["dse.enrich_site"].update({"category": "enrich", "source": "The company website you supply", "cost": "PC-run website preview; no paid provider by default.", "outputs_summary": ["One-site preview", "Nothing is saved"]})
 T["dse.enrich_providers"] = tool("Lead enrichment: which paid providers are set up", "Lists the optional paid providers on this PC and whether their key is present (the key is never shown). To add one, run at your PC: python dse.py enrich --add-provider hunter, then set your own key in a Windows user variable.",
                                  [{"lit": "enrich"}, {"flag": "--providers", "field": "go"}], [{"name": "go", "label": "Show", "type": "bool", "default": True}], 1)
 T["dse.enrich_providers"]["outputs"] = []
+T["dse.enrich_providers"].update({"category": "source", "source": "Provider settings stored on this PC; API keys are never shown",
+                                  "cost": "Status check only; does not perform a paid lookup.",
+                                  "outputs_summary": ["Configured provider names and readiness"]})
+if T.get("dse.presence_signals"):
+    T["dse.presence_signals"].update({"category": "signal", "source": "Public professional/business social search",
+                                      "cost": "PC-run public search; no paid data provider is selected by this tool.",
+                                      "outputs_summary": ["Public profile/post links", "Presence signals CSV"],
+                                      "path_keys": ["smb", "search", "voiceai", "automation", "revenue", "authority", "broadcast", "ascent"]})
 
 p.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(len([k for k in T if k.startswith("dse.enrich")]), "enrich tools,", len(T), "in all")

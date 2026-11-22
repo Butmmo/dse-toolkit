@@ -8407,6 +8407,23 @@
           "glob": "my-lists/*-presence-signals-*-shelf.json",
           "upload": true
         }
+      ],
+      "category": "signal",
+      "source": "Public professional/business social search",
+      "cost": "PC-run public search; no paid data provider is selected by this tool.",
+      "outputs_summary": [
+        "Public profile/post links",
+        "Presence signals CSV"
+      ],
+      "path_keys": [
+        "smb",
+        "search",
+        "voiceai",
+        "automation",
+        "revenue",
+        "authority",
+        "broadcast",
+        "ascent"
       ]
     },
     "dse.presence_graphic": {
@@ -10059,6 +10076,13 @@
       "outputs": [
         "my-lists/*-enriched-*.csv",
         "my-lists/*-enriched-*.md"
+      ],
+      "category": "enrich",
+      "source": "First-party company websites; optional configured providers",
+      "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
+      "outputs_summary": [
+        "Website-sourced contact and business fields",
+        "Enriched CSV and report"
       ]
     },
     "dse.enrich_signals": {
@@ -10359,6 +10383,25 @@
       "outputs": [
         "my-lists/*-researched-*.csv",
         "my-lists/*-researched-*.md"
+      ],
+      "category": "signal",
+      "source": "Public web search; local Ollama is optional",
+      "cost": "DuckDuckGo mode has no search-provider fee. Brave uses your own API key and may charge; Ollama runs locally.",
+      "outputs_summary": [
+        "Sourced company/person signals",
+        "Path-fit tags",
+        "Research CSV and report"
+      ],
+      "path_keys": [
+        "smb",
+        "search",
+        "voiceai",
+        "automation",
+        "revenue",
+        "gtm",
+        "authority",
+        "broadcast",
+        "ascent"
       ]
     },
     "dse.enrich_site": {
@@ -10406,7 +10449,14 @@
         }
       ],
       "timeout_min": 5,
-      "outputs": []
+      "outputs": [],
+      "category": "enrich",
+      "source": "The company website you supply",
+      "cost": "PC-run website preview; no paid provider by default.",
+      "outputs_summary": [
+        "One-site preview",
+        "Nothing is saved"
+      ]
     },
     "dse.enrich_providers": {
       "label": "Lead enrichment: which paid providers are set up",
@@ -10431,7 +10481,13 @@
         }
       ],
       "timeout_min": 1,
-      "outputs": []
+      "outputs": [],
+      "category": "source",
+      "source": "Provider settings stored on this PC; API keys are never shown",
+      "cost": "Status check only; does not perform a paid lookup.",
+      "outputs_summary": [
+        "Configured provider names and readiness"
+      ]
     },
     "dse.enrich_row": {
       "label": "Lead enrichment: one website, for a grid row",
