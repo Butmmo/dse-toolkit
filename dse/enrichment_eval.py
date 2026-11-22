@@ -1,0 +1,176 @@
+"""Prepare and score small, human-reviewed enrichment benchmark sheets."""
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import json
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+
+
+REVIEW_FIELDS = ["value_correct", "identity_correct", "evidence_adequate", "freshness_acceptable", "review_note"]
+YES = {"y", "yes", "true", "1"}
+NO = {"n", "no", "false", "0"}
+
+
+def _json(value: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if not value:
+        return []
+    try:
+        return json.loads(str(value))
+    except (ValueError, TypeError):
+        return []
+
+
+def _read(path: str | Path) -> tuple[list[str], list[dict[str, str]]]:
+    p = Path(path)
+    if not p.is_file():
+        raise ValueError(f"File not found: {p}")
+    with p.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            raise ValueError(f"CSV has no header: {p}")
+        return list(reader.fieldnames), list(reader)
+
+
+def _stable_id(row: dict[str, str], row_number: int) -> str:
+    supplied = (row.get("evaluation_id") or row.get("lead_id") or row.get("id") or "").strip()
+    if supplied:
+        return supplied
+    identity = "|".join((row.get(k) or "").strip().casefold() for k in
+                        ("company", "business", "website", "domain", "contact_name", "decision_maker"))
+    seed = identity or f"row-{row_number}"
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def prepare(source: str, out: str = "") -> Path:
+    """Flatten field_results into a review sheet with human-label columns."""
+    headers, rows = _read(source)
+    result_col = "field_results" if "field_results" in headers else "field_result"
+    if result_col not in headers:
+        raise ValueError("Input CSV needs a field_results JSON column (dbi.field-result.v1 records).")
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-enrichment-review.csv")
+    source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker") if h in headers]
+    columns = ["evaluation_id", "source_row", "field", "value", "status", "source_type", "source_name", "source_url",
+               "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
+               "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
+               "cost_quantity", "cost_estimated", *source_fields, *REVIEW_FIELDS]
+    output.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with output.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(dict.fromkeys(columns)), extrasaction="ignore")
+        writer.writeheader()
+        for row_number, row in enumerate(rows, 2):
+            payload = _json(row.get(result_col))
+            if not isinstance(payload, list):
+                continue
+            for result in payload:
+                if not isinstance(result, dict) or result.get("schema") != "dbi.field-result.v1":
+                    continue
+                source_info = result.get("source") if isinstance(result.get("source"), dict) else {}
+                freshness = result.get("freshness") if isinstance(result.get("freshness"), dict) else {}
+                identity = result.get("identity") if isinstance(result.get("identity"), dict) else {}
+                verification = result.get("verification") if isinstance(result.get("verification"), dict) else {}
+                cost = result.get("cost") if isinstance(result.get("cost"), dict) else {}
+                output_row = {"evaluation_id": _stable_id(row, row_number), "source_row": row_number,
+                              "field": result.get("field", ""), "value": json.dumps(result.get("value"), ensure_ascii=False) if isinstance(result.get("value"), (dict, list)) else result.get("value", ""),
+                              "status": result.get("status", ""), "source_type": source_info.get("type", ""),
+                              "source_name": source_info.get("name", ""), "source_url": source_info.get("url", ""),
+                              "observed_at": result.get("observed_at", ""), "publication_date": freshness.get("publication_date", ""),
+                              "freshness_status": freshness.get("status", ""), "age_days": freshness.get("age_days", ""),
+                              "identity_subject": identity.get("subject", ""), "identity_match": identity.get("match", ""),
+                              "identity_strength": identity.get("strength", ""), "identity_score": identity.get("score", ""),
+                              "verification_status": verification.get("status", ""), "cost_amount": cost.get("amount", ""),
+                              "cost_currency": cost.get("currency", ""), "cost_units": cost.get("units", ""),
+                              "cost_quantity": cost.get("quantity", ""), "cost_estimated": cost.get("estimated", "")}
+                output_row.update({name: row.get(name, "") for name in source_fields})
+                output_row.update({name: "" for name in REVIEW_FIELDS})
+                writer.writerow(output_row)
+                count += 1
+    if not count:
+        raise ValueError("No dbi.field-result.v1 records were found in the input CSV.")
+    print(f"Prepared {count} field reviews in {output}")
+    print("Label the four review columns with yes/no; leave a label blank when it cannot be judged.")
+    return output
+
+
+def _ratio(numerator: float, denominator: int) -> float | None:
+    return numerator / denominator if denominator else None
+
+
+def score(source: str, out: str = "") -> tuple[dict, Path]:
+    """Summarize reviewed quality, coverage, freshness and declared provider cost."""
+    headers, rows = _read(source)
+    required = {"field", "status", *REVIEW_FIELDS[:4]}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Review CSV is missing columns: " + ", ".join(missing))
+    by_field: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        by_field[(row.get("field") or "(blank field)").strip()].append(row)
+
+    def metrics(items: list[dict[str, str]]) -> dict:
+        labeled = {field: [r for r in items if (r.get(field) or "").strip().casefold() in YES | NO] for field in REVIEW_FIELDS[:4]}
+        correct_values = sum((r.get("value_correct") or "").strip().casefold() in YES for r in labeled["value_correct"])
+        costs: dict[str, float] = defaultdict(float)
+        for row in items:
+            try:
+                amount = float(row.get("cost_amount") or "")
+            except (TypeError, ValueError):
+                continue
+            currency = (row.get("cost_currency") or "unknown").strip() or "unknown"
+            costs[currency] += amount
+        accepted = sum((r.get("status") or "").strip().casefold() == "accepted" for r in items)
+        fresh_known = [r for r in items if (r.get("freshness_status") or "").strip() and (r.get("freshness_status") or "").casefold() != "unknown"]
+        return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
+                "status_counts": {status: sum((r.get("status") or "").strip().casefold() == status for r in items)
+                                  for status in ("accepted", "candidate", "not_found", "rejected", "error")},
+                "review_labels": {k: {"labeled": len(v), "yes": sum((r.get(k) or "").strip().casefold() in YES for r in v),
+                                      "rate": _ratio(sum((r.get(k) or "").strip().casefold() in YES for r in v), len(v))}
+                                  for k, v in labeled.items()},
+                "freshness_documented": len(fresh_known), "freshness_documented_rate": _ratio(len(fresh_known), len(items)),
+                "declared_cost_by_currency": dict(costs),
+                "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()}}
+
+    report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
+              "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
+              "overall": metrics(rows),
+              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Declared costs may be estimates, not provider invoices."}
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Scored {len(rows)} reviewed field rows across {len(by_field)} fields: {output}")
+    for field, values in report["fields"].items():
+        m = values["review_labels"]
+        fmt = lambda key: "n/a" if m[key]["rate"] is None else f"{m[key]['rate']:.1%} ({m[key]['labeled']} labeled)"
+        print(f"  {field}: coverage {values['coverage']:.1%}; value correctness {fmt('value_correct')}; identity correctness {fmt('identity_correct')}; evidence adequacy {fmt('evidence_adequate')}; freshness accepted {fmt('freshness_acceptable')}")
+    print("Costs are summed only when a result declares a numeric amount and currency; unknown costs are omitted.")
+    return report, output
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="dse.py eval-enrichment", description="Prepare and score a reviewed enrichment benchmark.")
+    sub = parser.add_subparsers(dest="action", required=True)
+    p = sub.add_parser("prepare", help="flatten field_results into a human-review CSV")
+    p.add_argument("source", help="enriched CSV containing a field_results JSON column")
+    p.add_argument("--out", default="", help="review CSV output path")
+    s = sub.add_parser("score", help="score a completed human-review CSV")
+    s.add_argument("source", help="review CSV with yes/no labels")
+    s.add_argument("--out", default="", help="JSON report output path")
+    args = parser.parse_args(argv)
+    try:
+        if args.action == "prepare":
+            prepare(args.source, args.out)
+        else:
+            score(args.source, args.out)
+    except (OSError, ValueError) as exc:
+        parser.exit(2, f"Error: {exc}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
