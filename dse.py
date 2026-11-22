@@ -238,6 +238,7 @@ def main():
     se.add_argument("source", help="CSV with a company name; city and website improve matching")
     se.add_argument("--engine", default="", help="also save the researched CSV to this engine's imports")
     se.add_argument("--path", choices=list(signal_enrichment.path_signals.PATH_SIGNAL_PROFILES), default="any", help="path focus; a selected Engine path is used automatically")
+    se.add_argument("--enrichment-profile", choices=["none", *signal_enrichment.path_signals.PATH_SIGNAL_PROFILES.keys()], default="none", help="apply this versioned path profile's query cap, segment hint and freshness target")
     se.add_argument("--max", type=int, default=25, help="most leads to research in this stage, 1 to 50")
     se.add_argument("--profile", choices=["any", "franchise_group", "local_smb", "saas", "online_store", "enterprise"], default="any", help="business type to prioritize in search; this is not a verified classification")
     se.add_argument("--decision-maker", choices=["any", "owner_compact", "franchise_operator", "functional_leader", "specialist_director"], default="any", help="decision-maker path to prioritize")
@@ -251,6 +252,7 @@ def main():
     ps = sub.add_parser("presence-signals", help="collect separate public professional/social signals for Presence (no outreach draft)")
     ps.add_argument("source", help="CSV with a company name; contact name and city improve matching")
     ps.add_argument("--engine", default="", help="also save the Presence-specific CSV to this engine's imports")
+    ps.add_argument("--enrichment-profile", choices=["none", *signal_enrichment.path_signals.PATH_SIGNAL_PROFILES.keys()], default="none", help="apply this versioned path profile's query cap and freshness target")
     ps.add_argument("--max", type=int, default=25, help="most leads to check in this stage, 1 to 50")
     ps.add_argument("--search-budget", type=int, default=3, help="maximum ordered public search queries per lead (0 to 10)")
     ps.add_argument("--minimum-identity-score", type=float, default=0.0, help="discard results below this heuristic 0 to 1 score; not a probability")
@@ -328,12 +330,13 @@ def main():
     elif a.cmd == "signals":
         try:
                 print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role,
-                                                    a.search_provider, a.path, a.search_budget, a.minimum_identity_score))
+                                                    a.search_provider, a.path, a.search_budget, a.minimum_identity_score, "" if a.enrichment_profile == "none" else a.enrichment_profile))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "presence-signals":
         try:
-            print(signal_enrichment.enrich_presence_file(a.source, a.engine, a.max, a.search_budget, a.minimum_identity_score))
+            print(signal_enrichment.enrich_presence_file(a.source, a.engine, a.max, a.search_budget, a.minimum_identity_score,
+                                                         "" if a.enrichment_profile == "none" else a.enrichment_profile))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "reply":

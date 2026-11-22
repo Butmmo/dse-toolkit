@@ -21,6 +21,7 @@ from . import importer
 from . import business_profiles
 from . import classification
 from . import path_signals
+from . import enrichment_profiles
 from . import field_results as fr
 from .common import LISTS, ROOT
 
@@ -32,11 +33,11 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_identity_summary",
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "enrichment_profile", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
 HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
-PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status",
+PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status", "enrichment_profile",
                    "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "field_results"]
 PRESENCE_FIELDS.insert(-1, "presence_search_waterfall")
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
@@ -441,7 +442,7 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
     return company_found[:max_signals], errors
 
 
-def presence_queries_for(row: dict) -> list[tuple[str, str]]:
+def presence_queries_for(row: dict, path_key: str = "any") -> list[tuple[str, str]]:
     """Search only for public professional/business social presence, not personal-life content."""
     company = (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip()
     contact = (row.get("contact_name") or row.get("decision_maker") or row.get("person") or "").strip()
@@ -451,19 +452,24 @@ def presence_queries_for(row: dict) -> list[tuple[str, str]]:
     suffix = f" {city}" if city else ""
     queries = [("business_profile", f'"{company}"{suffix} site:linkedin.com/company OR site:instagram.com OR site:facebook.com OR site:x.com OR site:youtube.com OR site:tiktok.com'[:300]),
                ("business_posts", f'"{company}"{suffix} site:linkedin.com/posts OR site:instagram.com/p OR site:facebook.com/posts OR site:x.com'[:300])]
+    if path_signals.known_path(path_key):
+        terms = path_signals.profile(path_key).get("query_terms", "")
+        if terms:
+            queries[1] = ("path_business_signal", f'"{company}"{suffix} {terms} site:linkedin.com OR site:instagram.com OR site:x.com OR site:youtube.com'[:300])
     if contact and company:
         queries.append(("professional_contact", f'"{contact}" "{company}" site:linkedin.com/in OR site:linkedin.com/posts'[:260]))
     return [(kind, query) for kind, query in queries if company]
 
 
 def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, minimum_identity_score: float = 0.0,
+                    path_key: str = "any",
                     metrics_out: list[dict] | None = None) -> tuple[list[dict], list[str]]:
     company = (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip()
     contact = (row.get("contact_name") or row.get("decision_maker") or row.get("person") or "").strip()
     company_terms, contact_terms = _tokens(company), _tokens(contact)
     checked_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     found, seen, errors = [], set(), []
-    for query_index, (kind, query) in enumerate(presence_queries_for(row)):
+    for query_index, (kind, query) in enumerate(presence_queries_for(row, path_key)):
         metric = {"rung": kind, "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
                   "duplicates": 0, "identity_rejected": 0, "score_rejected": 0, "errors": 0, "status": "not_run"}
         if metrics_out is not None:
@@ -529,6 +535,45 @@ def _waterfall_metrics(metrics: list[dict], budget: int, minimum_identity_score:
             "total_retained": sum(int(x.get("retained", 0)) for x in metrics),
             "total_rejected": sum(int(x.get("identity_rejected", 0)) + int(x.get("role_rejected", 0)) + int(x.get("score_rejected", 0)) for x in metrics),
             "rungs": metrics}
+
+
+def _profile_run_record(profile_key: str, path_key: str, lane: str, query_budget: int,
+                       freshness_days: int) -> dict:
+    if not profile_key:
+        return {}
+    return {"schema": enrichment_profiles.SCHEMA, "profile_version": enrichment_profiles.PROFILE_VERSION,
+            "profile_key": profile_key, "path_key": path_key or "any", "lane": lane,
+            "query_budget_per_lead": query_budget, "freshness_target_days": freshness_days,
+            "provider_calls_per_run": 0, "profile_status": "applied"}
+
+
+def _mark_profile_freshness(signals: list[dict], freshness_days: int) -> None:
+    """Add a path-specific freshness label without discarding the source result."""
+    for item in signals:
+        age = item.get("age_days")
+        if isinstance(age, (int, float)):
+            item["profile_freshness_status"] = "within_target_window" if age <= freshness_days else "outside_target_window"
+        else:
+            item["profile_freshness_status"] = "undated"
+
+
+def _attach_profile_results(encoded: str, profile_record: dict, signals: list[dict]) -> str:
+    try:
+        results = json.loads(encoded)
+    except (TypeError, ValueError):
+        return encoded
+    if not profile_record or not isinstance(results, list):
+        return encoded
+    by_url = {str(item.get("url", "")): item for item in signals if item.get("url")}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        metadata = result.setdefault("metadata", {})
+        metadata["enrichment_profile"] = profile_record
+        url = str((result.get("source") or {}).get("url", ""))
+        if url in by_url:
+            metadata["profile_freshness_status"] = by_url[url].get("profile_freshness_status", "undated")
+    return json.dumps(results, ensure_ascii=False, separators=(",", ":"))
 
 
 def build_herald_field_results(row: dict, signals: list[dict], search_provider: str, search_metrics: list[dict] | None = None,
@@ -1109,7 +1154,7 @@ def _path_outcome_observations(row: dict, signals: list[dict], path_evidence: li
 
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
                 business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any",
-                search_budget: int = 12, minimum_identity_score: float = 0.0) -> str:
+                search_budget: int = 12, minimum_identity_score: float = 0.0, enrichment_profile: str = "") -> str:
     p = Path(source)
     if not p.is_absolute():
         p = (ROOT / source) if (ROOT / source).is_file() else p
@@ -1120,6 +1165,19 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         raise ValueError("That CSV has no rows.")
     if not 1 <= max_rows <= 50:
         raise ValueError("--max must be between 1 and 50 leads for this first research stage.")
+    profile_doc = {}
+    profile_record = {}
+    profile_freshness_days = 180
+    if enrichment_profile:
+        profile_doc = enrichment_profiles.build_profile(enrichment_profile)
+        if path_key not in ("", "any", enrichment_profile):
+            raise ValueError("The selected path and enrichment profile do not match. Choose one path for this run.")
+        path_key = enrichment_profile
+        search_budget = min(search_budget, profile_doc["limits"]["herald_queries_per_lead"])
+        profile_freshness_days = profile_doc["limits"]["signal_freshness_days"]
+        if business_profile == "any" and profile_doc["intent"]["target_business_segment_keys"]:
+            business_profile = profile_doc["intent"]["target_business_segment_keys"][0]
+        profile_record = _profile_run_record(enrichment_profile, path_key, "herald", search_budget, profile_freshness_days)
     try:
         bp, dm, lf = business_profiles.normalize_profiles(business_profile, decision_maker, legal_form)
     except ValueError as e:
@@ -1142,7 +1200,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         selected_path = engine_path or selected_path
     path = path_signals.profile(selected_path)
     custom_role = re.sub(r"[^A-Za-z0-9 /&'-]", "", custom_role).strip()[:80]
-    strategy = business_profiles.strategy_text(business_profile, decision_maker, legal_form, decision_role) + (f" Engine path focus: {path['label']}: {path['method']}" if selected_path else "") + (f" Custom role target: {custom_role}." if custom_role else "")
+    strategy = business_profiles.strategy_text(business_profile, decision_maker, legal_form, decision_role) + (f" Engine path focus: {path['label']}: {path['method']}" if selected_path else "") + (f" Custom role target: {custom_role}." if custom_role else "") + (f" Applied enrichment profile {enrichment_profile} v{enrichment_profiles.PROFILE_VERSION}; freshness target {profile_freshness_days} days." if profile_record else "")
     model = _ollama_model() if use_ai else ""
     normalized_rows, _report = importer.normalize(p)
     out, errors, drafted = [], [], 0
@@ -1186,11 +1244,17 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_people_candidates"] = ""
         row["enrichment_target_legal_form"] = legal_form
         row["enrichment_search_strategy"] = strategy
+        row["enrichment_profile"] = json.dumps(profile_record, ensure_ascii=False, separators=(",", ":")) if profile_record else ""
         query_metrics = []
         signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role,
                                      search_provider=search_provider, path_key=selected_path or "any", search_budget=search_budget,
                                      minimum_identity_score=minimum_identity_score, metrics_out=query_metrics)
-        row["herald_search_waterfall"] = json.dumps(_waterfall_metrics(query_metrics, search_budget, minimum_identity_score, search_provider), ensure_ascii=False, separators=(",", ":"))
+        if profile_record:
+            _mark_profile_freshness(signals, profile_freshness_days)
+        waterfall = _waterfall_metrics(query_metrics, search_budget, minimum_identity_score, search_provider)
+        if profile_record:
+            waterfall["enrichment_profile"] = profile_record
+        row["herald_search_waterfall"] = json.dumps(waterfall, ensure_ascii=False, separators=(",", ":"))
         errors.extend(row_errors)
         identity_summary = {}
         for subject in ("company", "person"):
@@ -1291,7 +1355,9 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
                 if row.get("dse_path_ai_advice_status") == "awaiting_local_review":
                     row["dse_path_ai_advice_status"] = "local_model_error"
                 errors.append(type(e).__name__)
-        row["field_results"] = fr.merge_results(row.get("field_results"), build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score))
+        result_contract = build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score)
+        result_contract = _attach_profile_results(result_contract, profile_record, signals)
+        row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)
         out.append(row)
         if i < min(len(rows), max_rows):
             time.sleep(0.8)
@@ -1345,7 +1411,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
 
 
 def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, search_budget: int = 3,
-                         minimum_identity_score: float = 0.0) -> str:
+                         minimum_identity_score: float = 0.0, enrichment_profile: str = "") -> str:
     """Create an independent Presence social-evidence CSV; never draft or send outreach."""
     p = Path(source)
     if not p.is_absolute():
@@ -1357,6 +1423,21 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         raise ValueError("That CSV has no rows.")
     if not 1 <= max_rows <= 50:
         raise ValueError("--max must be between 1 and 50 leads for this Presence research stage.")
+    profile_doc = {}
+    profile_record = {}
+    path_key = "any"
+    profile_freshness_days = 180
+    if enrichment_profile:
+        profile_doc = enrichment_profiles.build_profile(enrichment_profile)
+        path_key = enrichment_profile
+        search_budget = min(search_budget, profile_doc["limits"]["presence_queries_per_lead"])
+        profile_freshness_days = profile_doc["limits"]["signal_freshness_days"]
+        profile_record = _profile_run_record(enrichment_profile, path_key, "presence", search_budget, profile_freshness_days)
+        if engine:
+            from . import engines
+            engine_path = path_signals.known_path(engines.load(engine).get("path", ""))
+            if engine_path and engine_path != path_key:
+                raise ValueError(f"The selected Engine follows the {path_signals.profile(engine_path)['label']} path. Choose its profile instead.")
     if not 0 <= search_budget <= 10:
         raise ValueError("--search-budget must be between 0 and 10 queries per lead.")
     if not 0 <= minimum_identity_score <= 1:
@@ -1374,7 +1455,10 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
                 row[key] = normalized[key]
         print(f"[{i}/{min(len(rows), max_rows)}] checking public social presence for {row.get('business') or row.get('website') or 'lead'}", file=sys.stderr, flush=True)
         query_metrics = []
-        signals, row_errors = gather_presence(row, search_budget=search_budget, minimum_identity_score=minimum_identity_score, metrics_out=query_metrics)
+        signals, row_errors = gather_presence(row, search_budget=search_budget, minimum_identity_score=minimum_identity_score,
+                                              path_key=path_key, metrics_out=query_metrics)
+        if profile_record:
+            _mark_profile_freshness(signals, profile_freshness_days)
         errors.extend(row_errors)
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         history_key = _presence_history_key(row)
@@ -1389,9 +1473,15 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         row["presence_sources"] = "\n".join(f"[{s['id']}] {s['title']} | {s['url']}" for s in signals)
         row["presence_checked_at"] = checked_at
         row["presence_status"] = "public professional/social results found" if signals else "no matching public social results"
-        row["presence_search_waterfall"] = json.dumps(_waterfall_metrics(query_metrics, search_budget, minimum_identity_score, "duckduckgo"), ensure_ascii=False, separators=(",", ":"))
+        waterfall = _waterfall_metrics(query_metrics, search_budget, minimum_identity_score, "duckduckgo")
+        if profile_record:
+            waterfall["enrichment_profile"] = profile_record
+        row["presence_search_waterfall"] = json.dumps(waterfall, ensure_ascii=False, separators=(",", ":"))
+        row["enrichment_profile"] = json.dumps(profile_record, ensure_ascii=False, separators=(",", ":")) if profile_record else ""
         row.update(comparison)
-        row["field_results"] = fr.merge_results(row.get("field_results"), build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score))
+        result_contract = build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score)
+        result_contract = _attach_profile_results(result_contract, profile_record, signals)
+        row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)
         out.append(row)
         if i < min(len(rows), max_rows):
             time.sleep(0.8)

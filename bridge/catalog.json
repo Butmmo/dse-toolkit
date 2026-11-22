@@ -8369,6 +8369,10 @@
           "field": "engine"
         },
         {
+          "opt": "--enrichment-profile",
+          "field": "enrichment_profile"
+        },
+        {
           "opt": "--max",
           "field": "max"
         },
@@ -8397,6 +8401,25 @@
           "required": false,
           "choices_from": "engines",
           "choices": []
+        },
+        {
+          "name": "enrichment_profile",
+          "label": "Apply a path enrichment profile",
+          "type": "choice",
+          "required": false,
+          "default": "none",
+          "choices": [
+            {"value": "none", "label": "No path profile"},
+            {"value": "smb", "label": "SMB Optimisation"},
+            {"value": "search", "label": "Search & AI Visibility"},
+            {"value": "voiceai", "label": "AI Voice Receptionist"},
+            {"value": "automation", "label": "AI Automation Engineering"},
+            {"value": "revenue", "label": "Revenue Recovery"},
+            {"value": "gtm", "label": "Go-to-Market Engineering"},
+            {"value": "authority", "label": "Authority Engine"},
+            {"value": "broadcast", "label": "Broadcast Engine"},
+            {"value": "ascent", "label": "The Ascent"}
+          ]
         },
         {
           "name": "max",
@@ -10155,6 +10178,10 @@
           "field": "path"
         },
         {
+          "opt": "--enrichment-profile",
+          "field": "enrichment_profile"
+        },
+        {
           "opt": "--max",
           "field": "max"
         },
@@ -10259,6 +10286,25 @@
               "value": "ascent",
               "label": "The Ascent"
             }
+          ]
+        },
+        {
+          "name": "enrichment_profile",
+          "label": "Apply this path's profile (limits query budget and marks signal freshness)",
+          "type": "choice",
+          "required": false,
+          "default": "none",
+          "choices": [
+            {"value": "none", "label": "No path profile"},
+            {"value": "smb", "label": "SMB Optimisation"},
+            {"value": "search", "label": "Search & AI Visibility"},
+            {"value": "voiceai", "label": "AI Voice Receptionist"},
+            {"value": "automation", "label": "AI Automation Engineering"},
+            {"value": "revenue", "label": "Revenue Recovery"},
+            {"value": "gtm", "label": "Go-to-Market Engineering"},
+            {"value": "authority", "label": "Authority Engine"},
+            {"value": "broadcast", "label": "Broadcast Engine"},
+            {"value": "ascent", "label": "The Ascent"}
           ]
         },
         {
@@ -10814,6 +10860,10 @@
           "field": "path"
         },
         {
+          "opt": "--enrichment-profile",
+          "field": "enrichment_profile"
+        },
+        {
           "opt": "--profile",
           "field": "profile"
         },
@@ -10985,6 +11035,25 @@
               "value": "ascent",
               "label": "The Ascent"
             }
+          ]
+        },
+        {
+          "name": "enrichment_profile",
+          "label": "Apply this path's profile (caps searches and marks signal freshness)",
+          "type": "choice",
+          "required": false,
+          "default": "none",
+          "choices": [
+            {"value": "none", "label": "No path profile"},
+            {"value": "smb", "label": "SMB Optimisation"},
+            {"value": "search", "label": "Search & AI Visibility"},
+            {"value": "voiceai", "label": "AI Voice Receptionist"},
+            {"value": "automation", "label": "AI Automation Engineering"},
+            {"value": "revenue", "label": "Revenue Recovery"},
+            {"value": "gtm", "label": "Go-to-Market Engineering"},
+            {"value": "authority", "label": "Authority Engine"},
+            {"value": "broadcast", "label": "Broadcast Engine"},
+            {"value": "ascent", "label": "The Ascent"}
           ]
         },
         {

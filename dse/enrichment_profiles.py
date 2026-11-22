@@ -65,7 +65,8 @@ def build_profile(path_key: str, *, max_provider_calls: int = 0, herald_queries:
     return {
         "schema": SCHEMA, "profile_version": PROFILE_VERSION, "path_key": key, "path_label": path["label"],
         "intent": {"method": path["method"], "pain_hypothesis": path["pain"], "likely_buyer": path["buyer"],
-                   "target_business_segments_to_select": business_types, "buyer_role_families": role_labels},
+                   "target_business_segments_to_select": business_types, "target_business_segment_keys": PATH_SEGMENTS[key],
+                   "buyer_role_families": role_labels},
         "priorities": {"lead_fields": PATH_FIELDS[key], "priority_signal_categories": list(path.get("priority") or []),
                        "supporting_signal_categories": list(path.get("supporting") or []), "search_terms": path.get("query_terms", "")},
         "recommended_lanes": ["website", "herald"] + (["presence"] if key != "any" else []),
