@@ -8407,6 +8407,23 @@
           "glob": "my-lists/*-presence-signals-*-shelf.json",
           "upload": true
         }
+      ],
+      "category": "signal",
+      "source": "Public professional/business social search",
+      "cost": "PC-run public search; no paid data provider is selected by this tool.",
+      "outputs_summary": [
+        "Public profile/post links",
+        "Presence signals CSV"
+      ],
+      "path_keys": [
+        "smb",
+        "search",
+        "voiceai",
+        "automation",
+        "revenue",
+        "authority",
+        "broadcast",
+        "ascent"
       ]
     },
     "dse.presence_graphic": {
@@ -10059,12 +10076,19 @@
       "outputs": [
         "my-lists/*-enriched-*.csv",
         "my-lists/*-enriched-*.md"
+      ],
+      "category": "enrich",
+      "source": "First-party company websites; optional configured providers",
+      "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
+      "outputs_summary": [
+        "Website-sourced contact and business fields",
+        "Enriched CSV and report"
       ]
     },
     "dse.enrich_signals": {
       "label": "Lead signals: research and draft outreach",
       "group": "Grow",
-      "help": "Researches public company, product and news results for the Herald-facing lane. Choose a business type and role path to steer searches, or let the lead signal suggest several roles. Choose DuckDuckGo for the default search source, or Brave Search with a key stored on this PC; Brave API usage can incur prepaid charges. Configure BRAVE_SEARCH_API_KEY and set it locally before selecting Brave. The CSV includes source-linked heuristic business and role assessments. Scores are evidence cues, not probabilities or verified facts; legal form is never verified here. If Ollama is running on this PC, a local model can draft an email subject and body using retrieved evidence. The draft is advisory and is never sent. Public social signals are handled by a separate Presence tool.",
+      "help": "Researches public company, product and news results for Herald. The selected Engine automatically supplies its path's research focus; without one, choose a path. Each path prioritizes its own proof signals, likely buyer roles and commercial model, and labels findings as priority, supporting or general. These are research directions, not verified pains or budgets. Ledgers, grids and workflows retain path metadata for later review and automation. Choose a business type and role path to refine the search. DuckDuckGo is default; Brave requires your local key and can incur charges. A local Ollama model may draft evidence-based email, never send it. Public social signals remain in Presence.",
       "script": "dse.py",
       "args": [
         {
@@ -10076,6 +10100,10 @@
         {
           "opt": "--engine",
           "field": "engine"
+        },
+        {
+          "opt": "--path",
+          "field": "path"
         },
         {
           "opt": "--max",
@@ -10126,6 +10154,55 @@
           "required": false,
           "choices_from": "engines",
           "choices": []
+        },
+        {
+          "name": "path",
+          "label": "Path focus (the selected Engine sets this automatically)",
+          "type": "choice",
+          "required": false,
+          "default": "any",
+          "choices": [
+            {
+              "value": "any",
+              "label": "General / use Engine path"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimisation"
+            },
+            {
+              "value": "search",
+              "label": "Search & AI Visibility"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist Systems"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "authority",
+              "label": "The Authority Engine"
+            },
+            {
+              "value": "broadcast",
+              "label": "The Broadcast Engine"
+            },
+            {
+              "value": "ascent",
+              "label": "The Ascent"
+            }
+          ]
         },
         {
           "name": "max",
@@ -10306,6 +10383,25 @@
       "outputs": [
         "my-lists/*-researched-*.csv",
         "my-lists/*-researched-*.md"
+      ],
+      "category": "signal",
+      "source": "Public web search; local Ollama is optional",
+      "cost": "DuckDuckGo mode has no search-provider fee. Brave uses your own API key and may charge; Ollama runs locally.",
+      "outputs_summary": [
+        "Sourced company/person signals",
+        "Path-fit tags",
+        "Research CSV and report"
+      ],
+      "path_keys": [
+        "smb",
+        "search",
+        "voiceai",
+        "automation",
+        "revenue",
+        "gtm",
+        "authority",
+        "broadcast",
+        "ascent"
       ]
     },
     "dse.enrich_site": {
@@ -10353,7 +10449,14 @@
         }
       ],
       "timeout_min": 5,
-      "outputs": []
+      "outputs": [],
+      "category": "enrich",
+      "source": "The company website you supply",
+      "cost": "PC-run website preview; no paid provider by default.",
+      "outputs_summary": [
+        "One-site preview",
+        "Nothing is saved"
+      ]
     },
     "dse.enrich_providers": {
       "label": "Lead enrichment: which paid providers are set up",
@@ -10378,7 +10481,13 @@
         }
       ],
       "timeout_min": 1,
-      "outputs": []
+      "outputs": [],
+      "category": "source",
+      "source": "Provider settings stored on this PC; API keys are never shown",
+      "cost": "Status check only; does not perform a paid lookup.",
+      "outputs_summary": [
+        "Configured provider names and readiness"
+      ]
     },
     "dse.enrich_row": {
       "label": "Lead enrichment: one website, for a grid row",

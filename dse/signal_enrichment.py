@@ -19,6 +19,7 @@ from pathlib import Path
 from . import importer
 from . import business_profiles
 from . import classification
+from . import path_signals
 from .common import LISTS, ROOT
 
 USER_AGENT = "DFamociousHQ/1.0 (local user-requested business research)"
@@ -29,7 +30,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_identity_summary",
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_search_strategy"]
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy"]
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
@@ -154,7 +155,7 @@ def search(query: str, limit: int = 2, provider: str = "duckduckgo") -> list[dic
     return out
 
 
-def queries_for(row: dict, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "") -> list[tuple[str, str]]:
+def queries_for(row: dict, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", path_key: str = "any") -> list[tuple[str, str]]:
     company = business_profiles.row_value(row, "business", "company", "name", "current_company")
     city = business_profiles.row_value(row, "city")
     product = business_profiles.row_value(row, "product", "service", "industry")
@@ -170,11 +171,16 @@ def queries_for(row: dict, business_profile: str = "any", decision_maker: str = 
         q.append(("decision_maker", f'"{company}"{suffix} {dm["terms"]}'[:300]))
     if lf["terms"]:
         q.append(("legal_form_search", f'"{company}" {lf["terms"]}'[:300]))
+    path = path_signals.profile(path_key)
+    if path_signals.known_path(path_key):
+        q.append(("path_specific_signal", f'"{company}"{suffix} {path["query_terms"]}'[:300]))
     company_signal = business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal", "recent_signal", "news_signal")
     person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
     signal_terms = re.sub(r"\s+", " ", company_signal)[:100] or "hiring funding launch expansion new product leadership"
     q.append(("company_signal", f'"{company}"{suffix} {signal_terms}'[:300]))
     roles = business_profiles.infer_decision_roles(company_signal, decision_role)
+    if decision_role == "signal_based" and path_signals.known_path(path_key):
+        roles = list(dict.fromkeys([*path_signals.profile(path_key)["roles"], *roles]))
     role_terms = " ".join([*(business_profiles.DECISION_ROLES[r]["terms"] for r in roles), custom_role.strip()[:80]])
     q.append(("decision_maker_role_discovery", f'"{company}" {role_terms} {signal_terms} site:linkedin.com/in OR site:linkedin.com/company'[:300]))
     if person_signal:
@@ -341,7 +347,7 @@ def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_ro
     return [("decision_maker_profile", profile_query[:300]), ("decision_maker_signal", signal_query[:300])]
 
 
-def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo") -> tuple[list[dict], list[str]]:
+def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any") -> tuple[list[dict], list[str]]:
     company = business_profiles.row_value(row, "business", "company", "name", "current_company", "website", "domain")
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
@@ -352,12 +358,15 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
         (business_profiles.infer_decision_roles(person_signal) if person_signal else [])
         + (business_profiles.infer_decision_roles(company_signal) if company_signal else [])
     )))
+    path = path_signals.profile(path_key)
+    if decision_role == "signal_based":
+        role_candidates = list(dict.fromkeys([*path["roles"], *role_candidates]))
     if not role_candidates:
         role_candidates = business_profiles.infer_decision_roles("", decision_role)
     role_match_terms = set().union(*(_tokens(business_profiles.DECISION_ROLES[r]["terms"]) for r in role_candidates), _tokens(custom_role))
     found, seen = [], {}
     errors = []
-    queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role) + decision_maker_queries_for(row, decision_maker, custom_role)
+    queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role, path_key) + decision_maker_queries_for(row, decision_maker, custom_role)
     for kind, query in queries:
         try:
             results = search(query, provider=search_provider)
@@ -491,6 +500,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
         "name": company,
         "lead_signal": business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal"),
     }
+    path_context = path_signals.profile(row.get("enrichment_target_path", "any"))
     try:
         candidate_context = json.loads(row.get("herald_people_candidates") or "[]")[:5]
     except (ValueError, TypeError):
@@ -499,6 +509,7 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "city": business_profiles.row_value(row, "city"), "offer": business_profiles.row_value(row, "offer", "gap_line", "lead_why"),
             "target_business_profile": row.get("enrichment_target_profile", "any"), "target_decision_maker": row.get("enrichment_target_decision_maker", "any"),
             "target_role": row.get("enrichment_target_role", "signal_based"), "signal_based_role_candidates": row.get("herald_role_candidates", "[]"),
+            "target_path": row.get("enrichment_target_path", "any"), "path_guidance": path_context,
             "legal_form_search_hint": row.get("enrichment_target_legal_form", "any"),
             "ranked_people_candidates": candidate_context,
             "role_evidence_assessment": row.get("herald_role_assessment", "{}"), "evidence": evidence,
@@ -597,7 +608,7 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 
 
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
-                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo") -> str:
+                business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any") -> str:
     p = Path(source)
     if not p.is_absolute():
         p = (ROOT / source) if (ROOT / source).is_file() else p
@@ -616,8 +627,17 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         raise ValueError("Choose a decision-maker role from the listed options.")
     if search_provider not in ("duckduckgo", "brave"):
         raise ValueError("Choose DuckDuckGo or Brave Search as the public search provider.")
+    selected_path = path_signals.known_path(path_key)
+    if engine:
+        from . import engines
+        config = engines.load(engine)
+        engine_path = path_signals.known_path(config.get("path", ""))
+        if engine_path and selected_path and engine_path != selected_path:
+            raise ValueError(f"The selected Engine follows the {path_signals.profile(engine_path)['label']} path. Choose that path or leave the path selector on General.")
+        selected_path = engine_path or selected_path
+    path = path_signals.profile(selected_path)
     custom_role = re.sub(r"[^A-Za-z0-9 /&'-]", "", custom_role).strip()[:80]
-    strategy = business_profiles.strategy_text(business_profile, decision_maker, legal_form, decision_role) + (f" Custom role target: {custom_role}." if custom_role else "")
+    strategy = business_profiles.strategy_text(business_profile, decision_maker, legal_form, decision_role) + (f" Engine path focus: {path['label']}: {path['method']}" if selected_path else "") + (f" Custom role target: {custom_role}." if custom_role else "")
     model = _ollama_model() if use_ai else ""
     normalized_rows, _report = importer.normalize(p)
     out, errors, drafted = [], [], 0
@@ -631,12 +651,15 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["enrichment_target_profile"] = business_profile
         row["enrichment_target_decision_maker"] = decision_maker
         row["enrichment_target_role"] = custom_role or decision_role
+        row["enrichment_target_path"] = selected_path or "any"
         person_signal = business_profiles.row_value(row, "decision_maker_last_signal", "person_last_signal", "contact_recent_signal", "person_last_lead_signal")
         company_signal = business_profiles.row_value(row, "company_last_signal", "company_signal", "last_lead_signal", "last_signal")
         role_origins = {}
         if decision_role != "signal_based":
             role_origins[decision_role] = ["user_selected"]
         else:
+            for role in path["roles"] if selected_path else ():
+                role_origins.setdefault(role, []).append("engine_path")
             if person_signal:
                 for role in business_profiles.infer_decision_roles(person_signal):
                     role_origins.setdefault(role, []).append("person_signal")
@@ -655,7 +678,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_people_candidates"] = ""
         row["enrichment_target_legal_form"] = legal_form
         row["enrichment_search_strategy"] = strategy
-        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role, search_provider=search_provider)
+        signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role, search_provider=search_provider, path_key=selected_path or "any")
         errors.extend(row_errors)
         identity_summary = {}
         for subject in ("company", "person"):
@@ -684,7 +707,14 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_people_candidates"] = json.dumps(assessment["people_candidates"], ensure_ascii=False, separators=(",", ":"))
         row["herald_business_assessment"] = json.dumps(assessment["business_profiles"], ensure_ascii=False, separators=(",", ":"))
         row["herald_role_assessment"] = json.dumps({"roles": assessment["decision_maker_roles"], "people": assessment["people_candidates"]}, ensure_ascii=False, separators=(",", ":"))
-        row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "events": assessment["signal_events"]}, ensure_ascii=False, separators=(",", ":"))
+        annotated_events = []
+        for event in assessment["signal_events"]:
+            event = dict(event)
+            category = event.get("category", "")
+            event["path_fit"] = "priority" if category in path["priority"] else "supporting" if category in path["supporting"] else "general"
+            event["path_label"] = path["label"]
+            annotated_events.append(event)
+        row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "path_focus": {"key": selected_path or "any", "label": path["label"], "method": path["method"], "pain": path["pain"], "buyer": path["buyer"], "revenue_model": path["revenue_model"], "proof_metrics": path["proof_metrics"], "priority_categories": path["priority"], "supporting_categories": path["supporting"]}, "events": annotated_events}, ensure_ascii=False, separators=(",", ":"))
         row["herald_legal_form_assessment"] = json.dumps(assessment["legal_form_mentions"], ensure_ascii=False, separators=(",", ":"))
         row["herald_assessed_at"] = checked_at
         row["herald_assessment_note"] = assessment["basis"]
@@ -723,6 +753,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
     stale_sources = sum(source.get("freshness_status") == "stale" for source in collected_sources)
     report = [f"# Lead signals: {p.name}", "", f"- Searched: {min(len(rows), max_rows)} of {len(rows)} rows",
               f"- Public search provider: {search_provider}",
+              f"- Engine path focus: {path['label']}", f"- Path method: {path['method']}", f"- Likely buyer to research: {path['buyer']}", f"- Commercial model to verify: {path['revenue_model']}",
               f"- Brave API queries used: {BRAVE_SEARCH_REQUESTS}" if search_provider == "brave" else "- Brave API queries used: 0",
               f"- Business profile target: {bp['label']}", f"- Decision-maker path: {dm['label']}", f"- Decision-maker role target: {custom_role or business_profiles.DECISION_ROLES[decision_role]['label']}", f"- Legal-form search: {lf['label']}",
               "- Target selections guide search queries only; they are not business classifications or legal verification.",
