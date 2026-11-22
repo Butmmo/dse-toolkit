@@ -10811,7 +10811,7 @@
     "dse.grid_enrich": {
       "label": "Ledgers: enrich grid rows live",
       "group": "Grow",
-      "help": "Runs the existing lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, or Presence public social signals. The PC reads the grid rows, runs the selected enrichment lane, then creates or reuses result columns and writes the results back into these rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. The optional local AI draft and path advice can be disabled with Only collect evidence. The original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted. For Herald and Presence, compact source snapshots are saved with each grid row so their check history is shared with the Ledger across devices. Every lane writes a compact evidence-and-decisions record: Website includes selected field values, provider checks and alternatives; Herald links profile, role, event, person and outreach judgments to sources, and shows how the selected path maps to a business outcome, evidence already available, commercial qualification checks still requiring direct confirmation, and a comparison of recent local AI advice; Presence records identity matching, publication freshness and search waterfall measurements. Review source IDs and links inside the Ledger.",
+      "help": "Runs the existing lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, or Presence public social signals. The PC reads the grid rows, runs the selected enrichment lane, then creates or reuses result columns and writes the results back into these rows in saved batches. If a run stops, use its reported next row with Start at grid row to continue. Existing non-empty output cells stay as they are unless Replace existing values is checked. The optional local AI draft and path advice can be disabled with Only collect evidence. The original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted. For Herald and Presence, compact source snapshots are saved with each grid row so their check history is shared with the Ledger across devices. Every lane writes a compact evidence-and-decisions record: Website includes selected field values, provider checks and alternatives; Herald links profile, role, event, person and outreach judgments to sources, and shows how the selected path maps to a business outcome, evidence already available, commercial qualification checks still requiring direct confirmation, and a comparison of recent local AI advice; Presence records identity matching, publication freshness and search waterfall measurements. Review source IDs and links inside the Ledger.",
       "script": "dse.py",
       "args": [
         {
@@ -10834,6 +10834,14 @@
         {
           "opt": "--limit",
           "field": "limit"
+        },
+        {
+          "opt": "--start-row",
+          "field": "start_row"
+        },
+        {
+          "opt": "--batch-size",
+          "field": "batch_size"
         },
         {
           "opt": "--output-detail",
@@ -10944,6 +10952,24 @@
           "min": 1,
           "max": 500,
           "default": 25
+        },
+        {
+          "name": "start_row",
+          "label": "Start at grid row (1-based; use after an interrupted run)",
+          "type": "int",
+          "required": true,
+          "min": 1,
+          "max": 1000000,
+          "default": 1
+        },
+        {
+          "name": "batch_size",
+          "label": "Rows to save at a time",
+          "type": "int",
+          "required": true,
+          "min": 1,
+          "max": 50,
+          "default": 10
         },
         {
           "name": "output_detail",
