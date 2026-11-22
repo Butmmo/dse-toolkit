@@ -76,9 +76,10 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
     history_column = f"{lane}_monitor_history"
     if lane in ("herald", "presence") and history_column not in selected:
         selected.append(history_column)
-    if lane == "herald" and "herald_evidence_decisions" not in selected:
-        selected.append("herald_evidence_decisions")
-    selected = [h for h in selected if h in headers or h == history_column or (lane == "herald" and h == "herald_evidence_decisions")]
+    evidence_header = f"{lane}_evidence_decisions"
+    if lane in ("website", "herald", "presence") and evidence_header not in selected:
+        selected.append(evidence_header)
+    selected = [h for h in selected if h in headers or h == history_column or h == evidence_header]
     return result_path, selected, rows
 
 
@@ -90,8 +91,101 @@ def _decode_json(value, fallback):
         return fallback
 
 
-def _evidence_decisions(row: dict) -> str:
-    """Compact the Herald assessments and their cited source records for an in-grid review panel."""
+def _evidence_decisions(row: dict, lane: str = "herald") -> str:
+    """Compact each lane's selected fields, evidence, alternatives, and decision metadata for Ledger review."""
+    if lane == "website":
+        field_results = _decode_json(row.get("field_results"), [])
+        selected_fields = {"best_email", "phone", "decision_maker", "decision_maker_title", "firmographics", "contact_form", "booking", "linkedin_profile", "instagram_profile", "facebook_profile", "x_profile", "youtube_profile", "technology", "site_description", "site_active", "icp_term_hits"}
+        fields, evidence, n = [], [], 0
+        for item in field_results:
+            if not isinstance(item, dict) or item.get("field") not in selected_fields or item.get("metadata", {}).get("lane") != "website_enrichment":
+                continue
+            source = item.get("source") if isinstance(item.get("source"), dict) else {}
+            value = item.get("value")
+            fields.append({"field": item.get("field"), "value": value, "status": item.get("status"),
+                           "source": source, "identity": item.get("identity", {}), "verification": item.get("verification", {}),
+                           "cost": item.get("cost", {}), "miss_reason": item.get("miss_reason", ""),
+                           "metadata": item.get("metadata", {}), "candidate_ids": []})
+            field = fields[-1]
+            if source.get("url") or source.get("name"):
+                n += 1
+                evidence_id = f"W{n:02d}"
+                field["selected_evidence_id"] = evidence_id
+                evidence.append({"id": evidence_id, "field": item.get("field"), "status": item.get("status"),
+                                 "source_type": source.get("type", ""), "source_name": source.get("name", ""),
+                                 "title": str(item.get("field", "")), "snippet": str(value if isinstance(value, (str, int, float, bool)) else json.dumps(value, ensure_ascii=False))[:130],
+                                 "url": source.get("url", ""), "value": value})
+            for candidate in (item.get("candidates") or [])[:6]:
+                csource = candidate.get("source") if isinstance(candidate.get("source"), dict) else {}
+                n += 1
+                evidence_id = f"W{n:02d}"
+                field["candidate_ids"].append(evidence_id)
+                cvalue = candidate.get("value")
+                evidence.append({"id": evidence_id, "field": item.get("field"), "status": candidate.get("status", "candidate"),
+                                 "source_type": csource.get("type", ""), "source_name": csource.get("name", ""),
+                                 "title": str(item.get("field", "")) + " candidate", "snippet": str(cvalue if isinstance(cvalue, (str, int, float, bool)) else json.dumps(cvalue, ensure_ascii=False))[:130],
+                                 "url": csource.get("url", ""), "value": cvalue})
+        payload = {"schema": "dbi.website-evidence-decisions.v1", "lane": lane,
+                   "checked_at": row.get("enriched_on", ""), "status": row.get("enrich_status", ""),
+                   "lead_score": row.get("lead_score", ""), "lead_why": str(row.get("lead_why", ""))[:400],
+                   "fields": fields[:18], "sources": evidence[:48]}
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded) > 4800:
+            for source in payload["sources"]:
+                source["snippet"] = source["snippet"][:55]
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        while len(encoded) > 4800 and payload["sources"]:
+            payload["sources"].pop()
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded) > 4800:
+            payload["fields"] = [{k: (str(v)[:180] if isinstance(v, str) else v) for k, v in f.items() if k in ("field", "value", "status", "source", "identity", "verification", "selected_evidence_id")} for f in payload["fields"][:6]]
+            payload["sources"] = payload["sources"][:6]
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded) > 4800:
+            payload = {"schema": payload["schema"], "lane": lane, "checked_at": payload.get("checked_at", ""),
+                       "status": payload.get("status", ""), "lead_score": payload.get("lead_score", ""),
+                       "fields": [{"field": f.get("field"), "value": str(f.get("value", ""))[:120], "status": f.get("status"),
+                                   "selected_evidence_id": f.get("selected_evidence_id")} for f in payload["fields"][:4]],
+                       "sources": [{k: str(v or "")[:180] for k, v in source.items() if k in ("id", "field", "source_name", "status", "url")} for source in payload["sources"][:4]]}
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return encoded[:4800]
+    if lane == "presence":
+        signals = _decode_json(row.get("presence_signals"), [])
+        waterfall = _decode_json(row.get("presence_search_waterfall"), {})
+        compact = [{"id": str(s.get("id", ""))[:12], "subject": str(s.get("identity_subject", "company"))[:12],
+                    "title": str(s.get("title", ""))[:130], "snippet": str(s.get("snippet", ""))[:180], "url": str(s.get("url", ""))[:300],
+                    "identity_match": str(s.get("identity_match", ""))[:60], "identity_strength": str(s.get("identity_strength", "unknown"))[:16],
+                    "identity_score": s.get("identity_score"), "confidence_kind": str(s.get("confidence_kind", "heuristic, not a probability"))[:48],
+                    "matched_company_terms": s.get("matched_company_terms", [])[:6], "matched_person_terms": s.get("matched_person_terms", [])[:6],
+                    "publication_date": str(s.get("publication_date", ""))[:24], "freshness_status": str(s.get("freshness_status", "undated"))[:20],
+                    "query_matches": s.get("query_matches", [])[:3]}
+                   for s in signals[:10] if isinstance(s, dict)]
+        payload = {"schema": "dbi.presence-evidence-decisions.v1", "lane": lane,
+                   "checked_at": row.get("presence_checked_at", ""), "status": row.get("presence_status", ""),
+                   "comparison_status": row.get("presence_comparison_status", ""), "change_summary": str(row.get("presence_change_summary", ""))[:240],
+                   "minimum_identity_score": waterfall.get("minimum_identity_score"), "search_waterfall": waterfall,
+                   "signals": compact, "sources": [{"id": s["id"], "subject": s["subject"], "title": s["title"], "snippet": s["snippet"], "url": s["url"],
+                                                        "identity_strength": s["identity_strength"], "identity_match": s["identity_match"],
+                                                        "publication_date": s["publication_date"], "freshness_status": s["freshness_status"]} for s in compact]}
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded) > 4800:
+            for item in payload["signals"]:
+                item["snippet"] = item["snippet"][:60]
+            payload["sources"] = [{**s, "snippet": s["snippet"][:60]} for s in payload["sources"]]
+            payload["search_waterfall"] = {k: v for k, v in waterfall.items() if k in ("schema", "budget", "minimum_identity_score", "provider", "total_search_calls", "total_results_returned", "total_retained", "total_errors", "rungs")}
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        while len(encoded) > 4800 and payload["signals"]:
+            payload["signals"].pop()
+            payload["sources"].pop()
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded) > 4800:
+            payload = {"schema": payload["schema"], "lane": lane, "checked_at": payload.get("checked_at", ""),
+                       "status": payload.get("status", ""), "comparison_status": payload.get("comparison_status", ""),
+                       "minimum_identity_score": payload.get("minimum_identity_score"), "search_waterfall": {},
+                       "signals": [], "sources": []}
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return encoded
+
     business = _decode_json(row.get("herald_business_assessment"), {})
     roles_doc = _decode_json(row.get("herald_role_assessment"), {})
     people = _decode_json(row.get("herald_people_candidates"), [])
@@ -239,12 +333,13 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         raise RuntimeError(f"The enrichment returned {len(enriched_rows)} rows for {len(source_rows)} inputs; nothing was written to the grid.")
     existing = {gridpush.norm(c["label"]): c for c in columns}
     new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
-    monitor_priority = [f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary", "herald_evidence_decisions"]
+    evidence_header = f"{lane}_evidence_decisions"
+    monitor_priority = [evidence_header, f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
     new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
     remaining = max(0, 60 - len(columns))
     omitted_columns = new_headers[remaining:]
     new_headers = new_headers[:remaining]
-    added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", "herald_evidence_decisions"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
+    added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", evidence_header} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
     by_label = {gridpush.norm(c["label"]): c for c in columns}
     for column in added or []:
         by_label[gridpush.norm(column["label"])] = column
@@ -257,13 +352,13 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         for header, key in output_to_key.items():
             if header == history_header:
                 value = _monitor_history(lane, result_row, data.get(key))
-            elif header == "herald_evidence_decisions":
-                value = _evidence_decisions(result_row)
+            elif header == evidence_header:
+                value = _evidence_decisions(result_row, lane)
             else:
                 value = _cell(result_row.get(header))
             if not value:
                 continue
-            if not overwrite and header not in {history_header, "herald_evidence_decisions", f"{lane}_comparison_status", f"{lane}_change_summary", f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls", f"{lane}_previous_checked_at"} and data.get(key) not in (None, ""):
+            if not overwrite and header not in {history_header, evidence_header, f"{lane}_comparison_status", f"{lane}_change_summary", f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls", f"{lane}_previous_checked_at"} and data.get(key) not in (None, ""):
                 continue
             if len(value) > 5000:
                 oversized += 1
