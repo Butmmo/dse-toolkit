@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import hashlib
 import html
 from html.parser import HTMLParser
 import importlib.util
@@ -31,7 +32,10 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy"]
-PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status"]
+PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status",
+                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at"]
+PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
+PRESENCE_HISTORY_DAYS = 180
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
 BRAVE_SEARCH_REQUESTS = 0
@@ -472,6 +476,59 @@ def gather_presence(row: dict, max_signals: int = 8) -> tuple[list[dict], list[s
     return found[:max_signals], errors
 
 
+def _presence_history_key(row: dict) -> str:
+    """Hash stable lead identity so locally retained comparison history stores no clear lead identifiers."""
+    parts = (
+        (row.get("website") or row.get("domain") or "").strip().casefold(),
+        (row.get("business") or row.get("company") or row.get("Company") or row.get("name") or "").strip().casefold(),
+        (row.get("contact_name") or row.get("decision_maker") or row.get("person") or "").strip().casefold(),
+        (row.get("email") or row.get("Email") or "").strip().casefold(),
+    )
+    if not any(parts):
+        return ""
+    identity = "|".join(parts)
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _load_presence_history() -> dict:
+    try:
+        data = json.loads(PRESENCE_HISTORY.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) and isinstance(data.get("leads"), dict) else {"schema": "dbi.presence-history.v1", "leads": {}}
+    except (OSError, ValueError, TypeError):
+        return {"schema": "dbi.presence-history.v1", "leads": {}}
+
+
+def _presence_comparison(previous: dict | None, signals: list[dict], checked_at: str, search_errors: list[str]) -> dict:
+    current = {s.get("url", ""): s for s in signals if s.get("url")}
+    old_sources = {s.get("url", ""): s for s in (previous or {}).get("sources", []) if s.get("url")}
+    new_urls = sorted(set(current) - set(old_sources)) if previous else []
+    not_returned = sorted(set(old_sources) - set(current)) if previous else []
+    changed_urls = sorted(url for url in set(current) & set(old_sources) if (
+        current[url].get("title", "") != old_sources[url].get("title", "") or
+        hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash", "") or
+        current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
+    if search_errors:
+        status = "partial_check" if previous else "partial_first_check"
+    elif not previous:
+        status = "first_check"
+    else:
+        status = "compared"
+    summary = "First check; no earlier snapshot" if status == "first_check" else (
+        f"{len(new_urls)} newly returned; {len(changed_urls)} snippet/title changed; {len(not_returned)} previously seen not returned" if status == "compared" else
+        f"Partial search; {len(new_urls)} newly returned; absence is inconclusive" if previous else
+        "Partial first check; establish a complete baseline before comparing")
+    return {"presence_comparison_status": status, "presence_change_summary": summary,
+            "presence_new_source_urls": "\n".join(new_urls),
+            "presence_changed_source_urls": "\n".join(changed_urls) if status == "compared" else "",
+            "presence_not_returned_urls": "\n".join(not_returned) if status == "compared" else "",
+            "presence_previous_checked_at": (previous or {}).get("checked_at", ""),
+            "_snapshot": {"checked_at": checked_at, "sources": [
+                {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"), "title": s.get("title", "")[:240],
+                 "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
+                 "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated")}
+                for s in signals if s.get("url")][:8]}}
+
+
 def _ollama_model() -> str:
     """Honor a configured model; otherwise prefer a capable local Qwen model for research drafting."""
     spec = importlib.util.spec_from_file_location("hq_ollama_model", ROOT / "chat" / "ollama_model.py")
@@ -808,6 +865,9 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
         raise ValueError("--max must be between 1 and 50 leads for this Presence research stage.")
     normalized_rows, _report = importer.normalize(p)
     out, errors = [], []
+    history = _load_presence_history()
+    previous_history = dict(history["leads"])
+    next_history = dict(previous_history)
     for i, original in enumerate(rows[:max_rows], 1):
         row = dict(original)
         normalized = normalized_rows[i - 1] if i <= len(normalized_rows) else {}
@@ -817,10 +877,17 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
         print(f"[{i}/{min(len(rows), max_rows)}] checking public social presence for {row.get('business') or row.get('website') or 'lead'}", file=sys.stderr, flush=True)
         signals, row_errors = gather_presence(row)
         errors.extend(row_errors)
+        checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        history_key = _presence_history_key(row)
+        comparison = _presence_comparison(previous_history.get(history_key) if history_key else None, signals, checked_at, row_errors)
+        snapshot = comparison.pop("_snapshot")
+        if history_key and not row_errors:
+            next_history[history_key] = snapshot
         row["presence_signals"] = json.dumps(signals, ensure_ascii=False, separators=(",", ":"))
         row["presence_sources"] = "\n".join(f"[{s['id']}] {s['title']} | {s['url']}" for s in signals)
-        row["presence_checked_at"] = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        row["presence_checked_at"] = checked_at
         row["presence_status"] = "public professional/social results found" if signals else "no matching public social results"
+        row.update(comparison)
         out.append(row)
         if i < min(len(rows), max_rows):
             time.sleep(0.8)
@@ -834,11 +901,31 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
     stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
     dest = LISTS / f"{dt.date.today().isoformat()}-presence-signals-{stem}.csv"
     _write_csv(dest, out)
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=PRESENCE_HISTORY_DAYS)
+    kept_history = {}
+    for key, snapshot in next_history.items():
+        try:
+            snapshot_date = dt.datetime.fromisoformat(str(snapshot.get("checked_at", "")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if snapshot_date >= cutoff:
+            kept_history[key] = snapshot
+    try:
+        PRESENCE_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        temporary_history = PRESENCE_HISTORY.with_suffix(".tmp")
+        temporary_history.write_text(json.dumps({"schema": "dbi.presence-history.v1", "retention_days": PRESENCE_HISTORY_DAYS,
+                                                  "leads": kept_history}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        temporary_history.replace(PRESENCE_HISTORY)
+    except OSError as error:
+        errors.append(f"local history could not be saved ({type(error).__name__})")
     collected = [signal for row in out[:min(len(rows), max_rows)] for signal in json.loads(row.get("presence_signals") or "[]")]
     report = [f"# Presence public social signals: {p.name}", "", f"- Checked: {min(len(rows), max_rows)} of {len(rows)} rows",
               f"- Rows with public social results: {sum(bool(r['presence_signals']) for r in out[:min(len(rows), max_rows)])}",
               f"- Results with publication date evidence: {sum(bool(s.get('publication_date')) for s in collected)} of {len(collected)}",
               f"- Results marked stale by the date heuristic: {sum(s.get('freshness_status') == 'stale' for s in collected)}",
+              f"- Newly returned source links: {sum(len((r.get('presence_new_source_urls') or '').splitlines()) for r in out[:min(len(rows), max_rows)])}",
+              f"- Previously seen links with changed snippets or titles: {sum(len((r.get('presence_changed_source_urls') or '').splitlines()) for r in out[:min(len(rows), max_rows)])}",
+              f"- Previously seen links not returned in a complete check: {sum(len((r.get('presence_not_returned_urls') or '').splitlines()) for r in out[:min(len(rows), max_rows)])}",
               "- No outreach copy was drafted or sent.", "", "## Review before use", "",
               "Results are search snippets, not verified identity or reputation. Review each source directly. Only public professional and business-related results are included; do not infer sensitive or personal traits.", ""]
     if errors:
@@ -861,6 +948,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100) -> 
             "contact_title": str(normalized.get("contact_title") or row.get("contact_title") or "")[:160],
             "email": str(normalized.get("email") or row.get("email") or "")[:254],
             "status": row.get("presence_status", ""),
+            "comparison": {key: row.get(key, "") for key in ("presence_comparison_status", "presence_change_summary", "presence_previous_checked_at", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls")},
             "signals": signals[:8],
         })
     dest.with_name(dest.stem + "-shelf.json").write_text(json.dumps(shelf, ensure_ascii=False, indent=2), encoding="utf-8")
