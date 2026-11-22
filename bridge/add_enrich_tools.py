@@ -24,7 +24,7 @@ T["dse.enrich"] = tool("Lead enrichment: find emails, owners and phones", "Takes
                         PROV, {"name": "budget", "label": "Most paid lookups (only with a provider)", "type": "int", "min": 0, "max": 5000, "default": 25}], 180)
 T["dse.enrich"].update({"category": "enrich", "source": "First-party company websites; optional configured providers",
                         "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
-                        "outputs_summary": ["Website-sourced contact and business fields", "Enriched CSV and report"]})
+                        "outputs_summary": ["Website-sourced contact and business fields", "Per-field source and selection audit", "Provider lookup and cache counts", "Enriched CSV and report"]})
 T["dse.enrich_signals"] = {
     "label": "Lead signals: research and draft outreach",
     "group": "Grow",

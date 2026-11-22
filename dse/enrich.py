@@ -322,7 +322,8 @@ def inner_links(home_html: str, base: str, limit: int = 4) -> list[str]:
 
 def blank(domain: str = "") -> dict:
     return {"status": "", "steps": "", "domain": domain, "emails": [], "phones": [], "contact_form": "", "booking": "", "socials": {}, "tech": [], "description": "",
-            "people": [], "active": "", "copyright": None, "mx": "", "guesses": [], "icp_hits": [], "pages": [], "email_source": "", "people_source": "", "contact_page": "", "provider_note": ""}
+            "people": [], "active": "", "copyright": None, "mx": "", "guesses": [], "icp_hits": [], "pages": [], "email_source": "", "people_source": "", "contact_page": "", "provider_note": "",
+            "provider_usage": {"api_calls": 0, "cache_hits": 0}, "field_sources": {}}
 
 
 def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool = True, given_email: str = "", given_name: str = "", today: dt.date | None = None,
@@ -362,20 +363,29 @@ def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool =
         for ph in extract_phones(pg_html):
             if ph not in out["phones"]:
                 out["phones"].append(ph)
+                out["field_sources"].setdefault("phone", pg_url)
         for p in extract_people(pg_html):
             if p["name"] not in [x["name"] for x in out["people"]]:
                 out["people"].append({**p, "source": pg_url})
         if has_form(pg_html) and not out["contact_form"]:
             out["contact_form"] = pg_url
+            out["field_sources"]["contact_form"] = pg_url
         b = BOOKING.search(pg_html)
         if b and not out["booking"]:
             out["booking"] = b.group(0).lower() if "." in b.group(0) else "online booking"
+            out["field_sources"]["booking"] = pg_url
         for k, v in extract_socials(pg_html).items():
-            out["socials"].setdefault(k, v) if v and not out["socials"].get(k) else None
+            if v and not out["socials"].get(k):
+                out["socials"][k] = v
+                out["field_sources"].setdefault("social_profiles", pg_url)
         for t in detect_tech(pg_html):
             if t not in out["tech"]:
                 out["tech"].append(t)
-        out["description"] = out["description"] or meta_description(pg_html)
+                out["field_sources"].setdefault("technology", pg_url)
+        if not out["description"]:
+            out["description"] = meta_description(pg_html)
+            if out["description"]:
+                out["field_sources"]["site_description"] = pg_url
 
     def need_more() -> bool:
         personal = any(e["kind"] == "personal" for e in out["emails"])
@@ -418,11 +428,13 @@ def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool =
     low_text = (all_text + "\n" + out["description"]).lower()
     out["icp_hits"] = [t for t in (icp_terms or []) if t and t.lower() in low_text]
     if provider and budget is not None and need_more() and not given_email:
+        calls_before, cache_before = budget.used, budget.cached
         try:
             found = ep.lookup(provider, out["domain"], company, budget, today)
         except ep.ProviderError as e:
             found = []
             out["provider_note"] = str(e)
+        out["provider_usage"] = {"api_calls": budget.used - calls_before, "cache_hits": budget.cached - cache_before}
         if found:
             steps.append("paid")
             have = {x["email"] for x in out["emails"]}
@@ -502,7 +514,7 @@ def score(site: dict, given_email: str = "") -> tuple[int, str]:
 
 ADDED = ["found_email", "email_kind", "email_source", "other_emails", "email_guesses", "best_email", "best_email_source", "email_check", "phone_found", "decision_maker", "decision_maker_title",
          "decision_maker_source", "contact_form_url", "contact_page_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found",
-         "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "enrich_status", "steps", "lead_score", "lead_why", "enriched_on"]
+         "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "enrich_status", "steps", "lead_score", "lead_why", "enriched_on", "enrichment_audit"]
 
 
 def email_belongs(email: str, site_domain: str) -> bool:
@@ -513,6 +525,44 @@ def email_belongs(email: str, site_domain: str) -> bool:
     if not dom or not site:
         return True
     return dom in FREEMAIL or dom.endswith(site) or site.endswith(dom)
+
+
+def field_audit(site: dict, row_email: str, best_email: str, best_email_source: str) -> str:
+    """Compact, machine-readable field provenance. It records evidence and decisions, never guessed certainty."""
+    steps = [s for s in site.get("steps", "").split(">") if s]
+    pages = site.get("pages") or []
+    home = pages[0] if pages else ""
+    def entry(value, source="", confidence="unverified", rejected=None):
+        return {"status": "selected" if value else "not_found", "source": source if value else "", "evidence_url": source if source.startswith("http") else "",
+                "confidence": confidence if value else "none", "rejected_input": rejected or ""}
+    dm = site["people"][0] if site.get("people") else None
+    email_rejected = "" if not row_email or best_email_source == "your file" else "input email belongs to a different domain"
+    chosen_email = best_email or ""
+    email_candidates = []
+    if row_email:
+        email_candidates.append({"rung": "input", "source": "your file", "selected": best_email_source == "your file", "outcome": "accepted" if best_email_source == "your file" else "rejected_domain_mismatch"})
+    for e in site.get("emails", []):
+        email_candidates.append({"rung": "provider" if not e.get("source", "").startswith("http") else ("inner" if e.get("source") != home else "home"),
+                                 "source": e.get("source", ""), "selected": bool(chosen_email and e.get("email") == chosen_email), "outcome": "found"})
+    if site.get("guesses"):
+        email_candidates.append({"rung": "guess", "source": "pattern inference", "selected": False, "outcome": "unverified_guess_only"})
+    audit = {
+        "schema": "dbi.enrichment-field-audit.v1",
+        "rungs_run": steps,
+        "fields": {
+            "best_email": {**entry(chosen_email, best_email_source, "unverified", email_rejected), "candidates": email_candidates},
+            "phone": entry((site.get("phones") or [""])[0], (site.get("field_sources") or {}).get("phone", "")),
+            "decision_maker": entry(dm.get("name", "") if dm else "", dm.get("source", "") if dm else "", "unverified"),
+            "contact_form": entry(site.get("contact_form", ""), (site.get("field_sources") or {}).get("contact_form", "")),
+            "booking": entry(site.get("booking", ""), (site.get("field_sources") or {}).get("booking", "")),
+            "social_profiles": entry(bool(site.get("socials")), (site.get("field_sources") or {}).get("social_profiles", "")),
+            "technology": entry(bool(site.get("tech")), (site.get("field_sources") or {}).get("technology", "")),
+            "site_description": entry(site.get("description", ""), (site.get("field_sources") or {}).get("site_description", "")),
+        },
+        "provider_usage": {"api_calls": (site.get("provider_usage") or {}).get("api_calls", 0), "cache_hits": (site.get("provider_usage") or {}).get("cache_hits", 0),
+                           "currency_cost": None, "cost_note": "Provider monetary pricing is not declared by the provider config; lookup counts only."}
+    }
+    return json.dumps(audit, ensure_ascii=False, separators=(",", ":"))
 
 
 def row_columns(site: dict, row_email: str, row_name: str, today: dt.date) -> dict:
@@ -537,7 +587,8 @@ def row_columns(site: dict, row_email: str, row_name: str, today: dt.date) -> di
             "linkedin_found": site["socials"].get("linkedin", ""), "instagram_found": site["socials"].get("instagram", ""), "facebook_found": site["socials"].get("facebook", ""),
             "x_found": site["socials"].get("x", ""), "youtube_found": site["socials"].get("youtube", ""), "tech_stack": ", ".join(site["tech"]),
             "site_description": site["description"], "site_active": site["active"], "mx_ok": site["mx"], "icp_hits": ", ".join(site["icp_hits"]),
-            "enrich_status": site["status"], "steps": site["steps"], "lead_score": sc, "lead_why": why, "enriched_on": today.isoformat()}
+            "enrich_status": site["status"], "steps": site["steps"], "lead_score": sc, "lead_why": why, "enriched_on": today.isoformat(),
+            "enrichment_audit": field_audit(site, row_email, best, best_src)}
 
 
 def find_columns(headers: list[str]) -> dict[str, str]:

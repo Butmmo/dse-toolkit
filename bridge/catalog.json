@@ -10082,6 +10082,8 @@
       "cost": "Website checks run on your PC. A paid provider runs only with your own key and configured lookup budget.",
       "outputs_summary": [
         "Website-sourced contact and business fields",
+        "Per-field source and selection audit",
+        "Provider lookup and cache counts",
         "Enriched CSV and report"
       ]
     },
