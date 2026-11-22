@@ -16,7 +16,7 @@ from .common import LISTS, ROOT
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
-    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
+    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
     "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls"],
 }
 FULL_OUTPUTS = {

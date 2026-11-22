@@ -11177,7 +11177,8 @@
         "Enriches existing grid rows in place",
         "Creates/reuses columns for the selected output fields",
         "Preserves original row inputs; existing result cells are kept unless replace is selected",
-        "Website, Herald and Presence lanes"
+        "Website, Herald and Presence lanes",
+        "Retains source URLs and compares repeated complete searches; partial runs never imply a source disappeared."
       ]
     }
   },

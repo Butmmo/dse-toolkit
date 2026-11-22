@@ -34,10 +34,13 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
+HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
+OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status",
                    "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "field_results"]
 PRESENCE_FIELDS.insert(-1, "presence_search_waterfall")
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
+HERALD_HISTORY = ROOT / "data" / "herald-signal-history.json"
 PRESENCE_HISTORY_DAYS = 180
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
@@ -559,6 +562,24 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
         for result in results:
             if result.get("field") == field:
                 result.setdefault("metadata", {})["search_waterfall"] = metrics
+    monitor_status = row.get("herald_comparison_status", "")
+    monitor_urls = set((row.get("herald_new_source_urls", "") + "\n" + row.get("herald_changed_source_urls", "")).splitlines())
+    monitor_sources = [s for s in signals if s.get("url") in monitor_urls]
+    results.append(fr.make_result(
+        field="signal_source_monitoring",
+        value={"status": monitor_status, "summary": row.get("herald_change_summary", ""),
+               "new_source_urls": row.get("herald_new_source_urls", ""),
+               "changed_source_urls": row.get("herald_changed_source_urls", ""),
+               "not_returned_urls": row.get("herald_not_returned_urls", ""),
+               "previous_checked_at": row.get("herald_previous_checked_at", "")},
+        status="candidate" if monitor_status in ("compared", "first_check") else "not_found",
+        observed_at=now, source_type="public_web_search", source_name=search_provider,
+        verification_status="source_snapshot_comparison",
+        verification_method="Compares URL, title, snippet fingerprint and publication date across complete searches; absence in a partial search is inconclusive.",
+        candidates=[fr.source_ref(source_type="public_web_search", source_name=s.get("provider", search_provider),
+                                  source_url=s.get("url", ""), source_record_id=s.get("id", ""),
+                                  value={"title": s.get("title", ""), "snippet": s.get("snippet", "")})
+                    for s in monitor_sources]))
     try:
         events_doc = json.loads(row.get("herald_signal_events") or "{}")
     except (ValueError, TypeError):
@@ -678,6 +699,61 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated")}
                 for s in signals if s.get("url")][:8]}}
+
+
+def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: str, partial: bool) -> dict:
+    """Compare source-backed Herald observations; absence is meaningful only after a complete search."""
+    current = {s.get("url", ""): s for s in signals if s.get("url")}
+    old_sources = {s.get("url", ""): s for s in (previous or {}).get("sources", []) if s.get("url")}
+    new_urls = sorted(set(current) - set(old_sources)) if previous else []
+    missing_urls = sorted(set(old_sources) - set(current)) if previous else []
+    changed_urls = sorted(url for url in set(current) & set(old_sources) if (
+        current[url].get("title", "") != old_sources[url].get("title", "") or
+        hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash", "") or
+        current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
+    status = "partial_check" if partial and previous else "partial_first_check" if partial else "first_check" if not previous else "compared"
+    summary = "First check; no earlier source snapshot" if status == "first_check" else (
+        f"{len(new_urls)} new source links; {len(changed_urls)} source records changed; {len(missing_urls)} previously seen not returned" if status == "compared" else
+        f"Partial search; {len(new_urls)} new source links; missing links are inconclusive" if previous else
+        "Partial first search; complete searches are needed for a baseline")
+    return {"herald_comparison_status": status, "herald_change_summary": summary,
+            "herald_new_source_urls": "\n".join(new_urls),
+            "herald_changed_source_urls": "\n".join(changed_urls) if status == "compared" else "",
+            "herald_not_returned_urls": "\n".join(missing_urls) if status == "compared" else "",
+            "herald_previous_checked_at": (previous or {}).get("checked_at", ""),
+            "_snapshot": {"checked_at": checked_at, "sources": [
+                {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"),
+                 "title": s.get("title", "")[:240],
+                 "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
+                 "publication_date": s.get("publication_date", ""),
+                 "category": s.get("type", "")}
+                for s in signals if s.get("url")][:12]}}
+
+
+def _save_signal_history(path: Path, schema: str, history: dict) -> None:
+    """Keep only recent hashed lead keys and source fingerprints; never store lead contact details."""
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=PRESENCE_HISTORY_DAYS)
+    kept = {}
+    for key, snapshot in history.items():
+        try:
+            checked = dt.datetime.fromisoformat(str(snapshot.get("checked_at", "")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if checked >= cutoff:
+            kept[key] = snapshot
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"schema": schema, "retention_days": PRESENCE_HISTORY_DAYS,
+                                     "leads": kept}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _load_herald_history() -> dict:
+    try:
+        data = json.loads(HERALD_HISTORY.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) and isinstance(data.get("leads"), dict) else {"leads": {}}
+    except (OSError, ValueError, TypeError):
+        return {"leads": {}}
 
 
 def _ollama_model() -> str:
@@ -870,6 +946,9 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
     model = _ollama_model() if use_ai else ""
     normalized_rows, _report = importer.normalize(p)
     out, errors, drafted = [], [], 0
+    prior_history = _load_herald_history()
+    next_history = dict(prior_history["leads"])
+    monitor_errors = []
     for i, original in enumerate(rows[:max_rows], 1):
         row = dict(original)
         normalized = normalized_rows[i-1] if i <= len(normalized_rows) else {}
@@ -936,6 +1015,14 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_person_findings"] = "\n".join(f"[{s['id']}] {s['title']} | {s['snippet']}" for s in person_signals)
         row["herald_person_sources"] = json.dumps(person_signals, ensure_ascii=False, separators=(",", ":"))
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        history_key = _presence_history_key(row)
+        partial = bool(row_errors) or any(m.get("status") == "skipped_budget" or m.get("errors", 0) for m in query_metrics)
+        comparison = _herald_comparison(prior_history["leads"].get(history_key) if history_key else None,
+                                        signals, checked_at, partial)
+        snapshot = comparison.pop("_snapshot")
+        row.update(comparison)
+        if history_key and not partial:
+            next_history[history_key] = snapshot
         assessment = classification.assess(signals, roles, custom_role, legal_form, checked_at, context=row)
         row["herald_people_candidates"] = json.dumps(assessment["people_candidates"], ensure_ascii=False, separators=(",", ":"))
         row["herald_business_assessment"] = json.dumps(assessment["business_profiles"], ensure_ascii=False, separators=(",", ":"))
@@ -996,10 +1083,16 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
               f"- Leads with at least one strong identity match: {sum(bool(r.get('herald_identity_summary') and any(json.loads(r['herald_identity_summary'])[subject]['strength_counts']['strong'] for subject in ('company', 'person'))) for r in out[:min(len(rows), max_rows)])}",
               f"- Sources with an explicit or relative publication date: {dated_sources} of {len(collected_sources)}",
               f"- Sources marked stale by the date heuristic: {stale_sources}",
+              f"- Source monitoring comparisons completed: {sum(r.get('herald_comparison_status') == 'compared' for r in processed)}; partial checks: {sum(str(r.get('herald_comparison_status', '')).startswith('partial') for r in processed)}",
+              f"- New source links: {sum(len((r.get('herald_new_source_urls') or '').splitlines()) for r in processed)}; changed source records: {sum(len((r.get('herald_changed_source_urls') or '').splitlines()) for r in processed)}; previously seen links not returned in complete checks: {sum(len((r.get('herald_not_returned_urls') or '').splitlines()) for r in processed)}",
               f"- Local AI drafts ready for review: {drafted}", f"- Local model: {model or 'not used / unavailable'}", "",
               "## Review before use", "", "Search snippets are leads for human review, not verified facts. Open the linked source before using a claim in outreach. Nothing was sent.", ""]
     if errors:
         report += ["Search/model errors: " + ", ".join(errors[:12]), ""]
+    try:
+        _save_signal_history(HERALD_HISTORY, "dbi.herald-signal-history.v1", next_history)
+    except OSError as error:
+        report += ["Monitoring history could not be saved: " + type(error).__name__, ""]
     dest.with_suffix(".md").write_text("\n".join(report), encoding="utf-8")
     extra = ""
     if engine:
