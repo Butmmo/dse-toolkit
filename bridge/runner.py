@@ -40,7 +40,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-VERSION = "1.1"
+VERSION = "1.2"
 HERE = Path(__file__).resolve().parent
 # The same file runs in two places: DFamocious-HQ/_tools/bridge/ (HQ) and dse-toolkit/bridge/ (every member's PC).
 ROOT = HERE.parent if (HERE.parent / "dse.py").exists() else HERE.parents[1]
@@ -302,6 +302,7 @@ def public_catalog(cat: dict) -> dict:
     resolve_fields(cat)
     return {"version": cat.get("version", 1),
             "runner_kind": "dse-toolkit" if IS_TOOLKIT else "hq",
+            "capabilities": ["runner.restart.v1"] if cat["tools"].get("runner.restart", {}).get("builtin") == "restart" else [],
             "ollama": ollama_info(),
             "tools": {k: {**{f: t[f] for f in keep if f in t}, "timeout_min": tool_minutes(t),
                           "executor": "dse-toolkit" if IS_TOOLKIT else "hq"} for k, t in cat["tools"].items()}}

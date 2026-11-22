@@ -424,13 +424,66 @@ def _advice_history(result_row: dict, previous: object) -> str:
     return value
 
 
+def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enriched_rows: list[dict],
+                   output_headers: list[str], output_to_key: dict[str, str], overwrite: bool) -> tuple[int, int, int]:
+    """Write one completed enrichment batch before the next batch starts."""
+    evidence_header = f"{lane}_evidence_decisions"
+    updates, skipped, oversized = [], 0, 0
+    history_header = f"{lane}_monitor_history"
+    advice_history_header = "dse_path_ai_advice_history"
+    for source_row, result_row in zip(source_rows, enriched_rows):
+        cells = {}
+        data = source_row.get("data") or {}
+        advice_history_key = output_to_key.get(advice_history_header)
+        if lane == "herald" and advice_history_key:
+            result_row[advice_history_header] = _advice_history(result_row, data.get(advice_history_key))
+        for header in output_headers:
+            key = output_to_key.get(header)
+            if not key:
+                continue
+            if header == history_header:
+                value = _monitor_history(lane, result_row, data.get(key))
+            elif header == advice_history_header:
+                value = _cell(result_row.get(header))
+            elif header == evidence_header:
+                value = _evidence_decisions(result_row, lane)
+            else:
+                value = _cell(result_row.get(header))
+            if not value:
+                if header == "dse_path_ai_advice":
+                    cells[key] = ""
+                continue
+            always_refresh = {history_header, advice_history_header, evidence_header, "dse_path_outcome", "dse_path_ai_advice",
+                              "dse_path_ai_advice_status", f"{lane}_comparison_status", f"{lane}_change_summary",
+                              f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls",
+                              f"{lane}_previous_checked_at"}
+            if not overwrite and header not in always_refresh and data.get(key) not in (None, ""):
+                continue
+            if len(value) > 5000:
+                oversized += 1
+                continue
+            cells[key] = value
+        if cells:
+            updates.append({"id": source_row["id"], "cells": cells})
+        else:
+            skipped += 1
+    written = 0
+    for offset in range(0, len(updates), 100):
+        written += gridrun.save_cells(api, grid_id, updates[offset:offset + 100])
+    return written, skipped, oversized
+
+
 def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_detail: str = "essentials",
-        overwrite: bool = False, api=None, say=lambda *_: None, **options) -> str:
+        overwrite: bool = False, start_row: int = 1, batch_size: int = 10, api=None, say=lambda *_: None, **options) -> str:
     if lane not in LANES:
         raise ValueError("Choose website, herald or presence.")
     lane_limit = 50 if lane in ("herald", "presence") else 500
     if not 1 <= limit <= lane_limit:
         raise ValueError(f"Process 1 to {lane_limit} {lane} grid rows per run.")
+    if not isinstance(start_row, int) or start_row < 1:
+        raise ValueError("Start row must be 1 or higher.")
+    if not isinstance(batch_size, int) or not 1 <= batch_size <= 50:
+        raise ValueError("Batch size must be between 1 and 50 rows.")
     if output_detail not in ("essentials", "full"):
         raise ValueError("output detail must be essentials or full.")
     enrichment_profile = str(options.pop("enrichment_profile", "none") or "none")
@@ -463,85 +516,79 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     rows = gridrun.read_rows(api, grid["id"])
     if not rows:
         return f"{grid.get('workbook', '')}/{grid['name']}: this grid has no rows.\n"
-    source_rows = rows[:limit]
+    source_rows = rows[start_row - 1:start_row - 1 + limit]
+    if not source_rows:
+        return f"{grid.get('workbook', '')}/{grid['name']}: no rows found starting at row {start_row}.\n"
     headers = [c["label"] for c in columns]
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="", suffix=".csv", prefix="grid-enrich-", dir=LISTS, delete=False) as file:
-        input_path = Path(file.name)
-        writer = csv.DictWriter(file, fieldnames=headers, extrasaction="ignore")
-        writer.writeheader()
-        key_by_label = {gridpush.norm(c["label"]): c["key"] for c in columns}
-        for row in source_rows:
-            data = row.get("data") or {}
-            writer.writerow({c["label"]: _cell(data.get(c["key"])) for c in columns})
-    say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows.")
-    try:
-        result_path, output_headers, enriched_rows = _run_lane(input_path, lane, engine, len(source_rows), output_detail,
-            enrichment_profile=enrichment_profile, provider_budget=provider_budget, **options)
-    finally:
-        input_path.unlink(missing_ok=True)
-    if len(enriched_rows) != len(source_rows):
-        raise RuntimeError(f"The enrichment returned {len(enriched_rows)} rows for {len(source_rows)} inputs; nothing was written to the grid.")
     existing = {gridpush.norm(c["label"]): c for c in columns}
-    if enrichment_profile:
-        profile_record = enrichment_profiles.build_profile(enrichment_profile)
-        profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
-                           "profile_key": enrichment_profile, "path_key": enrichment_profile, "lane": lane,
-                           "limits": profile_record["limits"], "profile_status": "applied"}
-        for enriched_row in enriched_rows:
-            enriched_row["enrichment_profile"] = json.dumps(profile_summary, ensure_ascii=False, separators=(",", ":"))
-        if "enrichment_profile" not in output_headers:
-            output_headers.append("enrichment_profile")
-    new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
-    evidence_header = f"{lane}_evidence_decisions"
-    monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
-    new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
-    remaining = max(0, 60 - len(columns))
-    omitted_columns = new_headers[remaining:]
-    new_headers = new_headers[:remaining]
-    added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
-    by_label = {gridpush.norm(c["label"]): c for c in columns}
-    for column in added or []:
-        by_label[gridpush.norm(column["label"])] = column
-    output_to_key = {h: by_label[gridpush.norm(h)]["key"] for h in output_headers if gridpush.norm(h) in by_label}
-    updates, skipped, oversized = [], 0, 0
-    for source_row, result_row in zip(source_rows, enriched_rows):
-        cells = {}
-        data = source_row.get("data") or {}
-        history_header = f"{lane}_monitor_history"
-        advice_history_header = "dse_path_ai_advice_history"
-        advice_history_key = output_to_key.get(advice_history_header)
-        if lane == "herald" and advice_history_key:
-            result_row[advice_history_header] = _advice_history(result_row, data.get(advice_history_key))
-        advice_history_header = "dse_path_ai_advice_history"
-        for header, key in output_to_key.items():
-            if header == history_header:
-                value = _monitor_history(lane, result_row, data.get(key))
-            elif header == advice_history_header:
-                value = _cell(result_row.get(header))
-            elif header == evidence_header:
-                value = _evidence_decisions(result_row, lane)
-            else:
-                value = _cell(result_row.get(header))
-            if not value:
-                if header == "dse_path_ai_advice":
-                    cells[key] = ""
-                continue
-            if not overwrite and header not in {history_header, advice_history_header, evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", f"{lane}_comparison_status", f"{lane}_change_summary", f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls", f"{lane}_previous_checked_at"} and data.get(key) not in (None, ""):
-                continue
-            if len(value) > 5000:
-                oversized += 1
-                continue
-            cells[key] = value
-        if cells:
-            updates.append({"id": source_row["id"], "cells": cells})
-        else:
-            skipped += 1
-    written = 0
-    for offset in range(0, len(updates), 100):
-        written += gridrun.save_cells(api, grid["id"], updates[offset:offset + 100])
-        say(f"PROGRESS {min(offset + 100, len(updates))}/{len(updates)} failed 0 skipped {skipped}")
+    output_headers: list[str] = []
+    output_to_key: dict[str, str] = {}
+    omitted_columns: list[str] = []
+    result_path: Path | None = None
+    written = skipped = oversized = completed = 0
+    say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows in batches of {batch_size}, starting at row {start_row}.")
+    for batch_offset in range(0, len(source_rows), batch_size):
+        batch_rows = source_rows[batch_offset:batch_offset + batch_size]
+        batch_index = batch_offset // batch_size
+        batch_provider_budget = provider_budget
+        if provider_budget is not None:
+            batch_count = (len(source_rows) + batch_size - 1) // batch_size
+            base_budget, extra_calls = divmod(provider_budget, batch_count)
+            batch_provider_budget = base_budget + (1 if batch_index < extra_calls else 0)
+        input_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="", suffix=".csv", prefix="grid-enrich-", dir=LISTS, delete=False) as file:
+                input_path = Path(file.name)
+                writer = csv.DictWriter(file, fieldnames=headers, extrasaction="ignore")
+                writer.writeheader()
+                for row in batch_rows:
+                    data = row.get("data") or {}
+                    writer.writerow({c["label"]: _cell(data.get(c["key"])) for c in columns})
+            result_path, batch_headers, enriched_rows = _run_lane(input_path, lane, engine, len(batch_rows), output_detail,
+                enrichment_profile=enrichment_profile, provider_budget=batch_provider_budget, **options)
+        except Exception as error:
+            raise RuntimeError(f"Grid enrichment stopped after {completed} rows were saved. Resume with --start-row {start_row + completed} using the same lane and settings. {str(error)[:220]}") from error
+        finally:
+            if input_path:
+                input_path.unlink(missing_ok=True)
+        if len(enriched_rows) != len(batch_rows):
+            raise RuntimeError(f"The enrichment returned {len(enriched_rows)} rows for this batch; {completed} earlier rows were saved. Resume with --start-row {start_row + completed}.")
+        if enrichment_profile:
+            profile_record = enrichment_profiles.build_profile(enrichment_profile)
+            profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
+                               "profile_key": enrichment_profile, "path_key": enrichment_profile, "lane": lane,
+                               "limits": profile_record["limits"], "profile_status": "applied"}
+            for enriched_row in enriched_rows:
+                enriched_row["enrichment_profile"] = json.dumps(profile_summary, ensure_ascii=False, separators=(",", ":"))
+            if "enrichment_profile" not in batch_headers:
+                batch_headers.append("enrichment_profile")
+        if not output_headers:
+            output_headers = batch_headers
+            new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
+            evidence_header = f"{lane}_evidence_decisions"
+            monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
+            new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
+            remaining = max(0, 60 - len(columns))
+            omitted_columns = new_headers[remaining:]
+            new_headers = new_headers[:remaining]
+            added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
+            by_label = {gridpush.norm(c["label"]): c for c in columns}
+            for column in added or []:
+                by_label[gridpush.norm(column["label"])] = column
+            output_to_key = {h: by_label[gridpush.norm(h)]["key"] for h in output_headers if gridpush.norm(h) in by_label}
+        try:
+            batch_written, batch_skipped, batch_oversized = _persist_batch(api, grid["id"], lane, batch_rows, enriched_rows, output_headers, output_to_key, overwrite)
+        except Exception as error:
+            raise RuntimeError(f"Grid enrichment stopped after {completed} rows were saved. Resume with --start-row {start_row + completed}. {str(error)[:220]}") from error
+        written += batch_written
+        skipped += batch_skipped
+        oversized += batch_oversized
+        completed += len(batch_rows)
+        say(f"PROGRESS {completed}/{len(source_rows)} failed 0 skipped {skipped}")
+    assert result_path is not None
     omitted_note = f" {len(omitted_columns)} output columns could not be added because this grid is at its 60-column limit." if omitted_columns else ""
     return (f"FINISHED {lane} enrichment: {written} rows updated, {skipped} rows had no new values, {oversized} oversized values omitted. "
+            f"Saved {completed} rows starting at row {start_row} in {((completed + batch_size - 1) // batch_size)} batches. "
             f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}\n")
 
 
@@ -551,6 +598,8 @@ def cli(argv: list[str]) -> int:
     parser.add_argument("--lane", choices=sorted(LANES), default="website")
     parser.add_argument("--engine", default="")
     parser.add_argument("--limit", type=int, default=25)
+    parser.add_argument("--start-row", type=int, default=1, help="1-based row position in the grid for partial-run recovery")
+    parser.add_argument("--batch-size", type=int, default=10, help="Save each completed group before starting the next (1-50)")
     parser.add_argument("--output-detail", choices=["essentials", "full"], default="essentials")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--icp", default="")
