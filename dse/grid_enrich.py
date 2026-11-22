@@ -249,6 +249,15 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
         outcome = payload["path_outcome"]
         outcome["evidence"] = outcome.get("evidence", [])[:4]
         outcome["commercial_viability_checks"] = outcome.get("commercial_viability_checks", [])[:3]
+        outcome["observed_facts"] = outcome.get("observed_facts", [])[:5]
+        for fact in outcome["observed_facts"]:
+            if isinstance(fact, dict):
+                fact["sources"] = fact.get("sources", [])[:2]
+                fact["value"] = str(fact.get("value", ""))[:120]
+                for source in fact["sources"]:
+                    if isinstance(source, dict):
+                        source["value"] = str(source.get("value", ""))[:100]
+                        source["url"] = str(source.get("url", ""))[:180]
         for key in ("outcome", "customer", "pain_hypothesis", "monetization_model", "next_step"):
             if isinstance(outcome.get(key), str):
                 outcome[key] = outcome[key][:220]
@@ -258,7 +267,7 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
                    "business_profiles": [{k: item.get(k) for k in ("key", "label", "assessment", "evidence_ids")} for item in payload["business_profiles"][:3]],
                    "roles": [{k: item.get(k) for k in ("label", "assessment", "evidence_ids")} for item in payload["roles"][:3]],
                    "signal_events": payload["signal_events"][:3],
-                   "path_outcome": {k: payload["path_outcome"].get(k) for k in ("path_label", "outcome", "customer", "pain_hypothesis", "monetization_model", "proof_metrics", "commercial_viability_checks", "decision_status", "priority_evidence_count", "supporting_evidence_count", "evidence", "next_step", "limits")} if isinstance(payload.get("path_outcome"), dict) else {},
+                   "path_outcome": {k: payload["path_outcome"].get(k) for k in ("path_label", "outcome", "customer", "pain_hypothesis", "monetization_model", "proof_metrics", "commercial_viability_checks", "decision_status", "priority_evidence_count", "supporting_evidence_count", "evidence", "observed_facts", "next_step", "limits")} if isinstance(payload.get("path_outcome"), dict) else {},
                    "sources": [{k: (str(item.get(k) or "")[:180] if k == "url" else item.get(k)) for k in ("id", "subject", "title", "url")} for item in payload["sources"][:5]]}
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return encoded

@@ -925,6 +925,132 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+def _path_outcome_observations(row: dict, signals: list[dict], path_evidence: list[dict]) -> list[dict]:
+    """Summarize evidence already present on the lead; observations are not a prospect qualification score."""
+    def normalized(value: object) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+    values = {normalized(key): value for key, value in row.items()}
+    try:
+        results = json.loads(row.get("field_results") or "[]")
+    except (ValueError, TypeError):
+        results = []
+    results = results if isinstance(results, list) else []
+    indexed = {}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        key = normalized(result.get("field"))
+        if key and result.get("value") not in (None, "", [], {}):
+            indexed.setdefault(key, result)
+    try:
+        website_bundle = json.loads(row.get("website_evidence_decisions") or "{}")
+    except (ValueError, TypeError):
+        website_bundle = {}
+    for result in website_bundle.get("fields", []) if isinstance(website_bundle, dict) else []:
+        if isinstance(result, dict) and result.get("field"):
+            indexed.setdefault(normalized(result.get("field")), result)
+
+    def get_fact(label: str, aliases: tuple[str, ...]) -> dict | None:
+        for alias in aliases:
+            key = normalized(alias)
+            value = values.get(key)
+            result = indexed.get(key)
+            if (value is None or value == "") and result:
+                value = result.get("value")
+            if value is None or value == "" or value == [] or value == {}:
+                continue
+            source = result.get("source") if result and isinstance(result.get("source"), dict) else {}
+            verification = result.get("verification") if result and isinstance(result.get("verification"), dict) else {}
+            identity = result.get("identity") if result and isinstance(result.get("identity"), dict) else {}
+            return {"label": label, "value": str(value)[:180],
+                    "basis": "source-backed enrichment" if source.get("url") else "lead record / enrichment field",
+                    "source_name": source.get("name") or source.get("type") or "",
+                    "url": source.get("url", ""), "verification": verification.get("status", "not recorded"),
+                    "identity": identity.get("match", "")}
+        return None
+
+    facts = []
+    website = get_fact("Website activity", ("site_active", "website_active", "site_status"))
+    if website:
+        facts.append(website)
+    channel_facts = []
+    for label, aliases in (("email", ("best_email", "email", "work_email")),
+                           ("phone", ("phone_found", "phone", "phone_number")),
+                           ("contact form", ("contact_form_url", "contact_page_url", "contact_form")),
+                           ("booking", ("booking_tool", "online_booking", "booking_url"))):
+        item = get_fact(label, aliases)
+        if item:
+            channel_facts.append(item)
+    if channel_facts:
+        facts.append({"label": "Available contact / booking routes", "value": ", ".join(x["label"] for x in channel_facts),
+                      "count": len(channel_facts), "basis": "observed populated fields", "sources": channel_facts})
+    scale = []
+    for label, aliases in (("Employees", ("employees", "employee_count", "staff_count", "team_size")),
+                           ("Locations", ("locations", "location_count", "number_of_locations")),
+                           ("Revenue", ("annual_revenue", "revenue", "revenue_range")),
+                           ("Store activity", ("ecommerce_active", "store_active", "product_count"))):
+        item = get_fact(label, aliases)
+        if item:
+            scale.append(item)
+    firmographics = get_fact("Firmographics", ("firmographics",))
+    if firmographics:
+        try:
+            parsed = json.loads(firmographics["value"])
+            if isinstance(parsed, dict):
+                for key in ("employees", "employee_count", "locations", "revenue", "revenue_range", "industry", "business_type"):
+                    val = parsed.get(key)
+                    if val not in (None, "", [], {}):
+                        scale.append({"label": key.replace("_", " ").title(), "value": str(val)[:120],
+                                      "basis": firmographics["basis"], "source_name": firmographics["source_name"], "url": firmographics["url"],
+                                      "verification": firmographics["verification"]})
+        except (ValueError, TypeError):
+            pass
+    if scale:
+        facts.append({"label": "Disclosed scale / operating facts", "value": f"{len(scale)} populated scale fields", "basis": "observed fields, not a viability conclusion", "sources": scale[:5]})
+    decision = get_fact("Decision-maker details", ("decision_maker", "decision_maker_name", "contact_name", "decision_maker_title", "contact_title", "current_position"))
+    if decision:
+        facts.append(decision)
+    person_candidates = row.get("herald_people_candidates")
+    if person_candidates:
+        try:
+            people = json.loads(person_candidates)
+        except (ValueError, TypeError):
+            people = []
+        if isinstance(people, list) and people:
+            facts.append({"label": "Herald person candidates", "value": f"{len(people)} candidate profile(s) returned", "basis": "identity and role review required"})
+    presence = row.get("presence_signals")
+    if isinstance(presence, str):
+        try:
+            presence = json.loads(presence)
+        except (ValueError, TypeError):
+            presence = []
+    if isinstance(presence, dict):
+        presence = presence.get("signals", [])
+    if not isinstance(presence, list) or not presence:
+        try:
+            presence_bundle = json.loads(row.get("presence_evidence_decisions") or "{}")
+        except (ValueError, TypeError):
+            presence_bundle = {}
+        presence = presence_bundle.get("signals", []) if isinstance(presence_bundle, dict) else []
+    if isinstance(presence, list) and presence:
+        matched = [item for item in presence if isinstance(item, dict) and item.get("identity_strength") in ("strong", "moderate")]
+        fresh = [item for item in matched if item.get("freshness_status") == "fresh"]
+        facts.append({"label": "Presence identity / freshness", "value": f"{len(matched)} strong or moderate identity candidate(s); {len(fresh)} marked fresh",
+                      "basis": "Presence search heuristics; open sources to confirm", "sources": [
+                          {"label": (str(item.get("identity_subject", item.get("subject", "company"))) + " signal"), "value": str(item.get("title", ""))[:120],
+                           "basis": "public search candidate", "source_name": item.get("provider", ""), "url": item.get("url", ""),
+                           "verification": "unverified search snippet", "identity": item.get("identity_match", ""),
+                           "publication_date": item.get("publication_date", ""), "freshness": item.get("freshness_status", "undated")}
+                          for item in matched[:4]]})
+    if path_evidence:
+        latest = next((item.get("publication_date") for item in path_evidence if item.get("publication_date")), "")
+        facts.append({"label": "Path-fit signal candidates", "value": f"{sum(x.get('fit') == 'priority' for x in path_evidence)} priority; {sum(x.get('fit') == 'supporting' for x in path_evidence)} supporting",
+                      "basis": "unverified signal matches", "latest_publication_date": latest,
+                      "source_ids": [item.get("id") for item in path_evidence[:8] if item.get("id")]})
+    return facts[:8]
+
+
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
                 business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any",
                 search_budget: int = 12, minimum_identity_score: float = 0.0) -> str:
@@ -1071,7 +1197,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             "decision_status": "priority_signal_needs_human_validation" if has_priority else "insufficient_path_specific_evidence",
             "priority_evidence_count": sum(item["fit"] == "priority" for item in path_evidence),
             "supporting_evidence_count": sum(item["fit"] == "supporting" for item in path_evidence),
-            "evidence": path_evidence[:8], "next_step": outcome_plan["next_step"],
+            "evidence": path_evidence[:8], "observed_facts": _path_outcome_observations(row, signals, path_evidence), "next_step": outcome_plan["next_step"],
             "limits": ["Signal matches are research cues, not verified pain, buying intent, budget, or ability to pay.", "Complete the listed commercial viability checks with a human before qualifying or pitching."]}, ensure_ascii=False, separators=(",", ":"))
         row["herald_legal_form_assessment"] = json.dumps(assessment["legal_form_mentions"], ensure_ascii=False, separators=(",", ":"))
         row["herald_assessed_at"] = checked_at

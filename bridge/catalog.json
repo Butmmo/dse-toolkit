@@ -10137,7 +10137,7 @@
     "dse.enrich_signals": {
       "label": "Lead signals: research and draft outreach",
       "group": "Grow",
-      "help": "Researches public company, product and news results for Herald. The selected Engine automatically supplies its path's research focus; without one, choose a path. Each path prioritizes proof signals and returns a path-outcome brief: target customer/buyer, service outcome, monetization route, proof metrics, commercial viability checks and a next human validation step. Findings are research directions, not verified pains, budgets or ability to pay. Set a per-lead search-query cap and a minimum identity-match score; every query rung records returned, filtered and retained evidence in the shared field-result metadata. The score is heuristic, not a probability. Ledgers, grids and workflows retain path metadata for later review and automation. DuckDuckGo is default; Brave requires your local key and can incur charges. A local Ollama model may draft evidence-based email, never send it. Public social signals remain in Presence.",
+      "help": "Researches public company, product and news results for Herald. The selected Engine automatically supplies its path's research focus; without one, choose a path. Each path prioritizes proof signals and returns a path-outcome brief: target customer/buyer, service outcome, monetization route, proof metrics, commercial viability checks, observations already present on the lead (site/contact routes, disclosed scale, person and Presence cues), and a next human validation step. Observations are labeled by source and are not qualification scores. Findings are research directions, not verified pains, budgets or ability to pay. Set a per-lead search-query cap and a minimum identity-match score; every query rung records returned, filtered and retained evidence in the shared field-result metadata. The score is heuristic, not a probability. Ledgers, grids and workflows retain path metadata for later review and automation. DuckDuckGo is default; Brave requires your local key and can incur charges. A local Ollama model may draft evidence-based email, never send it. Public social signals remain in Presence.",
       "script": "dse.py",
       "args": [
         {
@@ -10466,7 +10466,8 @@
         "Configurable per-lead query budget and minimum identity score",
         "Path-fit tags",
         "Path outcome brief links priority/supporting source candidates to a DSE outcome, commercial viability checks and a concrete human next step",
-        "Research CSV and report"
+        "Research CSV and report",
+        "Separates observed website/Presence/person facts from commercial questions that must be confirmed with the prospect"
       ],
       "path_keys": [
         "smb",
@@ -10764,7 +10765,7 @@
     "dse.grid_enrich": {
       "label": "Ledgers: enrich grid rows live",
       "group": "Grow",
-      "help": "Runs the existing lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, or Presence public social signals. The PC reads the grid rows, runs the selected enrichment lane, then creates or reuses result columns and writes the results back into these rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. The original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted. For Herald and Presence, compact source snapshots are saved with each grid row so their check history is shared with the Ledger across devices. Every lane writes a compact evidence-and-decisions record: Website includes selected field values, provider checks and alternatives; Herald links profile, role, event, person and outreach judgments to sources, and shows how the selected path maps to a business outcome and commercial qualification checks; Presence records identity matching, publication freshness and search waterfall measurements. Review source IDs and links inside the Ledger.",
+      "help": "Runs the existing lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, or Presence public social signals. The PC reads the grid rows, runs the selected enrichment lane, then creates or reuses result columns and writes the results back into these rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. The original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted. For Herald and Presence, compact source snapshots are saved with each grid row so their check history is shared with the Ledger across devices. Every lane writes a compact evidence-and-decisions record: Website includes selected field values, provider checks and alternatives; Herald links profile, role, event, person and outreach judgments to sources, and shows how the selected path maps to a business outcome, evidence already available, and commercial qualification checks still requiring direct confirmation; Presence records identity matching, publication freshness and search waterfall measurements. Review source IDs and links inside the Ledger.",
       "script": "dse.py",
       "args": [
         {
@@ -11182,7 +11183,8 @@
         "Retains source URLs and compares repeated complete searches; partial runs never imply a source disappeared.",
         "Persists a compact source-monitoring timeline on each Ledger row for cross-device review",
         "Adds an in-grid evidence review for Website provider selections and alternatives, Herald decisions and citations, and Presence identity, freshness and search waterfall measurements",
-        "Shows path-specific customer outcomes, proof metrics, commercial viability checks and next human validation in Ledger evidence review"
+        "Shows path-specific customer outcomes, proof metrics, commercial viability checks and next human validation in Ledger evidence review",
+        "Separates existing lead/enrichment observations from prospect-confirmed commercial qualification checks"
       ]
     }
   },
