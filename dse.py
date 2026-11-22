@@ -15,6 +15,7 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
   python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
+  python dse.py enrichment-profile list|show|preview|export <path>  inspect a versioned path-specific research plan before enrichment
   python dse.py signals leads.csv [--engine x] [--max 25] [--profile saas] [--decision-maker functional_leader] [--decision-role signal_based] [--custom-role "VP of Sales"] [--legal-form us_c_corp] [--no-ai]  Herald research with signal-based role discovery
   python dse.py presence-signals leads.csv [--engine x] [--max 25]             separate public professional/social evidence for Presence
   python dse.py reply <engine> --text "their reply" [--source LIST --row N --log]   the Reply Desk: what kind of reply it is, a draft answer, the follow-up date; python dse.py dnc <engine>
@@ -82,6 +83,9 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "eval-enrichment":
         from dse.enrichment_eval import main as enrichment_eval_main
         sys.exit(enrichment_eval_main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "enrichment-profile":
+        from dse.enrichment_profiles import main as enrichment_profiles_main
+        sys.exit(enrichment_profiles_main(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "claude":      # connect your own Claude key (kept on this PC only): python dse.py claude --help
         from dse import claudekey
         sys.exit(claudekey.run_cli(sys.argv[2:]))
