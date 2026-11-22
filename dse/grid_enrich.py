@@ -16,7 +16,7 @@ from .common import LISTS, ROOT
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
-    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
+    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
     "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_monitor_history"],
 }
 FULL_OUTPUTS = {
@@ -228,7 +228,8 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
                "status": row.get("herald_status", ""), "comparison_status": row.get("herald_comparison_status", ""),
                "business_profiles": profiles, "roles": roles, "legal_form_mentions": legal, "signal_events": events,
                "people_candidates": person_items, "ai_review": ai,
-               "path_outcome": _decode_json(row.get("dse_path_outcome"), {}),
+               "path_outcome": {**_decode_json(row.get("dse_path_outcome"), {}),
+                                "ai_advice": _decode_json(row.get("dse_path_ai_advice"), {})},
                "outreach": {"subject": str(row.get("outreach_subject", ""))[:120], "body": str(row.get("outreach_body", ""))[:900],
                             "evidence_ids": outreach_ids[:8], "personalization_basis": str(row.get("outreach_personalization_basis", ""))[:300]},
                "sources": compact_sources}
@@ -250,6 +251,12 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
         outcome["evidence"] = outcome.get("evidence", [])[:4]
         outcome["commercial_viability_checks"] = outcome.get("commercial_viability_checks", [])[:3]
         outcome["observed_facts"] = outcome.get("observed_facts", [])[:5]
+        advice = outcome.get("ai_advice", {})
+        if isinstance(advice, dict):
+            advice["questions"] = advice.get("questions", [])[:2]
+            for key in ("recommended_validation", "reason", "guardrail"):
+                if isinstance(advice.get(key), str):
+                    advice[key] = advice[key][:220]
         for fact in outcome["observed_facts"]:
             if isinstance(fact, dict):
                 fact["sources"] = fact.get("sources", [])[:2]
@@ -267,7 +274,7 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
                    "business_profiles": [{k: item.get(k) for k in ("key", "label", "assessment", "evidence_ids")} for item in payload["business_profiles"][:3]],
                    "roles": [{k: item.get(k) for k in ("label", "assessment", "evidence_ids")} for item in payload["roles"][:3]],
                    "signal_events": payload["signal_events"][:3],
-                   "path_outcome": {k: payload["path_outcome"].get(k) for k in ("path_label", "outcome", "customer", "pain_hypothesis", "monetization_model", "proof_metrics", "commercial_viability_checks", "decision_status", "priority_evidence_count", "supporting_evidence_count", "evidence", "observed_facts", "next_step", "limits")} if isinstance(payload.get("path_outcome"), dict) else {},
+                   "path_outcome": {k: payload["path_outcome"].get(k) for k in ("path_label", "outcome", "customer", "pain_hypothesis", "monetization_model", "proof_metrics", "commercial_viability_checks", "decision_status", "priority_evidence_count", "supporting_evidence_count", "evidence", "observed_facts", "next_step", "limits", "ai_advice")} if isinstance(payload.get("path_outcome"), dict) else {},
                    "sources": [{k: (str(item.get(k) or "")[:180] if k == "url" else item.get(k)) for k in ("id", "subject", "title", "url")} for item in payload["sources"][:5]]}
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return encoded
@@ -353,12 +360,12 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     existing = {gridpush.norm(c["label"]): c for c in columns}
     new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
     evidence_header = f"{lane}_evidence_decisions"
-    monitor_priority = [evidence_header, f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
+    monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
     new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
     remaining = max(0, 60 - len(columns))
     omitted_columns = new_headers[remaining:]
     new_headers = new_headers[:remaining]
-    added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", evidence_header} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
+    added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", evidence_header, "dse_path_outcome", "dse_path_ai_advice"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
     by_label = {gridpush.norm(c["label"]): c for c in columns}
     for column in added or []:
         by_label[gridpush.norm(column["label"])] = column
@@ -377,7 +384,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 value = _cell(result_row.get(header))
             if not value:
                 continue
-            if not overwrite and header not in {history_header, evidence_header, f"{lane}_comparison_status", f"{lane}_change_summary", f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls", f"{lane}_previous_checked_at"} and data.get(key) not in (None, ""):
+            if not overwrite and header not in {history_header, evidence_header, "dse_path_outcome", "dse_path_ai_advice", f"{lane}_comparison_status", f"{lane}_change_summary", f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls", f"{lane}_previous_checked_at"} and data.get(key) not in (None, ""):
                 continue
             if len(value) > 5000:
                 oversized += 1

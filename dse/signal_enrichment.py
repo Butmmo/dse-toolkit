@@ -32,7 +32,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_identity_summary",
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
 HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
@@ -619,6 +619,22 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                         for item in outcome_refs[:8] if item.get("id")],
             metadata={"lane": "herald_research", "path_key": outcome.get("path_key", "any"), "decision_status": outcome.get("decision_status", "")}
         ))
+    try:
+        path_advice = json.loads(row.get("dse_path_ai_advice") or "{}")
+    except (ValueError, TypeError):
+        path_advice = {}
+    if isinstance(path_advice, dict) and path_advice:
+        refs = {str(item.get("id")): item for item in signals if isinstance(item, dict) and item.get("id")}
+        advice_ids = [item for item in path_advice.get("evidence_ids", []) if isinstance(item, str) and item in refs]
+        results.append(fr.make_result(
+            field="dse_path_ai_advice", value=path_advice, status="candidate",
+            source_type="local_model_advice", source_name=str(path_advice.get("model", "local Ollama model")), observed_at=path_advice.get("generated_at", now),
+            verification_status="human_review_required", verification_method="Advice cites only retained path-fit source IDs; use it to plan a manual check, never as a qualification or action decision.",
+            candidates=[fr.source_ref(source_type="public_web_search", source_name=refs[source_id].get("provider", search_provider),
+                                      source_url=refs[source_id].get("url", ""), source_record_id=source_id,
+                                      value={"title": refs[source_id].get("title", ""), "identity_subject": refs[source_id].get("identity_subject", "unknown")}) for source_id in advice_ids],
+            metadata={"lane": "herald_research", "advisory_only": True, "changes_findings": False, "takes_actions": False}
+        ))
     for field in ("outreach_subject", "outreach_body"):
         value = row.get(field, "")
         evidence_ids = [x.strip() for x in (row.get("outreach_evidence") or "").split(",") if x.strip()]
@@ -828,12 +844,13 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "target_business_profile": row.get("enrichment_target_profile", "any"), "target_decision_maker": row.get("enrichment_target_decision_maker", "any"),
             "target_role": row.get("enrichment_target_role", "signal_based"), "signal_based_role_candidates": row.get("herald_role_candidates", "[]"),
             "target_path": row.get("enrichment_target_path", "any"), "path_guidance": path_context,
+            "path_outcome_brief": json.loads(row.get("dse_path_outcome") or "{}"),
             "legal_form_search_hint": row.get("enrichment_target_legal_form", "any"),
             "ranked_people_candidates": candidate_context,
             "role_evidence_assessment": row.get("herald_role_assessment", "{}"), "evidence": evidence,
             "allowed_role_labels": [item.get("label", "") for item in json.loads(row.get("herald_role_candidates") or "[]") if isinstance(item, dict)]}
     payload = json.dumps({"model": model, "stream": False, "keep_alive": "30m", "format": "json",
-        "options": {"num_ctx": 8192, "num_predict": 450, "temperature": 0.2},
+        "options": {"num_ctx": 8192, "num_predict": 700, "temperature": 0.2},
         "messages": [{"role": "system", "content": (
             "Review the evidence and draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
             "Keep company evidence, named-person evidence, personal lead signals, and company lead signals distinct. "
@@ -848,8 +865,11 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "Also return a source-grounded review: company_summary and company_evidence_ids; person_summary and person_evidence_ids; "
             "role_observations as objects with role (choose only an exact allowed_role_labels value) and evidence_ids; and open_questions as short strings. "
             "Summaries must be empty when there is no matching subject evidence. Use only supplied source IDs, and never use a person source to support a company summary or vice versa. "
+            "Also return path_advice: recommend only a human validation step that follows the deterministic path_outcome_brief; identify which supplied path evidence IDs motivate it; and give up to three neutral questions that verify the source or missing commercial facts. "
+            "Do not assign a lead score, decide qualification, infer need, budget, or ability to pay, change enrichment findings, propose an unapproved action, or send/claim outreach. If evidence does not support path-specific advice, return an empty path_advice object. "
             "Do not include citations in email text. Return JSON only with subject, body, evidence_ids, company_summary, company_evidence_ids, "
-            "person_summary, person_evidence_ids, role_observations, and open_questions. The body should be under 90 words, plain and low-pressure, "
+            "person_summary, person_evidence_ids, role_observations, open_questions, and path_advice {recommended_validation, reason, evidence_ids, questions}, "
+            "where questions is an array of {question, evidence_ids}. The body should be under 90 words, plain and low-pressure, "
             "with one clear question and an easy opt-out."
         )}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]}, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request("http://localhost:11434/api/chat", payload, {"Content-Type": "application/json"})
@@ -902,6 +922,36 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
                       for question in result.get("open_questions", []) if isinstance(question, str)][:5] if isinstance(result.get("open_questions", []), list) else []
     has_review = bool(company_summary or person_summary or role_review or open_questions)
     output = {}
+    try:
+        path_outcome = json.loads(row.get("dse_path_outcome") or "{}")
+    except (ValueError, TypeError):
+        path_outcome = {}
+    allowed_path_ids = {str(item.get("id")) for item in path_outcome.get("evidence", [])
+                        if isinstance(item, dict) and item.get("id")} if isinstance(path_outcome, dict) else set()
+    raw_path_advice = result.get("path_advice") if isinstance(result.get("path_advice"), dict) else {}
+    def path_ids(value):
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(str(item) for item in value if isinstance(item, str) and item in allowed_path_ids))[:4]
+    validated_path_ids = path_ids(raw_path_advice.get("evidence_ids"))
+    questions = []
+    raw_questions = raw_path_advice.get("questions", [])
+    for item in raw_questions if isinstance(raw_questions, list) else []:
+        if not isinstance(item, dict):
+            continue
+        qids = path_ids(item.get("evidence_ids"))
+        question = re.sub(r"\s+", " ", str(item.get("question", ""))).strip()[:220]
+        if question and qids:
+            questions.append({"question": question, "evidence_ids": qids})
+        if len(questions) == 3:
+            break
+    validation = re.sub(r"\s+", " ", str(raw_path_advice.get("recommended_validation", ""))).strip()[:300]
+    reason = re.sub(r"\s+", " ", str(raw_path_advice.get("reason", ""))).strip()[:300]
+    if allowed_path_ids and validated_path_ids and (validation or questions):
+        output["dse_path_ai_advice"] = json.dumps({"schema": "dbi.path-ai-advice.v1", "status": "advisory_review_required",
+            "model": model, "generated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "recommended_validation": validation, "reason": reason, "evidence_ids": validated_path_ids,
+            "questions": questions, "guardrail": "Local AI advice only. It cannot change findings, determine qualification or commercial viability, or take actions."}, ensure_ascii=False, separators=(",", ":"))
     if has_review:
         ai_review = {"company_summary": company_summary, "company_evidence_ids": company_review_ids,
                      "person_summary": person_summary, "person_evidence_ids": person_review_ids,
@@ -1204,7 +1254,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         row["herald_assessment_note"] = assessment["basis"]
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
-        row.update({k: "" for k in ("herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model", "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
+        row.update({k: "" for k in ("herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model", "dse_path_ai_advice", "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
         if model and signals:
             try:
                 generated = draft(row, signals, model)
@@ -1215,6 +1265,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
                         drafted += 1
                     elif generated.get("herald_ai_review"):
                         row["herald_status"] = row["research_status"] = "local AI evidence review ready"
+                    elif generated.get("dse_path_ai_advice"):
+                        row["herald_status"] = row["research_status"] = "local AI path advice ready for human review"
             except Exception as e:
                 errors.append(type(e).__name__)
         row["field_results"] = fr.merge_results(row.get("field_results"), build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score))
