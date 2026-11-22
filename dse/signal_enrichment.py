@@ -32,7 +32,7 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "herald_identity_summary",
               "herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model",
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
-              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
+              "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
 HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
@@ -601,6 +601,46 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
             cost_units="search_provider_fee" if provider_fee is not None else "provider_query_cost_unknown",
             cost_quantity=0 if provider_fee is not None else None, cost_estimated=False if provider_fee is not None else None,
             miss_reason="Phrase match is a research cue, not a verified event."))
+    try:
+        outcome = json.loads(row.get("dse_path_outcome") or "{}")
+    except (ValueError, TypeError):
+        outcome = {}
+    if isinstance(outcome, dict) and outcome:
+        outcome_refs = outcome.get("evidence", []) if isinstance(outcome.get("evidence"), list) else []
+        results.append(fr.make_result(
+            field="dse_path_outcome", value=outcome,
+            status="candidate",
+            source_type="path_specific_research_plan", source_name=str(outcome.get("path_label", "General lead research")),
+            observed_at=now, verification_status="human_review_required",
+            verification_method="Combines path-specific research directions with cited candidate signals. Manually verify need, buyer, budget/commercial capacity, and baseline outcomes before recommending work.",
+            miss_reason="No path-priority source signal was retained; this plan is guidance, not proof of fit." if not outcome_refs else "Path signal candidates still require source review and commercial qualification.",
+            candidates=[fr.source_ref(source_type="public_web_search", source_name="Path-fit candidate", source_url=item.get("url", ""),
+                                      source_record_id=item.get("id", ""), value={"fit": item.get("fit"), "title": item.get("title", ""), "category": item.get("category", "")})
+                        for item in outcome_refs[:8] if item.get("id")],
+            metadata={"lane": "herald_research", "path_key": outcome.get("path_key", "any"), "decision_status": outcome.get("decision_status", "")}
+        ))
+    advice_status = str(row.get("dse_path_ai_advice_status", "not_run"))
+    try:
+        path_advice = json.loads(row.get("dse_path_ai_advice") or "{}")
+    except (ValueError, TypeError):
+        path_advice = {}
+    if isinstance(path_advice, dict) and path_advice:
+        refs = {str(item.get("id")): item for item in signals if isinstance(item, dict) and item.get("id")}
+        advice_ids = [item for item in path_advice.get("evidence_ids", []) if isinstance(item, str) and item in refs]
+        results.append(fr.make_result(
+            field="dse_path_ai_advice", value=path_advice, status="candidate",
+            source_type="local_model_advice", source_name=str(path_advice.get("model", "local Ollama model")), observed_at=path_advice.get("generated_at", now),
+            verification_status="human_review_required", verification_method="Advice cites only retained path-fit source IDs; use it to plan a manual check, never as a qualification or action decision.",
+            candidates=[fr.source_ref(source_type="public_web_search", source_name=refs[source_id].get("provider", search_provider),
+                                      source_url=refs[source_id].get("url", ""), source_record_id=source_id,
+                                      value={"title": refs[source_id].get("title", ""), "identity_subject": refs[source_id].get("identity_subject", "unknown")}) for source_id in advice_ids],
+            metadata={"lane": "herald_research", "advisory_only": True, "changes_findings": False, "takes_actions": False}
+        ))
+    if not isinstance(path_advice, dict) or not path_advice:
+        results.append(fr.make_result(field="dse_path_ai_advice", status="not_found", observed_at=now,
+            source_type="local_model_advice", verification_status=advice_status,
+            verification_method="A local advice record was not generated for this run. Existing saved history is retained separately.",
+            miss_reason=advice_status.replace("_", " "), metadata={"lane": "herald_research", "advisory_only": True}))
     for field in ("outreach_subject", "outreach_body"):
         value = row.get(field, "")
         evidence_ids = [x.strip() for x in (row.get("outreach_evidence") or "").split(",") if x.strip()]
@@ -810,12 +850,13 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "target_business_profile": row.get("enrichment_target_profile", "any"), "target_decision_maker": row.get("enrichment_target_decision_maker", "any"),
             "target_role": row.get("enrichment_target_role", "signal_based"), "signal_based_role_candidates": row.get("herald_role_candidates", "[]"),
             "target_path": row.get("enrichment_target_path", "any"), "path_guidance": path_context,
+            "path_outcome_brief": json.loads(row.get("dse_path_outcome") or "{}"),
             "legal_form_search_hint": row.get("enrichment_target_legal_form", "any"),
             "ranked_people_candidates": candidate_context,
             "role_evidence_assessment": row.get("herald_role_assessment", "{}"), "evidence": evidence,
             "allowed_role_labels": [item.get("label", "") for item in json.loads(row.get("herald_role_candidates") or "[]") if isinstance(item, dict)]}
     payload = json.dumps({"model": model, "stream": False, "keep_alive": "30m", "format": "json",
-        "options": {"num_ctx": 8192, "num_predict": 450, "temperature": 0.2},
+        "options": {"num_ctx": 8192, "num_predict": 700, "temperature": 0.2},
         "messages": [{"role": "system", "content": (
             "Review the evidence and draft one honest, concise first-contact business email based ONLY on the supplied evidence and offer. "
             "Keep company evidence, named-person evidence, personal lead signals, and company lead signals distinct. "
@@ -830,8 +871,11 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
             "Also return a source-grounded review: company_summary and company_evidence_ids; person_summary and person_evidence_ids; "
             "role_observations as objects with role (choose only an exact allowed_role_labels value) and evidence_ids; and open_questions as short strings. "
             "Summaries must be empty when there is no matching subject evidence. Use only supplied source IDs, and never use a person source to support a company summary or vice versa. "
+            "Also return path_advice: recommend only a human validation step that follows the deterministic path_outcome_brief; identify which supplied path evidence IDs motivate it; and give up to three neutral questions that verify the source or missing commercial facts. "
+            "Do not assign a lead score, decide qualification, infer need, budget, or ability to pay, change enrichment findings, propose an unapproved action, or send/claim outreach. If evidence does not support path-specific advice, return an empty path_advice object. "
             "Do not include citations in email text. Return JSON only with subject, body, evidence_ids, company_summary, company_evidence_ids, "
-            "person_summary, person_evidence_ids, role_observations, and open_questions. The body should be under 90 words, plain and low-pressure, "
+            "person_summary, person_evidence_ids, role_observations, open_questions, and path_advice {recommended_validation, reason, evidence_ids, questions}, "
+            "where questions is an array of {question, evidence_ids}. The body should be under 90 words, plain and low-pressure, "
             "with one clear question and an easy opt-out."
         )}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]}, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request("http://localhost:11434/api/chat", payload, {"Content-Type": "application/json"})
@@ -884,6 +928,36 @@ def draft(row: dict, signals: list[dict], model: str) -> dict:
                       for question in result.get("open_questions", []) if isinstance(question, str)][:5] if isinstance(result.get("open_questions", []), list) else []
     has_review = bool(company_summary or person_summary or role_review or open_questions)
     output = {}
+    try:
+        path_outcome = json.loads(row.get("dse_path_outcome") or "{}")
+    except (ValueError, TypeError):
+        path_outcome = {}
+    allowed_path_ids = {str(item.get("id")) for item in path_outcome.get("evidence", [])
+                        if isinstance(item, dict) and item.get("id")} if isinstance(path_outcome, dict) else set()
+    raw_path_advice = result.get("path_advice") if isinstance(result.get("path_advice"), dict) else {}
+    def path_ids(value):
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(str(item) for item in value if isinstance(item, str) and item in allowed_path_ids))[:4]
+    validated_path_ids = path_ids(raw_path_advice.get("evidence_ids"))
+    questions = []
+    raw_questions = raw_path_advice.get("questions", [])
+    for item in raw_questions if isinstance(raw_questions, list) else []:
+        if not isinstance(item, dict):
+            continue
+        qids = path_ids(item.get("evidence_ids"))
+        question = re.sub(r"\s+", " ", str(item.get("question", ""))).strip()[:220]
+        if question and qids:
+            questions.append({"question": question, "evidence_ids": qids})
+        if len(questions) == 3:
+            break
+    validation = re.sub(r"\s+", " ", str(raw_path_advice.get("recommended_validation", ""))).strip()[:300]
+    reason = re.sub(r"\s+", " ", str(raw_path_advice.get("reason", ""))).strip()[:300]
+    if allowed_path_ids and validated_path_ids and (validation or questions):
+        output["dse_path_ai_advice"] = json.dumps({"schema": "dbi.path-ai-advice.v1", "status": "advisory_review_required",
+            "model": model, "generated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "recommended_validation": validation, "reason": reason, "evidence_ids": validated_path_ids,
+            "questions": questions, "guardrail": "Local AI advice only. It cannot change findings, determine qualification or commercial viability, or take actions."}, ensure_ascii=False, separators=(",", ":"))
     if has_review:
         ai_review = {"company_summary": company_summary, "company_evidence_ids": company_review_ids,
                      "person_summary": person_summary, "person_evidence_ids": person_review_ids,
@@ -905,6 +979,132 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _path_outcome_observations(row: dict, signals: list[dict], path_evidence: list[dict]) -> list[dict]:
+    """Summarize evidence already present on the lead; observations are not a prospect qualification score."""
+    def normalized(value: object) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+    values = {normalized(key): value for key, value in row.items()}
+    try:
+        results = json.loads(row.get("field_results") or "[]")
+    except (ValueError, TypeError):
+        results = []
+    results = results if isinstance(results, list) else []
+    indexed = {}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        key = normalized(result.get("field"))
+        if key and result.get("value") not in (None, "", [], {}):
+            indexed.setdefault(key, result)
+    try:
+        website_bundle = json.loads(row.get("website_evidence_decisions") or "{}")
+    except (ValueError, TypeError):
+        website_bundle = {}
+    for result in website_bundle.get("fields", []) if isinstance(website_bundle, dict) else []:
+        if isinstance(result, dict) and result.get("field"):
+            indexed.setdefault(normalized(result.get("field")), result)
+
+    def get_fact(label: str, aliases: tuple[str, ...]) -> dict | None:
+        for alias in aliases:
+            key = normalized(alias)
+            value = values.get(key)
+            result = indexed.get(key)
+            if (value is None or value == "") and result:
+                value = result.get("value")
+            if value is None or value == "" or value == [] or value == {}:
+                continue
+            source = result.get("source") if result and isinstance(result.get("source"), dict) else {}
+            verification = result.get("verification") if result and isinstance(result.get("verification"), dict) else {}
+            identity = result.get("identity") if result and isinstance(result.get("identity"), dict) else {}
+            return {"label": label, "value": str(value)[:180],
+                    "basis": "source-backed enrichment" if source.get("url") else "lead record / enrichment field",
+                    "source_name": source.get("name") or source.get("type") or "",
+                    "url": source.get("url", ""), "verification": verification.get("status", "not recorded"),
+                    "identity": identity.get("match", "")}
+        return None
+
+    facts = []
+    website = get_fact("Website activity", ("site_active", "website_active", "site_status"))
+    if website:
+        facts.append(website)
+    channel_facts = []
+    for label, aliases in (("email", ("best_email", "email", "work_email")),
+                           ("phone", ("phone_found", "phone", "phone_number")),
+                           ("contact form", ("contact_form_url", "contact_page_url", "contact_form")),
+                           ("booking", ("booking_tool", "online_booking", "booking_url"))):
+        item = get_fact(label, aliases)
+        if item:
+            channel_facts.append(item)
+    if channel_facts:
+        facts.append({"label": "Available contact / booking routes", "value": ", ".join(x["label"] for x in channel_facts),
+                      "count": len(channel_facts), "basis": "observed populated fields", "sources": channel_facts})
+    scale = []
+    for label, aliases in (("Employees", ("employees", "employee_count", "staff_count", "team_size")),
+                           ("Locations", ("locations", "location_count", "number_of_locations")),
+                           ("Revenue", ("annual_revenue", "revenue", "revenue_range")),
+                           ("Store activity", ("ecommerce_active", "store_active", "product_count"))):
+        item = get_fact(label, aliases)
+        if item:
+            scale.append(item)
+    firmographics = get_fact("Firmographics", ("firmographics",))
+    if firmographics:
+        try:
+            parsed = json.loads(firmographics["value"])
+            if isinstance(parsed, dict):
+                for key in ("employees", "employee_count", "locations", "revenue", "revenue_range", "industry", "business_type"):
+                    val = parsed.get(key)
+                    if val not in (None, "", [], {}):
+                        scale.append({"label": key.replace("_", " ").title(), "value": str(val)[:120],
+                                      "basis": firmographics["basis"], "source_name": firmographics["source_name"], "url": firmographics["url"],
+                                      "verification": firmographics["verification"]})
+        except (ValueError, TypeError):
+            pass
+    if scale:
+        facts.append({"label": "Disclosed scale / operating facts", "value": f"{len(scale)} populated scale fields", "basis": "observed fields, not a viability conclusion", "sources": scale[:5]})
+    decision = get_fact("Decision-maker details", ("decision_maker", "decision_maker_name", "contact_name", "decision_maker_title", "contact_title", "current_position"))
+    if decision:
+        facts.append(decision)
+    person_candidates = row.get("herald_people_candidates")
+    if person_candidates:
+        try:
+            people = json.loads(person_candidates)
+        except (ValueError, TypeError):
+            people = []
+        if isinstance(people, list) and people:
+            facts.append({"label": "Herald person candidates", "value": f"{len(people)} candidate profile(s) returned", "basis": "identity and role review required"})
+    presence = row.get("presence_signals")
+    if isinstance(presence, str):
+        try:
+            presence = json.loads(presence)
+        except (ValueError, TypeError):
+            presence = []
+    if isinstance(presence, dict):
+        presence = presence.get("signals", [])
+    if not isinstance(presence, list) or not presence:
+        try:
+            presence_bundle = json.loads(row.get("presence_evidence_decisions") or "{}")
+        except (ValueError, TypeError):
+            presence_bundle = {}
+        presence = presence_bundle.get("signals", []) if isinstance(presence_bundle, dict) else []
+    if isinstance(presence, list) and presence:
+        matched = [item for item in presence if isinstance(item, dict) and item.get("identity_strength") in ("strong", "moderate")]
+        fresh = [item for item in matched if item.get("freshness_status") == "fresh"]
+        facts.append({"label": "Presence identity / freshness", "value": f"{len(matched)} strong or moderate identity candidate(s); {len(fresh)} marked fresh",
+                      "basis": "Presence search heuristics; open sources to confirm", "sources": [
+                          {"label": (str(item.get("identity_subject", item.get("subject", "company"))) + " signal"), "value": str(item.get("title", ""))[:120],
+                           "basis": "public search candidate", "source_name": item.get("provider", ""), "url": item.get("url", ""),
+                           "verification": "unverified search snippet", "identity": item.get("identity_match", ""),
+                           "publication_date": item.get("publication_date", ""), "freshness": item.get("freshness_status", "undated")}
+                          for item in matched[:4]]})
+    if path_evidence:
+        latest = next((item.get("publication_date") for item in path_evidence if item.get("publication_date")), "")
+        facts.append({"label": "Path-fit signal candidates", "value": f"{sum(x.get('fit') == 'priority' for x in path_evidence)} priority; {sum(x.get('fit') == 'supporting' for x in path_evidence)} supporting",
+                      "basis": "unverified signal matches", "latest_publication_date": latest,
+                      "source_ids": [item.get("id") for item in path_evidence[:8] if item.get("id")]})
+    return facts[:8]
 
 
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
@@ -1035,23 +1235,61 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             event["path_label"] = path["label"]
             annotated_events.append(event)
         row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "path_focus": {"key": selected_path or "any", "label": path["label"], "method": path["method"], "pain": path["pain"], "buyer": path["buyer"], "revenue_model": path["revenue_model"], "proof_metrics": path["proof_metrics"], "priority_categories": path["priority"], "supporting_categories": path["supporting"]}, "events": annotated_events}, ensure_ascii=False, separators=(",", ":"))
+        outcome_plan = path_signals.outcome_plan(selected_path or "any")
+        known_source_ids = {signal.get("id"): signal for signal in signals if signal.get("id")}
+        path_evidence = []
+        for event in annotated_events:
+            source = known_source_ids.get(event.get("source_id"))
+            if source and event.get("path_fit") in ("priority", "supporting"):
+                path_evidence.append({"id": source["id"], "fit": event["path_fit"], "category": event.get("category", ""),
+                                     "subject": source.get("identity_subject", "unknown"), "title": source.get("title", "")[:140],
+                                     "url": source.get("url", ""), "publication_date": source.get("publication_date", ""),
+                                     "freshness_status": source.get("freshness_status", "undated")})
+        has_priority = any(item["fit"] == "priority" for item in path_evidence)
+        row["dse_path_outcome"] = json.dumps({"schema": "dbi.path-outcome.v1", "path_key": outcome_plan["key"], "path_label": path["label"],
+            "outcome": outcome_plan["outcome"], "customer": path["buyer"], "pain_hypothesis": path["pain"],
+            "monetization_model": path["revenue_model"], "proof_metrics": path["proof_metrics"],
+            "commercial_viability_checks": [{"check": item, "state": "not_assessed"} for item in outcome_plan["viability_checks"]],
+            "decision_status": "priority_signal_needs_human_validation" if has_priority else "insufficient_path_specific_evidence",
+            "priority_evidence_count": sum(item["fit"] == "priority" for item in path_evidence),
+            "supporting_evidence_count": sum(item["fit"] == "supporting" for item in path_evidence),
+            "evidence": path_evidence[:8], "observed_facts": _path_outcome_observations(row, signals, path_evidence), "next_step": outcome_plan["next_step"],
+            "limits": ["Signal matches are research cues, not verified pain, buying intent, budget, or ability to pay.", "Complete the listed commercial viability checks with a human before qualifying or pitching."]}, ensure_ascii=False, separators=(",", ":"))
         row["herald_legal_form_assessment"] = json.dumps(assessment["legal_form_mentions"], ensure_ascii=False, separators=(",", ":"))
         row["herald_assessed_at"] = checked_at
         row["herald_assessment_note"] = assessment["basis"]
         row["herald_checked_at"] = row["research_searched_at"] = checked_at
         row["herald_status"] = row["research_status"] = "business evidence found" if signals else "no matching business results"
-        row.update({k: "" for k in ("herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model", "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
+        if not use_ai:
+            row["dse_path_ai_advice_status"] = "disabled"
+        elif not model:
+            row["dse_path_ai_advice_status"] = "local_model_unavailable"
+        elif not signals:
+            row["dse_path_ai_advice_status"] = "no_research_sources"
+        elif not path_evidence:
+            row["dse_path_ai_advice_status"] = "no_path_fit_source_ids"
+        else:
+            row["dse_path_ai_advice_status"] = "awaiting_local_review"
+        row.update({k: "" for k in ("herald_ai_review", "herald_ai_reviewed_at", "herald_ai_review_model", "dse_path_ai_advice", "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model")})
         if model and signals:
             try:
                 generated = draft(row, signals, model)
                 if generated:
                     row.update(generated)
+                    if generated.get("dse_path_ai_advice"):
+                        row["dse_path_ai_advice_status"] = "ready"
+                    elif row["dse_path_ai_advice_status"] == "awaiting_local_review":
+                        row["dse_path_ai_advice_status"] = "no_valid_source_linked_advice"
                     if generated.get("outreach_body"):
                         row["herald_status"] = row["research_status"] = "draft ready for human review"
                         drafted += 1
                     elif generated.get("herald_ai_review"):
                         row["herald_status"] = row["research_status"] = "local AI evidence review ready"
+                    elif generated.get("dse_path_ai_advice"):
+                        row["herald_status"] = row["research_status"] = "local AI path advice ready for human review"
             except Exception as e:
+                if row.get("dse_path_ai_advice_status") == "awaiting_local_review":
+                    row["dse_path_ai_advice_status"] = "local_model_error"
                 errors.append(type(e).__name__)
         row["field_results"] = fr.merge_results(row.get("field_results"), build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score))
         out.append(row)

@@ -55,6 +55,25 @@ PATH_SIGNAL_PROFILES = {
 }
 
 
+
+PATH_OUTCOME_PLANS = {
+    "any": {"outcome": "Find one operational or growth outcome supported by public evidence.", "viability_checks": ["Confirm a specific buyer and operating need", "Verify budget or commercial capacity directly"], "next_step": "Review the strongest source, confirm the target buyer, and choose a path before making an offer."},
+    "smb": {"outcome": "Improve customer trust or convert more local inquiries into booked work.", "viability_checks": ["Confirm owner or office manager can approve", "Check number of locations, service value, and current marketing activity"], "next_step": "Choose one door (reviews or inquiries), then manually verify the review/reply or contact/booking gap."},
+    "search": {"outcome": "Increase qualified local discovery and accurate representation in search and AI answers.", "viability_checks": ["Confirm the business serves defined locations and services", "Check marketing ownership and willingness to track calls/clicks"], "next_step": "Capture dated searches for the target service and city, then verify listing, page, and answer discrepancies."},
+    "voiceai": {"outcome": "Answer more valuable calls and make booking available when staff cannot answer.", "viability_checks": ["Confirm calls are central to customer acquisition or service delivery", "Verify call volume, staffed hours, and booking value with the operator"], "next_step": "Ask permission for a documented public-line test at agreed hours, then verify the booking route with a human."},
+    "automation": {"outcome": "Reduce time spent on repeatable administrative work while keeping approvals reliable.", "viability_checks": ["Confirm repeated task volume and staff time", "Identify process owner, existing tools, and implementation authority"], "next_step": "Map one evidenced intake, support, invoicing, or reporting handoff and estimate baseline time with the prospect."},
+    "revenue": {"outcome": "Recover measurable purchases through better lifecycle messaging and follow-up.", "viability_checks": ["Confirm active store, traffic, and consent-compliant email/SMS setup", "Verify baseline conversion and attribution access before pricing on results"], "next_step": "Run a human-reviewed test of one lifecycle flow using a genuine test identity; record observed steps and date."},
+    "gtm": {"outcome": "Improve usable account data, routing coverage, and qualified pipeline operations.", "viability_checks": ["Confirm sales team size and CRM ownership", "Use only an export the prospect is authorized to share; agree a baseline"], "next_step": "Request an authorized sample, measure duplicate/stale/missing fields, and trace one routing path before proposing a build."},
+    "authority": {"outcome": "Turn a credible expert offer into consistent authority content and qualified enquiries.", "viability_checks": ["Verify a real offer, audience, and proof of delivery", "Confirm the expert owns approvals and has capacity for follow-up"], "next_step": "Review public positioning and enquiry path, then propose one permissioned content sample tied to the offer."},
+    "broadcast": {"outcome": "Build repeatable audience capture, distribution, and sponsor readiness around an active show.", "viability_checks": ["Confirm publishing cadence and audience/analytics access", "Check show ownership, production capacity, and sponsor fit"], "next_step": "Review one recent episode end-to-end and document its clips, notes, distribution, audience capture, and sponsor path."},
+    "ascent": {"outcome": "Find an ethical, commercially viable closer partnership with tracked calls and written terms.", "viability_checks": ["Verify offer, price, lead flow, refund terms, and written commission agreement", "Check fulfillment quality, legal/compliance concerns, and partner references"], "next_step": "Vet the offer and written terms with a human before any call, promotion, or partnership commitment."},
+}
+
+def outcome_plan(path_key: str = "any") -> dict:
+    """Return a path outcome and manual commercial viability checks; never infer budget or buyer readiness."""
+    key = known_path(path_key) or "any"
+    return {"key": key, **PATH_OUTCOME_PLANS[key]}
+
 def profile(path_key: str = "any") -> dict:
     """Return the path guide or general targeting context for unknown/custom engines."""
     return PATH_SIGNAL_PROFILES.get(str(path_key or "any").strip().lower(), PATH_SIGNAL_PROFILES["any"])
