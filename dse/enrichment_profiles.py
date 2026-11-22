@@ -83,7 +83,8 @@ def build_profile(path_key: str, *, max_provider_calls: int = 0, herald_queries:
                        "A signal is not proof of pain, intent, budget, or ability to pay.",
                        "Keep ambiguous identity and source conflicts reviewable; do not silently promote them to facts.",
                        "DBI-AI advice remains separate and cannot qualify or act on a lead."],
-        "execution_status": "preview_only; this profile does not yet configure an enrichment run",
+        "execution_status": "executable_defaults",
+        "execution_note": "These defaults are applied by supported CSV and live-grid runners when this profile is selected. Coverage is not measured; provider spend limits are advisory unless the selected provider waterfall enforces them.",
     }
 
 
@@ -103,7 +104,8 @@ def _print_profile(profile: dict, as_json: bool) -> None:
     print(f"Signal freshness target: {limits['signal_freshness_days']} days; expected coverage: {limits['expected_coverage']}.")
     print("Sources: " + " → ".join(profile["source_order"]))
     print("Next human step: " + profile["recommended_next_human_step"])
-    print("Preview only: selecting a profile does not change an enrichment run yet.")
+    print("Execution: these path defaults are applied by supported CSV and live-grid runners when selected.")
+    print("Limits: query and freshness settings are enforced where supported; provider spend is advisory unless the provider waterfall enforces it.")
 
 
 def main(argv: list[str] | None = None) -> int:
