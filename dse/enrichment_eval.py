@@ -196,6 +196,78 @@ def sample_ledger(source: str, leads: int = 40, seed: int = 42, stratify: str = 
     return output
 
 
+def plan_waterfall_experiment(source: str, field: str, provider_a: str, provider_b: str,
+                              engine_path: str, enrichment_profile: str, research_lane: str,
+                              leads: int = 50, seed: int = 42, out: str = "") -> Path:
+    """Write a deterministic paired lead manifest for a manual provider-order experiment."""
+    if leads < 1:
+        raise ValueError("--leads must be at least 1.")
+    if not field.strip() or not provider_a.strip() or not provider_b.strip() or provider_a == provider_b:
+        raise ValueError("Choose a field and two different provider names.")
+    headers, rows = _read(source)
+    required = {"source_row", "field", "engine_path", "enrichment_profile", "research_lane", "source_type", "source_name"}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Review CSV is missing columns needed for cohort matching: " + ", ".join(missing))
+    label_column = "adjudicated_value_correct" if "adjudicated_value_correct" in headers else "value_correct"
+    if label_column not in headers:
+        raise ValueError("Review CSV needs value_correct or adjudicated_value_correct labels.")
+    identity_columns = [column for column in ("company", "business", "website", "domain", "city", "state") if column in headers]
+    cohort = (engine_path.strip(), enrichment_profile.strip(), research_lane.strip())
+    grouped: dict[str, dict[str, list[dict[str, str]]]] = defaultdict(lambda: defaultdict(list))
+    lead_rows: dict[str, dict[str, str]] = {}
+    for row in rows:
+        row_cohort = tuple((row.get(key) or "unknown").strip() or "unknown"
+                           for key in ("engine_path", "enrichment_profile", "research_lane"))
+        source_row = (row.get("source_row") or "").strip()
+        if (row_cohort != cohort or (row.get("field") or "").strip() != field.strip()
+                or (row.get("source_type") or "").strip() != "configured_provider"
+                or not source_row):
+            continue
+        source_name = (row.get("source_name") or "").strip()
+        if source_name not in {provider_a.strip(), provider_b.strip()}:
+            continue
+        label = _review_category(row.get(label_column, ""))
+        if label not in {"yes", "no"}:
+            continue
+        grouped[source_row][source_name].append(row)
+        lead_rows.setdefault(source_row, row)
+    eligible = [lead_id for lead_id, by_provider in grouped.items()
+                if len(by_provider.get(provider_a.strip(), [])) == 1
+                and len(by_provider.get(provider_b.strip(), [])) == 1]
+    if not eligible:
+        raise ValueError("No leads have exactly one explicitly reviewed result from each provider in the selected field and cohort.")
+    rng = random.Random(seed)
+    eligible.sort()
+    rng.shuffle(eligible)
+    selected = eligible[:min(leads, len(eligible))]
+    source_digest = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+    plan_id = hashlib.sha256(
+        f"{source_digest}|{field}|{provider_a}|{provider_b}|{cohort}|{seed}|{','.join(selected)}".encode("utf-8")
+    ).hexdigest()[:16]
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-waterfall-experiment-manifest.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    columns = ["plan_id", "source_sha256", "seed", "source_row", *identity_columns,
+               "field", "engine_path", "enrichment_profile", "research_lane",
+               "variant_a_provider_order", "variant_b_provider_order", "paired_reviewed_value_correct"]
+    with output.open("w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        for lead_id in selected:
+            provider_rows = grouped[lead_id]
+            row = dict(lead_rows[lead_id])
+            row.update({"plan_id": plan_id, "source_sha256": source_digest, "seed": seed,
+                        "source_row": lead_id, "field": field.strip(), "engine_path": cohort[0],
+                        "enrichment_profile": cohort[1], "research_lane": cohort[2],
+                        "variant_a_provider_order": f"{provider_a.strip()} > {provider_b.strip()}",
+                        "variant_b_provider_order": f"{provider_b.strip()} > {provider_a.strip()}",
+                        "paired_reviewed_value_correct": f"{provider_a.strip()}={_review_category(provider_rows[provider_a.strip()][0].get(label_column, ''))};{provider_b.strip()}={_review_category(provider_rows[provider_b.strip()][0].get(label_column, ''))}"})
+            writer.writerow(row)
+    print(f"Created paired waterfall experiment manifest for {len(selected)} of {len(eligible)} eligible leads: {output}")
+    print("Each lead is listed once with both order variants. This does not run providers or outreach; maintain isolated outputs and an approved spend cap when executing manually.")
+    return output
+
+
 def pair_reviewers(source: str, out: str = "") -> Path:
     """Create independent reviewer and adjudication columns for a prepared sample."""
     headers, rows = _read(source)
@@ -1237,6 +1309,17 @@ def main(argv: list[str] | None = None) -> int:
     sm.add_argument("--seed", type=int, default=42, help="random seed for reproducible sampling (default: 42)")
     sm.add_argument("--stratify", default="engine_path,enrichment_profile", help="comma-separated prepared CSV columns (default: engine_path,enrichment_profile)")
     sm.add_argument("--out", default="", help="sample CSV output path")
+    wx = sub.add_parser("plan-waterfall-experiment", help="create a reproducible paired manifest for manually testing two provider orders")
+    wx.add_argument("source", help="prepared or adjudicated enrichment review CSV")
+    wx.add_argument("--field", required=True)
+    wx.add_argument("--provider-a", required=True)
+    wx.add_argument("--provider-b", required=True)
+    wx.add_argument("--engine-path", required=True)
+    wx.add_argument("--enrichment-profile", required=True)
+    wx.add_argument("--research-lane", required=True)
+    wx.add_argument("--leads", type=int, default=50)
+    wx.add_argument("--seed", type=int, default=42)
+    wx.add_argument("--out", default="", help="manifest CSV output path")
     pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
     pr.add_argument("source", help="prepared sample review CSV")
     pr.add_argument("--out", default="", help="paired review CSV output path")
@@ -1253,6 +1336,10 @@ def main(argv: list[str] | None = None) -> int:
                   args.paired_bootstrap_reps, args.paired_bootstrap_seed, args.markdown_out)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
+        elif args.action == "plan-waterfall-experiment":
+            plan_waterfall_experiment(args.source, args.field, args.provider_a, args.provider_b,
+                                      args.engine_path, args.enrichment_profile, args.research_lane,
+                                      args.leads, args.seed, args.out)
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
         else:
