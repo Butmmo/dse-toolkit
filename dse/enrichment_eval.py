@@ -330,7 +330,7 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                       for dimension in REVIEW_FIELDS[:4]}
             paired_costs: dict[str, dict[str, float | int]] = defaultdict(
                 lambda: {"source_a_total": 0.0, "source_b_total": 0.0, "matched_leads": 0,
-                         "source_a_correct": 0, "source_b_correct": 0}
+                         "source_a_correct": 0, "source_b_correct": 0, "lead_cost_differences": []}
             )
             paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
             for lead in shared:
@@ -351,6 +351,7 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                         cost_pair["matched_leads"] += 1
                         cost_pair["source_a_correct"] += a_value_label == "yes"
                         cost_pair["source_b_correct"] += b_value_label == "yes"
+                        cost_pair["lead_cost_differences"].append(a_costs[currency] - b_costs[currency])
                 for dimension, dimension_counts in counts.items():
                     a_label = _review_category(a_rows[0].get(label_columns[dimension], ""))
                     b_label = _review_category(b_rows[0].get(label_columns[dimension], ""))
@@ -415,11 +416,30 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                 matched_cost_leads = int(cost_pair["matched_leads"])
                 a_mean = _ratio(float(cost_pair["source_a_total"]), matched_cost_leads)
                 b_mean = _ratio(float(cost_pair["source_b_total"]), matched_cost_leads)
+                cost_differences = cost_pair["lead_cost_differences"]
+                cost_bootstrap = []
+                if bootstrap_reps and cost_differences:
+                    rng = random.Random(
+                        f"{bootstrap_seed}:{field}:{cohort}:{source_a}:{source_b}:{currency}:cost"
+                    )
+                    for _ in range(bootstrap_reps):
+                        sample = [cost_differences[rng.randrange(len(cost_differences))]
+                                  for _ in cost_differences]
+                        cost_bootstrap.append(sum(sample) / len(sample))
+                    cost_bootstrap.sort()
                 paired_cost_comparison[currency] = {
                     "matched_leads_with_priced_attempts_from_both_sources": matched_cost_leads,
                     "source_a_mean_estimated_cost_per_matched_lead": a_mean,
                     "source_b_mean_estimated_cost_per_matched_lead": b_mean,
                     "mean_cost_difference_a_minus_b": (a_mean - b_mean) if a_mean is not None and b_mean is not None else None,
+                    "mean_cost_difference_cluster_bootstrap_95": {
+                        "method": "percentile bootstrap; sample matched lead cost pairs with replacement",
+                        "seed": bootstrap_seed,
+                        "requested_replicates": bootstrap_reps,
+                        "valid_replicates": len(cost_bootstrap),
+                        "lower": cost_bootstrap[max(0, math.ceil(0.025 * len(cost_bootstrap)) - 1)] if cost_bootstrap else None,
+                        "upper": cost_bootstrap[max(0, math.ceil(0.975 * len(cost_bootstrap)) - 1)] if cost_bootstrap else None,
+                    },
                     "source_a_value_correct_rate_on_priced_subset": _ratio(int(cost_pair["source_a_correct"]), matched_cost_leads),
                     "source_b_value_correct_rate_on_priced_subset": _ratio(int(cost_pair["source_b_correct"]), matched_cost_leads),
                     "priced_subset_value_correct_rate_difference_a_minus_b": _ratio(
@@ -536,8 +556,13 @@ def _decision_brief(report: dict) -> str:
         for currency, costs in (item.get("paired_provider_attempt_cost_by_currency") or {}).items():
             a_cost = costs.get("source_a_mean_estimated_cost_per_matched_lead")
             b_cost = costs.get("source_b_mean_estimated_cost_per_matched_lead")
+            cost_interval = costs.get("mean_cost_difference_cluster_bootstrap_95", {})
+            cost_low, cost_high = cost_interval.get("lower"), cost_interval.get("upper")
+            cost_interval_text = (f"{cost_low:+.4g} to {cost_high:+.4g} {currency}"
+                                  if isinstance(cost_low, (int, float)) and isinstance(cost_high, (int, float))
+                                  else "unavailable")
             lines.append(
-                f"- {currency} estimated cost per priced matched lead: A {_display_amount(a_cost)}; B {_display_amount(b_cost)}; {costs.get('descriptive_cost_quality_readout', 'No cost-quality readout.') }"
+                f"- {currency} estimated cost per priced matched lead: A {_display_amount(a_cost)}; B {_display_amount(b_cost)}; A-minus-B cost interval {cost_interval_text}; {costs.get('descriptive_cost_quality_readout', 'No cost-quality readout.') }"
             )
         lines.append("")
     lines.extend(["## How to read this", "",
@@ -1085,8 +1110,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--min-labeled", type=int, default=20, help="minimum yes/no labels before a cohort is flagged as reaching the caution threshold (default: 20)")
     s.add_argument("--cost-bootstrap-reps", type=int, default=500, help="lead-cluster bootstrap replicates for reviewed cost intervals (0 disables; default: 500)")
     s.add_argument("--cost-bootstrap-seed", type=int, default=42, help="seed for reproducible reviewed cost intervals (default: 42)")
-    s.add_argument("--paired-bootstrap-reps", type=int, default=500, help="lead-pair bootstrap replicates for paired source rate differences (0 disables; default: 500)")
-    s.add_argument("--paired-bootstrap-seed", type=int, default=42, help="seed for reproducible paired source intervals (default: 42)")
+    s.add_argument("--paired-bootstrap-reps", type=int, default=500, help="lead-pair bootstrap replicates for paired source quality and cost differences (0 disables; default: 500)")
+    s.add_argument("--paired-bootstrap-seed", type=int, default=42, help="seed for reproducible paired source quality and cost intervals (default: 42)")
     s.add_argument("--markdown-out", default="", help="optional Markdown decision brief output path")
     sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
     sm.add_argument("source", help="prepared human-review CSV from `prepare`")
