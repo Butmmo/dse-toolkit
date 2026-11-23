@@ -190,6 +190,7 @@ def import_candidates(cfg: dict, need: int, render: bool, fresh) -> list[dict]:
     if not rows:
         log(f"  No file in engines/{slug}/imports/. Export a list from your own Clay, Apollo or HubSpot account and save the CSV there (check it with: python dse.py import {slug}).")
         return []
+    validate_waterfall_outreach_rows(slug, rows)
     best: dict[str, dict] = {}
     for r in rows:                                          # one account per website: keep the contact with the best score
         if not r["website"]:
@@ -213,6 +214,49 @@ def import_candidates(cfg: dict, need: int, render: bool, fresh) -> list[dict]:
         r["check_notes"] = "; ".join(x for x in (r.get("icp_why", ""), r.get("check_notes", "")) if x)
     checked.sort(key=lambda r: -(int(r.get("icp") or 0) + min(int(r.get("gap_count") or 0), 3)))
     return checked[:need]
+
+
+def validate_waterfall_outreach_rows(slug: str, candidates: list[dict]) -> None:
+    """Stop paired A/B experiment leads from entering Engine send lists without single-variant assignment."""
+    tagged = []
+    for row in candidates:
+        experiment = (row.get("waterfall_experiment_id") or "").strip()
+        variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        field = (row.get("waterfall_experiment_field") or "").strip()
+        if not experiment:
+            continue
+        if not lead_id or variant not in {"A", "B"}:
+            raise ValueError("Waterfall experiment rows need a stable lead ID and variant A or B before Engine outreach.")
+        assignment_id = (row.get("waterfall_outreach_assignment_experiment_id") or "").strip()
+        assignment_variant = (row.get("waterfall_outreach_assignment_variant") or "").strip().upper()
+        assignment_seed = (row.get("waterfall_outreach_assignment_seed") or "").strip()
+        if assignment_id and (assignment_id != experiment or assignment_variant != variant or not assignment_seed):
+            raise ValueError(f"Experiment lead {lead_id!r} has conflicting outreach assignment metadata; regenerate it with `eval-enrichment assign-outreach`.")
+        if not assignment_id and (assignment_variant or assignment_seed):
+            raise ValueError(f"Experiment lead {lead_id!r} has incomplete outreach assignment metadata; regenerate it with `eval-enrichment assign-outreach`.")
+        tagged.append((experiment, field, lead_id, variant))
+    if not tagged:
+        return
+
+    exposures: dict[tuple[str, str, str], set[str]] = {}
+    for experiment, field, lead_id, variant in tagged:
+        exposures.setdefault((experiment, field, lead_id), set()).add(variant)
+    for p in (engine_dir(slug) / "send-lists").rglob("*.csv"):
+        try:
+            for row in read_csv(p):
+                experiment = (row.get("waterfall_experiment_id") or "").strip()
+                variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+                lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+                field = (row.get("waterfall_experiment_field") or "").strip()
+                if experiment and lead_id and variant in {"A", "B"}:
+                    exposures.setdefault((experiment, field, lead_id), set()).add(variant)
+        except Exception:
+            continue
+    conflicts = [(key, variants) for key, variants in exposures.items() if len(variants) > 1]
+    if conflicts:
+        (experiment, _field, lead_id), variants = conflicts[0]
+        raise ValueError(f"Blocked Engine list: experiment {experiment!r} would put lead {lead_id!r} in both variants {', '.join(sorted(variants))}. Keep paired enrichment outputs outside engines/{slug}/imports and import only the `*-outreach-assigned.csv` produced by `python dse.py eval-enrichment assign-outreach <paired.csv> --experiment-id {experiment}`.")
 
 
 def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | None = None, render: bool = True) -> list[str]:
