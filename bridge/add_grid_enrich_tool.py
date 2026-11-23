@@ -13,11 +13,12 @@ tools["dse.grid_enrich"] = {
         {"opt": "--engine", "field": "engine"}, {"opt": "--limit", "field": "limit"},
         {"opt": "--output-detail", "field": "output_detail"}, {"flag": "--overwrite", "field": "overwrite"},
         {"opt": "--icp", "field": "icp"}, {"opt": "--waterfall-config", "field": "waterfall_config"},
+        {"opt": "--max-provider-spend", "field": "max_provider_spend"}, {"flag": "--allow-unknown-provider-cost", "field": "allow_unknown_provider_cost"},
         {"flag": "--dry-run-providers", "field": "dry_run_providers"}, {"opt": "--path", "field": "path"},
         {"opt": "--profile", "field": "profile"}, {"opt": "--decision-maker", "field": "decision_maker"},
         {"opt": "--legal-form", "field": "legal_form"}, {"opt": "--decision-role", "field": "decision_role"},
         {"opt": "--custom-role", "field": "custom_role"}, {"opt": "--search-provider", "field": "search_provider"},
-        {"opt": "--search-budget", "field": "search_budget"}, {"opt": "--minimum-identity-score", "field": "minimum_identity_score"},
+        {"opt": "--search-budget", "field": "search_budget"}, {"opt": "--brave-cost-per-1000", "field": "brave_cost_per_1000"}, {"opt": "--brave-max-spend", "field": "brave_max_spend"}, {"opt": "--minimum-identity-score", "field": "minimum_identity_score"},
         {"flag": "--no-ai", "field": "no_ai"}],
     "fields": [
         {"name": "grid", "label": "Grid to enrich", "type": "text", "required": True, "max": 120},
@@ -32,6 +33,8 @@ tools["dse.grid_enrich"] = {
         {"name": "overwrite", "label": "Replace existing result values", "type": "bool", "default": False},
         {"name": "icp", "label": "Website words to match (optional)", "type": "text", "required": False, "max": 120},
         {"name": "waterfall_config", "label": "Optional provider waterfall JSON from this PC", "type": "file", "required": False, "glob": "enrich-waterfalls/*.json"},
+        {"name": "max_provider_spend", "label": "Approved ceiling for known configured-provider charges (required for live paid calls)", "type": "float", "required": False, "min": 0, "max": 10000000},
+        {"name": "allow_unknown_provider_cost", "label": "Allow configured providers with unknown prices (charges can exceed numeric estimate)", "type": "bool", "default": False},
         {"name": "dry_run_providers", "label": "Project provider calls without making them", "type": "bool", "default": False},
         {"name": "path", "label": "Herald path focus (General uses the selected Engine)", "type": "choice", "required": False, "default": "any", "choices": [
             {"value": "any", "label": "General / use Engine path"}, {"value": "smb", "label": "SMB Optimization"}, {"value": "search", "label": "Search and AI visibility"},
@@ -52,11 +55,13 @@ tools["dse.grid_enrich"] = {
         {"name": "search_provider", "label": "Herald search provider", "type": "choice", "required": False, "default": "duckduckgo", "choices": [
             {"value": "duckduckgo", "label": "DuckDuckGo"}, {"value": "brave", "label": "Brave API (PC key; may charge)"}]},
         {"name": "search_budget", "label": "Public search queries per row", "type": "int", "min": 0, "max": 30, "default": 12},
+        {"name": "brave_cost_per_1000", "label": "USD cost per 1,000 Brave requests (optional; Herald + Brave estimates only)", "type": "float", "required": False, "min": 0, "max": 100000},
+        {"name": "brave_max_spend", "label": "Maximum Brave spend to approve for this run in USD (required if Brave searches may run)", "type": "float", "required": False, "min": 0, "max": 100000},
         {"name": "minimum_identity_score", "label": "Minimum identity match score (heuristic 0–1)", "type": "float", "min": 0, "max": 1, "default": 0},
         {"name": "no_ai", "label": "Only collect evidence (do not draft with local AI)", "type": "bool", "default": False}
     ],
     "timeout_min": 240, "outputs": [], "category": "enrich", "source": "The selected Ledger grid and the public sources of the chosen lane",
-    "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances.",
+    "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances. Brave grid runs require a declared rate and user-approved maximum when searches may run; the estimate is checked before work and the request cap spans saved batches. The estimate is not a provider invoice.",
     "outputs_summary": ["Enriches existing grid rows in place", "Creates/reuses columns for the selected output fields", "Preserves original row inputs; existing result cells are kept unless replace is selected", "Website, Herald and Presence lanes"]
 }
 path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

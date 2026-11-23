@@ -24,6 +24,7 @@ from __future__ import annotations
 import datetime as dt
 import html as htmllib
 import json
+import math
 import re
 import socket
 import subprocess
@@ -340,7 +341,7 @@ def run_field_waterfalls(out: dict, fields: dict, company: str, contact_name: st
             continue
         if field_name == "person_identity" and out.get("people"):
             continue
-        budget = cfg.setdefault("budget", ep.Budget(cfg["max_provider_calls"]))
+        budget = cfg.setdefault("budget", ep.Budget(cfg["max_provider_calls"], cfg.get("spend_approval")))
         providers = cfg["provider_configs"]
         names = contact_name.split(maxsplit=1)
         identity = {"domain": out.get("domain", ""), "website": "https://" + out.get("domain", "") if out.get("domain") else "",
@@ -848,6 +849,51 @@ def find_columns(headers: list[str]) -> dict[str, str]:
     return importer.map_headers(headers)
 
 
+def _provider_spend(email_providers: list[dict], email_calls: int, field_configs: dict, leads: int,
+                    maximum: float | None, allow_unknown: bool, dry_run: bool) -> tuple[dict, ep.SpendApproval | None]:
+    projection = wf.spend_projection(email_providers, email_calls, field_configs, leads)
+    if dry_run or not projection["possible_calls"]:
+        return projection, None
+    if projection["has_unknown_cost"] and not allow_unknown:
+        names = ", ".join(projection["unknown_providers"])
+        raise ValueError(f"Configured provider price is unknown for {names}. Review that provider's pricing and pass --allow-unknown-provider-cost to acknowledge charges outside the numeric estimate.")
+    if maximum is None:
+        currency = projection["currency"] or "known-price currency"
+        raise ValueError(f"Configured providers may run. Review the estimate ({projection['estimate']:.4f} {currency} for up to {projection['possible_calls']} calls) and approve it with --max-provider-spend.")
+    if maximum is not None and maximum < projection["estimate"] - 1e-9:
+        raise ValueError(f"Configured-provider estimate is {projection['estimate']:.4f} {projection['currency']}, above the approved maximum of {maximum:.4f} {projection['currency']}. Lower provider-call caps or raise the approved maximum.")
+    approval = ep.SpendApproval(maximum, projection["currency"], allow_unknown)
+    return projection, approval
+
+
+def provider_spend_preview(waterfall_config_path: str, lead_count: int, provider: str = "",
+                           budget_override: int | None = None) -> str:
+    """Read-only price/call-cap estimate; opens no lead list and makes no network requests."""
+    if not 1 <= lead_count <= 2000:
+        raise ValueError("Preview between 1 and 2000 leads.")
+    config = wf.load_config(waterfall_config_path, provider, budget_override)
+    providers = wf.provider_configs(config, dry_run=True) if config["providers"] else []
+    fields = wf.load_field_waterfalls(waterfall_config_path, budget_override, dry_run=True)
+    projection = wf.spend_projection(providers, config["max_provider_calls"], fields, lead_count)
+    by_field = {}
+    if providers:
+        by_field["email"] = min(config["max_provider_calls"], lead_count * len(providers))
+    for field_name, field_config in fields.items():
+        rung_providers = field_config.get("provider_configs", [])
+        by_field[field_name] = min(field_config["max_provider_calls"], lead_count * len(rung_providers))
+    result = {"type": "configured_provider_spend_preview", "lead_count": lead_count,
+              "maximum_possible_provider_calls": projection["possible_calls"],
+              "maximum_estimated_spend": round(projection["estimate"], 8),
+              "currency": projection["currency"] or None,
+              "calls_by_field": by_field,
+              "unknown_price_providers": projection["unknown_providers"],
+              "unknown_price_acknowledgment_required": projection["has_unknown_cost"],
+              "numeric_spend_approval_required": bool(projection["possible_calls"]),
+              "pricing_basis": "local configured cost_per_call; conservative maximum assumes the most expensive configured rung for every possible attempt",
+              "invoice": False, "network_requests": 0, "lead_data_read": False, "files_written": 0}
+    return json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+
+
 def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], render: bool, max_rows: int, today: dt.date | None = None, pause: float = PAGE_PAUSE,
                 provider: dict | None = None, budget: "ep.Budget | None" = None, providers: list[dict] | None = None,
                 waterfall_config: dict | None = None, dry_run: bool = False, field_waterfalls: dict | None = None) -> tuple[list[dict], dict]:
@@ -879,6 +925,11 @@ def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], rend
                 site = blank(dom)
                 site["status"] = f"error: {type(e).__name__}"
             seen_domains[dom] = site
+            for field_cfg in (field_waterfalls or {}).values():
+                field_budget = field_cfg.get("budget")
+                for warning in getattr(field_budget, "accounting_warnings", []):
+                    if warning not in stats["provider_notes"]:
+                        stats["provider_notes"].append(warning)
             stats["provider_eligible"] += bool(site.get("provider_eligible"))
             for rung in (site.get("waterfall_metrics") or {}).get("providers", []):
                 name = rung.get("rung", "")
@@ -959,6 +1010,8 @@ def summary(stats: dict, rows: list[dict], name: str, budget: "ep.Budget | None"
             lines.append(f"- {field_name}: {details}.")
     for n_ in stats.get("provider_notes", []):
         lines.append(f"- Note: {n_}")
+    for warning in getattr(budget, "accounting_warnings", []) if budget is not None else []:
+        lines.append(f"- Usage-record warning: {warning}")
     if stats["steps"]:
         lines.append("- Waterfall: " + ", ".join(f"{k} {v}" for k, v in stats["steps"].items()) + " (leads that used each step)")
     if stats["failed"]:
@@ -985,7 +1038,8 @@ def import_ready(rows: list[dict], headers: list[str]) -> list[dict]:
 
 
 def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, render: bool = True, today: dt.date | None = None, pause: float = PAGE_PAUSE,
-                provider: str = "", budget: int | None = None, waterfall_config_path: str = "", dry_run: bool = False) -> str:
+                provider: str = "", budget: int | None = None, waterfall_config_path: str = "", dry_run: bool = False,
+                max_provider_spend: float | None = None, allow_unknown_provider_cost: bool = False) -> str:
     p = Path(src)
     if not p.is_absolute():
         p = (ROOT / src) if (ROOT / src).exists() else p
@@ -1007,6 +1061,14 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
         bud = ep.Budget(config["max_provider_calls"])
     elif dry_run and not any(item.get("provider_configs") for item in field_configs.values()):
         raise ValueError("A dry run needs an ordered provider config or --provider.")
+    if max_provider_spend is not None and (not math.isfinite(max_provider_spend) or not 0 <= max_provider_spend <= 10000000):
+        raise ValueError("--max-provider-spend must be between 0 and 10000000.")
+    projection, approval = _provider_spend(provs, config["max_provider_calls"], field_configs,
+        min(len(rows), max_rows), max_provider_spend, allow_unknown_provider_cost, dry_run)
+    if bud:
+        bud.spend_approval = approval
+    for field_config in field_configs.values():
+        field_config["spend_approval"] = approval
     out_rows, stats = enrich_rows(rows, headers, terms, render, max_rows, today, pause, None, bud, provs, config, dry_run, field_configs)
     LISTS.mkdir(exist_ok=True)
     stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
@@ -1024,6 +1086,11 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
         dest = imp / f"enriched-{stem}.csv"
         write_csv(dest, import_ready(out_rows, headers))
         extra = f"\nImport-ready copy for your engine: {dest.relative_to(ROOT).as_posix()} (check it with: python dse.py import {engine})"
+    if projection["possible_calls"]:
+        qualifier = "; includes unknown-priced providers" if projection["has_unknown_cost"] else ""
+        text += f"\nConfigured-provider spend estimate: up to {projection['estimate']:.4f} {projection['currency'] or 'known-price currency'} across {projection['possible_calls']} calls{qualifier}. This is an estimate from your local configuration, not a provider invoice."
+        if max_provider_spend is not None:
+            text += f" Approved ceiling: {max_provider_spend:.4f} {projection['currency'] or 'known-price currency'}."
     return text + f"\nSaved: {out_csv.relative_to(ROOT).as_posix()} (and the summary next to it).{extra}"
 
 
@@ -1038,13 +1105,20 @@ def result_json(s: dict, sc: int | None = None) -> str:
 
 
 def card(website: str, icp: str = "", render: bool = True, provider: str = "", budget: int | None = 1,
-         result_line: bool = False, waterfall_config_path: str = "", dry_run: bool = False) -> str:
+         result_line: bool = False, waterfall_config_path: str = "", dry_run: bool = False,
+         max_provider_spend: float | None = None, allow_unknown_provider_cost: bool = False) -> str:
     config = wf.load_config(waterfall_config_path, provider, budget)
     field_configs = wf.load_field_waterfalls(waterfall_config_path, budget, dry_run)
     provs = wf.provider_configs(config, dry_run) if config["providers"] else []
     bud = ep.Budget(config["max_provider_calls"]) if provs else None
     if dry_run and not provs and not any(item.get("provider_configs") for item in field_configs.values()):
         raise ValueError("A dry run needs an ordered provider config or --provider.")
+    projection, approval = _provider_spend(provs, config["max_provider_calls"], field_configs, 1,
+        max_provider_spend, allow_unknown_provider_cost, dry_run)
+    if bud:
+        bud.spend_approval = approval
+    for field_config in field_configs.values():
+        field_config["spend_approval"] = approval
     s = enrich_site(website, [t.strip() for t in icp.split(",") if t.strip()], render, budget=bud,
                     providers=provs, waterfall_config=config, dry_run=dry_run, field_waterfalls=field_configs)
     sc, why = score(s)
@@ -1057,6 +1131,10 @@ def card(website: str, icp: str = "", render: bool = True, provider: str = "", b
         L.append("Email waterfall: " + json.dumps(s["waterfall_metrics"], ensure_ascii=False, separators=(",", ":")))
     if s.get("field_waterfall_metrics"):
         L.append("Other field waterfalls: " + json.dumps(s["field_waterfall_metrics"], ensure_ascii=False, separators=(",", ":")))
+    if bud is not None:
+        L.extend(f"Usage-record warning: {warning}" for warning in getattr(bud, "accounting_warnings", []))
+    for field_cfg in field_configs.values():
+        L.extend(f"Usage-record warning: {warning}" for warning in getattr(field_cfg.get("budget"), "accounting_warnings", []))
     for e in s["emails"]:
         L.append(f"- Email ({e['kind']}): {e['email']}   from {e['source']}")
     if s["guesses"]:

@@ -1,0 +1,102 @@
+{
+  "schema": "dbi.enrichment-provider-catalog.v1",
+  "reviewed_on": "2026-11-23",
+  "providers": [
+    {
+      "id": "hunter",
+      "name": "Hunter",
+      "category": "contact_data",
+      "fields": ["email"],
+      "integration": "ready_byok",
+      "access": "self_serve_api_key",
+      "pricing_url": "https://hunter.io/pricing/",
+      "docs_url": "https://hunter.io/api-documentation/v2",
+      "data_policy_url": "https://hunter.io/privacy-policy",
+      "notes": "A ready-made optional email-domain adapter exists. Per-endpoint credits and billability rules must be checked against the current plan."
+    },
+    {
+      "id": "brave_search",
+      "name": "Brave Search API",
+      "category": "web_search_signals",
+      "fields": ["company_signals", "person_signals", "news", "jobs", "product_research"],
+      "integration": "existing_search_adapter",
+      "access": "self_serve_api_key",
+      "pricing_url": "https://brave.com/search/api/",
+      "docs_url": "https://api.search.brave.com/app/documentation",
+      "data_policy_url": "https://brave.com/search/api/",
+      "notes": "Already available as an opt-in search provider. Price and monthly credits can change; review before setting a cost estimate."
+    },
+    {
+      "id": "serpapi",
+      "name": "SerpApi",
+      "category": "web_search_signals",
+      "fields": ["company_signals", "person_signals", "news", "jobs", "product_research"],
+      "integration": "candidate",
+      "access": "self_serve_api_key",
+      "pricing_url": "https://serpapi.com/pricing",
+      "docs_url": "https://serpapi.com/search-api",
+      "data_policy_url": "https://serpapi.com/privacy",
+      "notes": "Candidate search adapter. Implement only after response mapping, geographic coverage, retention terms, and per-search economics are reviewed."
+    },
+    {
+      "id": "bright_data_serp",
+      "name": "Bright Data SERP API",
+      "category": "web_search_signals",
+      "fields": ["company_signals", "person_signals", "news", "jobs", "product_research"],
+      "integration": "candidate",
+      "access": "account_and_api_key",
+      "pricing_url": "https://brightdata.com/products/serp-api",
+      "docs_url": "https://docs.brightdata.com/scraping-automation/serp-api/overview",
+      "data_policy_url": "https://brightdata.com/legal/privacy-policy",
+      "notes": "Candidate search adapter. Check current plan pricing, successful-request billing details, permitted use, and geographic coverage."
+    },
+    {
+      "id": "people_data_labs",
+      "name": "People Data Labs",
+      "category": "person_and_company_data",
+      "fields": ["person_identity", "firmographics", "employment_history", "contact_data"],
+      "integration": "candidate",
+      "access": "self_serve_or_sales",
+      "pricing_url": "https://www.peopledatalabs.com/pricing/person",
+      "docs_url": "https://docs.peopledatalabs.com/docs/",
+      "data_policy_url": "https://www.peopledatalabs.com/privacy-policy",
+      "notes": "Candidate identity and firmographic provider. Confirm plan eligibility, credit deductions, coverage, and data-use terms for the intended workflow."
+    },
+    {
+      "id": "google_custom_search_json",
+      "name": "Google Custom Search JSON API",
+      "category": "web_search_signals",
+      "fields": ["web_search"],
+      "integration": "closed_to_new_customers",
+      "access": "existing_customers_only",
+      "pricing_url": "https://developers.google.com/custom-search/v1/overview",
+      "docs_url": "https://developers.google.com/custom-search/v1/overview",
+      "data_policy_url": "https://developers.google.com/custom-search/v1/overview",
+      "notes": "Do not select for a new integration: Google states the API is closed to new customers and existing access is time-limited."
+    },
+    {
+      "id": "bing_search_apis",
+      "name": "Microsoft Bing Search APIs",
+      "category": "web_search_signals",
+      "fields": ["web_search"],
+      "integration": "retired",
+      "access": "unavailable",
+      "pricing_url": "https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement",
+      "docs_url": "https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement",
+      "data_policy_url": "https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement",
+      "notes": "Retired and decommissioned; do not build a new adapter."
+    },
+    {
+      "id": "linkedin_marketing_api",
+      "name": "LinkedIn Marketing API",
+      "category": "social_signals",
+      "fields": ["social_profile", "social_activity"],
+      "integration": "restricted_for_prospecting",
+      "access": "approved_use_cases_only",
+      "pricing_url": "https://learn.microsoft.com/en-us/linkedin/marketing/restricted-use-cases?view=li-lms-2026-02",
+      "docs_url": "https://learn.microsoft.com/en-us/linkedin/marketing/restricted-use-cases?view=li-lms-2026-02",
+      "data_policy_url": "https://learn.microsoft.com/en-us/linkedin/marketing/restricted-use-cases?view=li-lms-2026-02",
+      "notes": "Do not use this API for sales prospecting or CRM lead enrichment. Any future social source requires a separate permitted-use and retention review."
+    }
+  ]
+}

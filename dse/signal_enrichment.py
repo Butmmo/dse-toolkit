@@ -23,6 +23,7 @@ from . import classification
 from . import path_signals
 from . import enrichment_profiles
 from . import field_results as fr
+from . import enrichment_usage as eu
 from .common import LISTS, ROOT
 
 USER_AGENT = "DFamociousHQ/1.0 (local user-requested business research)"
@@ -46,6 +47,7 @@ PRESENCE_HISTORY_DAYS = 180
 SOCIAL_DOMAINS = ("linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com")
 STOP = {"the", "and", "for", "with", "company", "business", "services", "service", "inc", "llc", "ltd", "co"}
 BRAVE_SEARCH_REQUESTS = 0
+BRAVE_USAGE_WARNINGS: list[str] = []
 
 
 class SearchProviderError(RuntimeError):
@@ -101,7 +103,27 @@ def _clean_url(url: str) -> str:
     return url if p.scheme in ("https", "http") and p.hostname else ""
 
 
-def search(query: str, limit: int = 2, provider: str = "duckduckgo") -> list[dict]:
+def _record_brave_usage(lane: str, outcome: str, cost_per_1000: float | None,
+                        status_code: int | None = None) -> None:
+    cfg = {"name": "brave_search"}
+    if cost_per_1000 is not None:
+        cfg.update({"cost_per_call": cost_per_1000 / 1000, "cost_currency": "USD",
+                    "cost_basis": "user_declared_price_per_1000_requests"})
+    warning = eu.record_call(cfg, lane, outcome, status_code)
+    if warning and warning not in BRAVE_USAGE_WARNINGS:
+        BRAVE_USAGE_WARNINGS.append(warning)
+
+
+def _brave_request_cap() -> int:
+    try:
+        cap = int(os.environ.get("DSE_BRAVE_SEARCH_QUERY_LIMIT", "150"))
+    except ValueError:
+        cap = 150
+    return max(0, min(1000, cap))
+
+
+def search(query: str, limit: int = 2, provider: str = "duckduckgo", lane: str = "herald_signals",
+           brave_cost_per_1000: float | None = None) -> list[dict]:
     """Fetch search snippets only; the selected provider is explicit and recorded."""
     global BRAVE_SEARCH_REQUESTS
     provider = (provider or "duckduckgo").strip().casefold()
@@ -111,11 +133,7 @@ def search(query: str, limit: int = 2, provider: str = "duckduckgo") -> list[dic
         api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
         if not api_key:
             raise SearchProviderError("Brave Search was selected, but BRAVE_SEARCH_API_KEY is not set on this PC.")
-        try:
-            request_limit = int(os.environ.get("DSE_BRAVE_SEARCH_QUERY_LIMIT", "150"))
-        except ValueError:
-            request_limit = 150
-        request_limit = max(1, min(1000, request_limit))
+        request_limit = _brave_request_cap()
         if BRAVE_SEARCH_REQUESTS >= request_limit:
             raise SearchProviderError(f"Brave Search reached this run's query cap ({request_limit}).")
         BRAVE_SEARCH_REQUESTS += 1
@@ -126,15 +144,29 @@ def search(query: str, limit: int = 2, provider: str = "duckduckgo") -> list[dic
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as response:
+                status_code = getattr(response, "status", None)
                 data = json.loads(response.read(1_500_000))
         except urllib.error.HTTPError as error:
+            _record_brave_usage(lane, "http_error", brave_cost_per_1000, error.code)
             raise SearchProviderError(f"Brave Search API returned HTTP {error.code}.") from None
         except (urllib.error.URLError, TimeoutError):
+            _record_brave_usage(lane, "request_error", brave_cost_per_1000)
             raise SearchProviderError("Brave Search API could not be reached from this PC.") from None
         except (ValueError, TypeError):
+            _record_brave_usage(lane, "invalid_response", brave_cost_per_1000, locals().get("status_code"))
             raise SearchProviderError("Brave Search API returned an unreadable response.") from None
+        except Exception as error:
+            _record_brave_usage(lane, "request_error", brave_cost_per_1000)
+            raise SearchProviderError(f"Brave Search API request failed ({type(error).__name__}).") from None
+        web_payload = data.get("web") if isinstance(data, dict) else None
+        if not isinstance(data, dict) or (web_payload is not None and not isinstance(web_payload, dict)) or (isinstance(web_payload, dict) and not isinstance(web_payload.get("results", []), list)):
+            _record_brave_usage(lane, "invalid_response", brave_cost_per_1000, status_code)
+            raise SearchProviderError("Brave Search API returned an unreadable response.")
+        _record_brave_usage(lane, "success", brave_cost_per_1000, status_code)
         out, seen = [], set()
         for item in (data.get("web") or {}).get("results", []):
+            if not isinstance(item, dict):
+                continue
             target = _clean_url(item.get("url", ""))
             title = re.sub(r"\s+", " ", str(item.get("title", ""))).strip()
             snippet = re.sub(r"\s+", " ", str(item.get("description", ""))).strip()
@@ -358,7 +390,7 @@ def decision_maker_queries_for(row: dict, decision_maker: str = "any", custom_ro
     return [("decision_maker_profile", profile_query[:300]), ("decision_maker_signal", signal_query[:300])]
 
 
-def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any", search_budget: int = 12, minimum_identity_score: float = 0.0, metrics_out: list[dict] | None = None) -> tuple[list[dict], list[str]]:
+def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any", search_budget: int = 12, minimum_identity_score: float = 0.0, metrics_out: list[dict] | None = None, brave_cost_per_1000: float | None = None) -> tuple[list[dict], list[str]]:
     company = business_profiles.row_value(row, "business", "company", "name", "current_company", "website", "domain")
     searched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     terms = _tokens(company)
@@ -388,15 +420,19 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             metric["status"] = "skipped_budget"
             continue
         metric["attempted"], metric["status"] = 1, "running"
+        calls_before = BRAVE_SEARCH_REQUESTS
         try:
-            results = search(query, provider=search_provider)
-            metric["search_calls"], metric["results_returned"] = 1, len(results)
+            results = search(query, provider=search_provider, lane="herald_signals", brave_cost_per_1000=brave_cost_per_1000)
+            metric["search_calls"] = (BRAVE_SEARCH_REQUESTS - calls_before) if search_provider == "brave" else 1
+            metric["results_returned"] = len(results)
         except SearchProviderError as e:
+            metric["search_calls"] = BRAVE_SEARCH_REQUESTS - calls_before if search_provider == "brave" else 0
             metric["errors"], metric["status"] = 1, "error"
             if str(e) not in errors:
                 errors.append(str(e))
             continue
         except Exception as e:
+            metric["search_calls"] = BRAVE_SEARCH_REQUESTS - calls_before if search_provider == "brave" else 0
             metric["errors"], metric["status"] = 1, "error"
             errors.append(type(e).__name__)
             continue
@@ -528,9 +564,15 @@ def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, min
     return found[:max_signals], errors
 
 
-def _waterfall_metrics(metrics: list[dict], budget: int, minimum_identity_score: float, provider: str) -> dict:
+def _waterfall_metrics(metrics: list[dict], budget: int, minimum_identity_score: float, provider: str,
+                       brave_cost_per_1000: float | None = None) -> dict:
+    calls = sum(int(x.get("search_calls", 0)) for x in metrics)
+    amount = (float(brave_cost_per_1000) * calls / 1000) if provider == "brave" and brave_cost_per_1000 is not None else 0.0 if provider == "duckduckgo" else None
     return {"schema": "dbi.search-waterfall.v1", "budget": budget, "minimum_identity_score": minimum_identity_score,
             "provider": provider, "total_search_calls": sum(int(x.get("search_calls", 0)) for x in metrics),
+            "cost_estimate": {"amount": amount, "currency": "USD" if amount is not None else None,
+                              "basis": "user-declared price per 1,000 requests" if provider == "brave" and amount is not None else "no paid search provider" if provider == "duckduckgo" else "unknown",
+                              "estimated": provider == "brave" and amount is not None},
             "total_results_returned": sum(int(x.get("results_returned", 0)) for x in metrics),
             "total_retained": sum(int(x.get("retained", 0)) for x in metrics),
             "total_rejected": sum(int(x.get("identity_rejected", 0)) + int(x.get("role_rejected", 0)) + int(x.get("score_rejected", 0)) for x in metrics),
@@ -577,7 +619,8 @@ def _attach_profile_results(encoded: str, profile_record: dict, signals: list[di
 
 
 def build_herald_field_results(row: dict, signals: list[dict], search_provider: str, search_metrics: list[dict] | None = None,
-                               search_budget: int = 12, minimum_identity_score: float = 0.0) -> str:
+                               search_budget: int = 12, minimum_identity_score: float = 0.0,
+                               brave_cost_per_1000: float | None = None) -> str:
     """Map research and reviewed-draft outputs to the shared field-result contract."""
     results = []
     now = row.get("herald_checked_at", "")
@@ -603,7 +646,7 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                 cost_quantity=0 if provider_fee is not None else None, cost_estimated=False if provider_fee is not None else None,
                 miss_reason="Search result is a research candidate, not a verified event."))
         relevant_rungs = [m for m in search_metrics if (str(m.get("rung", "")).startswith("decision_maker") == (subject == "person"))]
-        metrics = _waterfall_metrics(relevant_rungs, search_budget, minimum_identity_score, search_provider)
+        metrics = _waterfall_metrics(relevant_rungs, search_budget, minimum_identity_score, search_provider, brave_cost_per_1000)
         for result in results:
             if result.get("field") == field:
                 result.setdefault("metadata", {})["search_waterfall"] = metrics
@@ -1154,7 +1197,9 @@ def _path_outcome_observations(row: dict, signals: list[dict], path_evidence: li
 
 def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool = True,
                 business_profile: str = "any", decision_maker: str = "any", legal_form: str = "any", decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo", path_key: str = "any",
-                search_budget: int = 12, minimum_identity_score: float = 0.0, enrichment_profile: str = "") -> str:
+                search_budget: int = 12, minimum_identity_score: float = 0.0, enrichment_profile: str = "",
+                brave_cost_per_1000: float | None = None, brave_max_spend: float | None = None,
+                announce_cost_ceiling: bool = True) -> str:
     p = Path(source)
     if not p.is_absolute():
         p = (ROOT / source) if (ROOT / source).is_file() else p
@@ -1190,6 +1235,25 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         raise ValueError("--search-budget must be between 0 and 30 queries per lead.")
     if not 0 <= minimum_identity_score <= 1:
         raise ValueError("--minimum-identity-score must be between 0 and 1.")
+    if brave_cost_per_1000 is not None and (not isinstance(brave_cost_per_1000, (int, float)) or not 0 <= brave_cost_per_1000 <= 100000):
+        raise ValueError("--brave-cost-per-1000 must be between 0 and 100000 USD.")
+    if brave_max_spend is not None and (not isinstance(brave_max_spend, (int, float)) or not 0 <= brave_max_spend <= 100000):
+        raise ValueError("--brave-max-spend must be between 0 and 100000 USD.")
+    global BRAVE_SEARCH_REQUESTS
+    BRAVE_SEARCH_REQUESTS = 0
+    BRAVE_USAGE_WARNINGS.clear()
+    run_max_queries = None
+    maximum_cost = None
+    if search_provider == "brave":
+        run_max_queries = min(search_budget * min(len(rows), max_rows), _brave_request_cap())
+        maximum_cost = (run_max_queries * brave_cost_per_1000 / 1000) if brave_cost_per_1000 is not None else None
+        if run_max_queries and (brave_cost_per_1000 is None or brave_max_spend is None):
+            raise ValueError("Brave searches need both your current --brave-cost-per-1000 and --brave-max-spend approval. Use DuckDuckGo if you cannot estimate or approve a spend ceiling.")
+        if maximum_cost is not None and brave_max_spend is not None and maximum_cost > brave_max_spend + 1e-9:
+            raise ValueError(f"Brave run estimate is {maximum_cost:.4f} USD, above your approved maximum of {brave_max_spend:.4f} USD. Lower the request budget or raise the approved maximum.")
+        cost_label = f"up to {maximum_cost:.4f} USD estimated at your declared rate" if maximum_cost is not None else "monetary cost unknown (no per-1,000 request rate supplied)"
+        if announce_cost_ceiling and run_max_queries:
+            print(f"Brave spend ceiling approved: up to {run_max_queries} requests; {cost_label}; user maximum {brave_max_spend:.4f} USD.", file=sys.stderr, flush=True)
     selected_path = path_signals.known_path(path_key)
     if engine:
         from . import engines
@@ -1248,10 +1312,11 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         query_metrics = []
         signals, row_errors = gather(row, business_profile=business_profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role, custom_role=custom_role,
                                      search_provider=search_provider, path_key=selected_path or "any", search_budget=search_budget,
-                                     minimum_identity_score=minimum_identity_score, metrics_out=query_metrics)
+                                     minimum_identity_score=minimum_identity_score, metrics_out=query_metrics,
+                                     brave_cost_per_1000=brave_cost_per_1000)
         if profile_record:
             _mark_profile_freshness(signals, profile_freshness_days)
-        waterfall = _waterfall_metrics(query_metrics, search_budget, minimum_identity_score, search_provider)
+        waterfall = _waterfall_metrics(query_metrics, search_budget, minimum_identity_score, search_provider, brave_cost_per_1000)
         if profile_record:
             waterfall["enrichment_profile"] = profile_record
         row["herald_search_waterfall"] = json.dumps(waterfall, ensure_ascii=False, separators=(",", ":"))
@@ -1355,7 +1420,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
                 if row.get("dse_path_ai_advice_status") == "awaiting_local_review":
                     row["dse_path_ai_advice_status"] = "local_model_error"
                 errors.append(type(e).__name__)
-        result_contract = build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score)
+        result_contract = build_herald_field_results(row, signals, search_provider, query_metrics, search_budget, minimum_identity_score,
+                                                     brave_cost_per_1000)
         result_contract = _attach_profile_results(result_contract, profile_record, signals)
         row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)
         out.append(row)
@@ -1391,6 +1457,15 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
               f"- New source links: {sum(len((r.get('herald_new_source_urls') or '').splitlines()) for r in processed)}; changed source records: {sum(len((r.get('herald_changed_source_urls') or '').splitlines()) for r in processed)}; previously seen links not returned in complete checks: {sum(len((r.get('herald_not_returned_urls') or '').splitlines()) for r in processed)}",
               f"- Local AI drafts ready for review: {drafted}", f"- Local model: {model or 'not used / unavailable'}", "",
               "## Review before use", "", "Search snippets are leads for human review, not verified facts. Open the linked source before using a claim in outreach. Nothing was sent.", ""]
+    if search_provider == "brave":
+        actual_estimate = (BRAVE_SEARCH_REQUESTS * brave_cost_per_1000 / 1000) if brave_cost_per_1000 is not None else None
+        report.insert(4, f"- Brave request cost estimate: {actual_estimate:.4f} USD at your declared per-1,000 rate" if actual_estimate is not None else "- Brave request cost estimate: unknown; no per-1,000 request rate was supplied")
+        ceiling = f"up to {maximum_cost:.4f} USD estimated" if maximum_cost is not None else "monetary ceiling unknown"
+        report.insert(5, f"- Brave run request ceiling: {run_max_queries} queries; {ceiling} (provider-side account limits may be lower)")
+        if brave_max_spend is not None:
+            report.insert(6, f"- User-approved Brave maximum: {brave_max_spend:.4f} USD (approval compares declared-rate estimate, not invoice billing)")
+        for warning in BRAVE_USAGE_WARNINGS:
+            report.append(f"Usage-record warning: {warning}")
     if errors:
         report += ["Search/model errors: " + ", ".join(errors[:12]), ""]
     try:

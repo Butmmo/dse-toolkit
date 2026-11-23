@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -29,6 +30,7 @@ from pathlib import Path
 import requests
 
 from .common import DATA, ROOT
+from . import enrichment_usage as eu
 
 PROVIDERS = ROOT / "enrich-providers"
 EXAMPLES = Path(__file__).with_name("provider_examples")
@@ -85,6 +87,26 @@ def describe() -> str:
     return "\n".join(lines)
 
 
+def describe_catalog() -> str:
+    """Show provider access and integration status without implying a provider is enabled."""
+    path = Path(__file__).with_name("enrichment_provider_catalog.json")
+    try:
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "Provider catalog is unavailable or invalid."
+    lines = [f"Paid enrichment provider catalog (reviewed {catalog.get('reviewed_on', 'date unknown')}):",
+             "Catalog entries do not enable a provider or make a paid request."]
+    for item in catalog.get("providers", []):
+        if not isinstance(item, dict):
+            continue
+        lines.append(f"- {item.get('name', item.get('id', 'Provider'))} [{item.get('integration', 'status unknown')}] — {item.get('category', 'category unknown')}; access: {item.get('access', 'check provider')}.")
+        if item.get("notes"):
+            lines.append(f"  {item['notes']}")
+        if item.get("pricing_url"):
+            lines.append(f"  Pricing/terms: {item['pricing_url']}")
+    return "\n".join(lines)
+
+
 def add_provider(name: str) -> str:
     if not NAME.match(name or ""):
         raise ValueError("A provider name is lower-case letters, digits, dash or underscore.")
@@ -130,7 +152,7 @@ def load(name: str, require_key: bool = True) -> dict:
             price = float(cfg["cost_per_call"])
         except (TypeError, ValueError):
             raise ProviderError(f"{p.name}: cost_per_call must be a non-negative number.") from None
-        if price < 0 or not re.fullmatch(r"[A-Z]{3}", str(cfg.get("cost_currency", ""))):
+        if not math.isfinite(price) or price < 0 or not re.fullmatch(r"[A-Z]{3}", str(cfg.get("cost_currency", ""))):
             raise ProviderError(f"{p.name}: a price needs non-negative cost_per_call and a three-letter cost_currency.")
     return cfg
 
@@ -146,11 +168,34 @@ def dig(obj, path: str):
     return obj
 
 
+class SpendApproval:
+    """Run-wide estimate guard. Reserves configured estimates before each paid request."""
+
+    def __init__(self, maximum: float | None, currency: str, allow_unknown: bool = False):
+        self.maximum, self.currency, self.allow_unknown = maximum, currency, allow_unknown
+        self.reserved = 0.0
+
+    def reserve(self, cfg: dict) -> None:
+        raw = cfg.get("cost_per_call")
+        if raw is None:
+            if not self.allow_unknown:
+                raise ProviderError(f"{cfg.get('name', 'Provider')}: price is unknown; explicitly approve unknown provider cost before running.")
+            return
+        amount = float(raw)
+        currency = str(cfg.get("cost_currency", "")).upper()
+        if not math.isfinite(amount) or amount < 0 or currency != self.currency:
+            raise ProviderError(f"{cfg.get('name', 'Provider')}: provider price does not match the approved run currency.")
+        if self.maximum is not None and self.reserved + amount > self.maximum + 1e-9:
+            raise ProviderError(f"Provider spend ceiling reached before contacting {cfg.get('name', 'provider')}; no further paid request was made.")
+        self.reserved += amount
+
+
 class Budget:
     """Counts paid lookups for one run. Cached answers are free and do not count."""
 
-    def __init__(self, limit: int = DEFAULT_BUDGET):
+    def __init__(self, limit: int = DEFAULT_BUDGET, spend_approval: SpendApproval | None = None):
         self.limit, self.used, self.cached, self.projected, self.stopped = max(0, limit), 0, 0, 0, ""
+        self.spend_approval = spend_approval
 
     def left(self) -> int:
         return 0 if self.stopped else max(0, self.limit - self.used)
@@ -237,6 +282,8 @@ def lookup(cfg: dict, domain: str, company: str, budget: Budget, today: dt.date 
         return cache_results
     if budget.left() <= 0:
         return []
+    if budget.spend_approval:
+        budget.spend_approval.reserve(cfg)
     req = cfg["request"]
     fill = lambda s: str(s).replace("{domain}", domain).replace("{company}", company or domain)  # noqa: E731
     query = {k: fill(v) for k, v in (req.get("query") or {}).items()}
@@ -254,19 +301,26 @@ def lookup(cfg: dict, domain: str, company: str, budget: Budget, today: dt.date 
         else:
             r = requests.get(req["url"], params=query, headers=headers, timeout=20)
     except requests.RequestException as e:
+        _record_usage(cfg, "email", "request_error", budget)
         raise ProviderError(scrub(f"{name}: could not reach the provider ({type(e).__name__}). The free steps continue.", key)) from None
     if r.status_code in (401, 403):
+        _record_usage(cfg, "email", "authentication_error", budget, r.status_code)
         budget.stopped = "key rejected"
         raise ProviderError(f"{name}: the provider rejected your key (HTTP {r.status_code}). Check the variable {cfg['key_env']}. The rest of the list uses the free steps only.")
     if r.status_code in (402, 429):
+        _record_usage(cfg, "email", "credits_or_rate_limit", budget, r.status_code)
         budget.stopped = "limit or credits reached"
         raise ProviderError(f"{name}: the provider says you are out of credits or sending too fast (HTTP {r.status_code}). The rest of the list uses the free steps only.")
     if r.status_code >= 400:
+        _record_usage(cfg, "email", "http_error", budget, r.status_code)
         return []
     try:
-        results = parse(cfg, r.json())
+        payload = r.json()
+        results = parse(cfg, payload)
     except ValueError:
+        _record_usage(cfg, "email", "invalid_response", budget, r.status_code)
         return []
+    _record_usage(cfg, "email", "success", budget, r.status_code)
     cf.parent.mkdir(parents=True, exist_ok=True)
     cf.write_text(json.dumps({"date": today.isoformat(), "domain": domain, "results": results}), encoding="utf-8")
     time.sleep(0.2)
@@ -300,6 +354,8 @@ def lookup_field(cfg: dict, field: str, identity: dict, budget: Budget, today: d
         return cached_results
     if budget.left() <= 0:
         return []
+    if budget.spend_approval:
+        budget.spend_approval.reserve(cfg)
     req = cfg["request"]
     values = {**identity, "domain": identity.get("domain", ""), "company": identity.get("company", "") or identity.get("domain", "")}
     fill = lambda value: re.sub(r"\{([a-z_]+)\}", lambda match: str(values.get(match.group(1), "")), str(value))
@@ -319,21 +375,36 @@ def lookup_field(cfg: dict, field: str, identity: dict, budget: Budget, today: d
         else:
             response = requests.get(req["url"], params=query, headers=headers, timeout=20)
     except requests.RequestException as error:
+        _record_usage(cfg, field, "request_error", budget)
         raise ProviderError(scrub(f"{name}: could not reach the provider ({type(error).__name__}).", key)) from None
     if response.status_code in (401, 403):
+        _record_usage(cfg, field, "authentication_error", budget, response.status_code)
         budget.stopped = "key rejected"
         raise ProviderError(f"{name}: the provider rejected its key (HTTP {response.status_code}); check {cfg['key_env']}.")
     if response.status_code in (402, 429):
+        _record_usage(cfg, field, "credits_or_rate_limit", budget, response.status_code)
         budget.stopped = "limit or credits reached"
         raise ProviderError(f"{name}: provider credits or rate limit reached (HTTP {response.status_code}).")
     if response.status_code >= 400:
+        _record_usage(cfg, field, "http_error", budget, response.status_code)
         return []
     try:
-        candidates = parse_field(cfg, response.json(), field)
+        payload = response.json()
+        candidates = parse_field(cfg, payload, field)
     except (ValueError, TypeError):
+        _record_usage(cfg, field, "invalid_response", budget, response.status_code)
         return []
+    _record_usage(cfg, field, "success", budget, response.status_code)
     cf = field_cache_file(name, identity.get("domain", ""), field, identity.get("contact_name", ""))
     cf.parent.mkdir(parents=True, exist_ok=True)
     cf.write_text(json.dumps({"date": today.isoformat(), "domain": identity.get("domain", ""), "field": field, "results": candidates}), encoding="utf-8")
     time.sleep(0.2)
     return candidates
+
+
+def _record_usage(cfg: dict, field: str, outcome: str, budget: Budget, status_code: int | None = None) -> None:
+    warning = eu.record_call(cfg, field, outcome, status_code)
+    if warning:
+        if not hasattr(budget, "accounting_warnings"):
+            budget.accounting_warnings = []
+        budget.accounting_warnings.append(warning)

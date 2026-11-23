@@ -56,7 +56,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, signal_enrichment, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech, audit
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, enrichment_usage, signal_enrichment, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech, audit
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -233,7 +233,13 @@ def main():
     en.add_argument("--max", type=int, default=100); en.add_argument("--fast", action="store_true", help="skip the hidden browser"); en.add_argument("--result-line", action="store_true", dest="result_line", help="with --site: also print one RESULT line a Ledger workflow reads")
     en.add_argument("--provider", default="", help="optional: one paid provider, set up with --add-provider (legacy single-rung mode)"); en.add_argument("--waterfall-config", default="", help="JSON file defining ordered email providers, acceptance policy and call cap")
     en.add_argument("--budget", type=int, default=None, help="override the provider-call cap in the waterfall config"); en.add_argument("--dry-run", action="store_true", help="project optional provider calls without making provider requests")
+    en.add_argument("--max-provider-spend", type=float, default=None, help="required approved ceiling for known configured-provider charges")
+    en.add_argument("--allow-unknown-provider-cost", action="store_true", help="acknowledge configured providers with unknown prices; unknown charges are outside the numeric ceiling")
+    en.add_argument("--spend-preview", action="store_true", help="read-only estimate from provider prices and waterfall caps; does not read lead data or make requests")
     en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
+    en.add_argument("--catalog", action="store_true", help="show supported, candidate, retired, and restricted enrichment providers")
+    en.add_argument("--usage", action="store_true", help="show this PC's optional enrichment-provider usage estimates")
+    en.add_argument("--usage-days", type=int, default=30, help="days of local provider usage to show (1 to 3650)")
     se = sub.add_parser("signals", help="research public business/search/social signals for leads and draft email with a local AI")
     se.add_argument("source", help="CSV with a company name; city and website improve matching")
     se.add_argument("--engine", default="", help="also save the researched CSV to this engine's imports")
@@ -247,6 +253,8 @@ def main():
     se.add_argument("--legal-form", choices=["any", "us_c_corp", "us_s_corp"], default="any", help="US C-Corp/S-Corp search hint only; results are not legal verification")
     se.add_argument("--search-provider", choices=["duckduckgo", "brave"], default="duckduckgo", help="public search provider; Brave requires a PC-local key and uses your API allowance")
     se.add_argument("--search-budget", type=int, default=12, help="maximum ordered search queries per lead (0 to 30)")
+    se.add_argument("--brave-cost-per-1000", type=float, default=None, help="optional user-declared USD cost per 1,000 Brave requests for run estimates; does not change provider billing")
+    se.add_argument("--brave-max-spend", type=float, default=None, help="required USD spend ceiling approval for a Brave run that may make requests")
     se.add_argument("--minimum-identity-score", type=float, default=0.0, help="discard results below this heuristic 0 to 1 score; not a probability")
     se.add_argument("--no-ai", action="store_true", help="collect sourced search signals without asking local Ollama to draft email")
     ps = sub.add_parser("presence-signals", help="collect separate public professional/social signals for Presence (no outreach draft)")
@@ -315,14 +323,22 @@ def main():
         try:
             if a.providers:
                 print(enrich_providers.describe())
+            elif a.spend_preview:
+                print(enrich.provider_spend_preview(a.waterfall_config, a.max, a.provider, a.budget))
+            elif a.catalog:
+                print(enrich_providers.describe_catalog())
+            elif a.usage:
+                print(enrichment_usage.report(a.usage_days))
             elif a.add_provider:
                 print(enrich_providers.add_provider(a.add_provider))
             elif a.site:
                 print(enrich.card(a.site, a.icp, not a.fast, a.provider, a.budget,
-                                  a.result_line, a.waterfall_config, a.dry_run))
+                                  a.result_line, a.waterfall_config, a.dry_run,
+                                  a.max_provider_spend, a.allow_unknown_provider_cost))
             elif a.source:
                 print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget,
-                                         waterfall_config_path=a.waterfall_config, dry_run=a.dry_run))
+                                         waterfall_config_path=a.waterfall_config, dry_run=a.dry_run,
+                                         max_provider_spend=a.max_provider_spend, allow_unknown_provider_cost=a.allow_unknown_provider_cost))
             else:
                 sys.exit("Give a CSV to enrich (python dse.py enrich leads.csv), or --site https://their-site.com, or --providers.")
         except ValueError as e:
@@ -330,7 +346,9 @@ def main():
     elif a.cmd == "signals":
         try:
                 print(signal_enrichment.enrich_file(a.source, a.engine, a.max, not a.no_ai, a.profile, a.decision_maker, a.legal_form, a.decision_role, a.custom_role,
-                                                    a.search_provider, a.path, a.search_budget, a.minimum_identity_score, "" if a.enrichment_profile == "none" else a.enrichment_profile))
+                                                    a.search_provider, a.path, a.search_budget, a.minimum_identity_score,
+                                                    "" if a.enrichment_profile == "none" else a.enrichment_profile,
+                                                    a.brave_cost_per_1000, a.brave_max_spend))
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "presence-signals":
