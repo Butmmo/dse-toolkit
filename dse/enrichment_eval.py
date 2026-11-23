@@ -1621,7 +1621,35 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
     return report, output
 
 
-def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "") -> tuple[dict, Path]:
+def _send_outcome_brief(report: dict) -> str:
+    def pct(value: float | None) -> str:
+        return "not available" if value is None else f"{value:.1%}"
+
+    lines = ["# Waterfall experiment: Send Desk outcomes", "", f"- Engine: `{report['engine']}`",
+             f"- Experiment filter: `{report.get('experiment_filter') or 'all tagged experiments'}`",
+             f"- Scored at (UTC): {report['scored_at_utc']}", "",
+             "These are descriptive observations from explicitly logged Send Desk actions. They do not prove that a variant caused an outcome or that one provider is better.", ""]
+    for cohort in report["cohorts"]:
+        lines.extend([f"## Experiment `{cohort['experiment_id']}` · field `{cohort['field'] or 'unspecified'}`", "",
+                      "| Variant | Assigned leads | Sent leads | Replies | Reply rate (95% interval) | Calls booked | Booked rate (95% interval) | Wins | Win rate (95% interval) | Sample note |",
+                      "|---|---:|---:|---:|---|---:|---|---:|---|---|"])
+        for variant in ("A", "B"):
+            m = cohort["variants"].get(variant)
+            if not m:
+                continue
+            intervals = m["outcome_rate_95_percent_wilson_intervals"]
+            def interval(key: str) -> str:
+                ci = intervals[key]
+                return "not available" if ci is None else f"{ci['lower']:.1%}–{ci['upper']:.1%}"
+            note = "Low sample (<30 sent)" if m["low_sample_caution"] else "30+ sent; still descriptive"
+            lines.append(f"| {variant} | {m['assigned_unique_leads']} | {m['sent_unique_leads']} | {m['replied_unique_leads']} | {pct(m['reply_rate_per_sent_lead'])} ({interval('replied')}) | {m['booked_unique_leads']} | {pct(m['booked_rate_per_sent_lead'])} ({interval('booked')}) | {m['won_unique_leads']} | {pct(m['won_rate_per_sent_lead'])} ({interval('won')}) | {note} |")
+        lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
+    lines.extend(["## Interpretation", "", report["interpretation"], "",
+                  "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
+    return "\n".join(lines)
+
+
+def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", markdown_out: str = "") -> tuple[dict, Path]:
     """Join experiment-tagged Send Desk rows to explicit taps and summarize unique-lead outcomes."""
     from . import desklog, outcomes
     from .engines import engine_dir, load
@@ -1696,6 +1724,10 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "") -> 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Scored {sum(v['assigned_unique_leads'] for g in groups.values() for v in g['variants'].values())} tagged lead-variant records across {len(groups)} experiment-field cohorts: {output}")
+    brief_path = Path(markdown_out) if markdown_out else output.with_suffix(".md")
+    brief_path.parent.mkdir(parents=True, exist_ok=True)
+    brief_path.write_text(_send_outcome_brief(report), encoding="utf-8")
+    print(f"Wrote human-readable outcome brief: {brief_path}")
     print("Rates are descriptive only; overlapping leads across A/B are flagged in the report.")
     return report, output
 
@@ -1736,6 +1768,7 @@ def main(argv: list[str] | None = None) -> int:
     so.add_argument("engine", help="engine slug")
     so.add_argument("--experiment-id", default="", help="limit the report to one experiment ID")
     so.add_argument("--out", default="", help="JSON report output path")
+    so.add_argument("--markdown-out", default="", help="Markdown brief path (default: same path as JSON with .md extension)")
     pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
     pr.add_argument("source", help="prepared sample review CSV")
     pr.add_argument("--out", default="", help="paired review CSV output path")
@@ -1759,7 +1792,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
         elif args.action == "score-send-outcomes":
-            score_send_outcomes(args.engine, args.experiment_id, args.out)
+            score_send_outcomes(args.engine, args.experiment_id, args.out, args.markdown_out)
         else:
             score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:
