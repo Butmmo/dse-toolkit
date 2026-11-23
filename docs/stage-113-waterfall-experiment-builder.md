@@ -18,4 +18,5 @@ This makes the first controlled configuration step discoverable in HQ Tools. The
 
 - Parsed `bridge/catalog.json` as JSON and confirmed the new tool entry and argument mapping.
 - Confirmed the tool points to the existing `dse.py enrich --build-waterfall-experiment` command.
+- Pushed the update to `codex/hq-runner-id-routing` and restarted the PC runner; its startup log reports 180 tools.
 - No live enrichment or paid provider calls were made.
