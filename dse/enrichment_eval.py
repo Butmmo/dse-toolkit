@@ -1653,19 +1653,22 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "") -> 
                          (f" and experiment {experiment_id!r}." if experiment_id else "."))
 
     groups: dict[tuple[str, str], dict] = {}
+    minimum_sent_caution = 30
     for (eid, field, variant), leads in sorted(cohorts.items()):
         sent = sum(bool(x["sent"]) for x in leads.values())
         groups[(eid, field)] = groups.get((eid, field), {"experiment_id": eid, "field": field, "variants": {}})
-        groups[(eid, field)]["variants"][variant] = {
-            "assigned_unique_leads": len(leads), "sent_unique_leads": sent,
-            "replied_unique_leads": sum(bool(x["replied"]) for x in leads.values()),
-            "booked_unique_leads": sum(bool(x["booked"]) for x in leads.values()),
-            "won_unique_leads": sum(bool(x["won"]) for x in leads.values()),
-            "lost_unique_leads": sum(bool(x["lost"]) for x in leads.values()),
-            "reply_rate_per_sent_lead": _ratio(sum(bool(x["replied"]) for x in leads.values()), sent),
-            "booked_rate_per_sent_lead": _ratio(sum(bool(x["booked"]) for x in leads.values()), sent),
-            "won_rate_per_sent_lead": _ratio(sum(bool(x["won"]) for x in leads.values()), sent),
-        }
+        counts = {key: sum(bool(x[key]) for x in leads.values()) for key in ("replied", "booked", "won", "lost")}
+        metric = {"assigned_unique_leads": len(leads), "sent_unique_leads": sent,
+                  "replied_unique_leads": counts["replied"], "booked_unique_leads": counts["booked"],
+                  "won_unique_leads": counts["won"], "lost_unique_leads": counts["lost"],
+                  "low_sample_caution": sent < minimum_sent_caution,
+                  "sample_caution_threshold_sent_leads": minimum_sent_caution,
+                  "outcome_rate_95_percent_wilson_intervals": {}}
+        for key in ("replied", "booked", "won"):
+            rate = _ratio(counts[key], sent)
+            metric[f"{key}_rate_per_sent_lead"] = rate
+            metric["outcome_rate_95_percent_wilson_intervals"][key] = _wilson(counts[key], sent)
+        groups[(eid, field)]["variants"][variant] = metric
     comparisons = []
     for item in groups.values():
         variants = item["variants"]
@@ -1687,7 +1690,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "") -> 
               "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
-              "interpretation": "Counts deduplicate by stable experiment lead ID, combine all tagged touches, and include only explicit logged outcomes. Rates are descriptive; assignment, delivery, attribution windows, sample representativeness and statistical power are not established. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "sample_caution_threshold_sent_leads": minimum_sent_caution,
+              "interpretation": "Counts deduplicate by stable experiment lead ID, combine all tagged touches, and include only explicit logged outcomes. Rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only and do not account for assignment, delivery, attribution windows, sample representativeness, repeated-provider effects, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
