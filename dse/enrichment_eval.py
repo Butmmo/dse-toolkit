@@ -300,6 +300,22 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
         cases[(field, cohort, lead_id)][source].append(row)
 
     comparisons = []
+
+    def priced_attempt_cost(row: dict[str, str]) -> dict[str, float]:
+        payload = _json(row.get("provider_waterfall_cost"))
+        providers = payload.get("providers") if isinstance(payload, dict) else None
+        totals: dict[str, float] = defaultdict(float)
+        if not isinstance(providers, dict):
+            return {}
+        for attempt in providers.values():
+            if not isinstance(attempt, dict):
+                continue
+            currency, amount = attempt.get("currency"), attempt.get("estimated_cost")
+            if (currency and isinstance(amount, (int, float))
+                    and math.isfinite(float(amount))):
+                totals[str(currency)] += float(amount)
+        return dict(totals)
+
     for (field, cohort), sources in sorted(by_field_cohort_sources.items()):
         for source_a, source_b in itertools.combinations(sorted(sources), 2):
             a_present = {lead for (case_field, case_cohort, lead), result_map in cases.items()
@@ -311,6 +327,9 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                                   "source_a_yes": 0, "source_b_yes": 0,
                                   "excluded_unknown_or_unlabeled": 0, "excluded_duplicate_result_sets": 0}
                       for dimension in REVIEW_FIELDS[:4]}
+            paired_costs: dict[str, dict[str, float | int]] = defaultdict(
+                lambda: {"source_a_total": 0.0, "source_b_total": 0.0, "matched_leads": 0}
+            )
             for lead in shared:
                 a_rows = cases[(field, cohort, lead)][source_a]
                 b_rows = cases[(field, cohort, lead)][source_b]
@@ -318,6 +337,15 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     for dimension_counts in counts.values():
                         dimension_counts["excluded_duplicate_result_sets"] += 1
                     continue
+                a_value_label = _review_category(a_rows[0].get(label_columns["value_correct"], ""))
+                b_value_label = _review_category(b_rows[0].get(label_columns["value_correct"], ""))
+                if a_value_label in {"yes", "no"} and b_value_label in {"yes", "no"}:
+                    a_costs, b_costs = priced_attempt_cost(a_rows[0]), priced_attempt_cost(b_rows[0])
+                    for currency in a_costs.keys() & b_costs.keys():
+                        cost_pair = paired_costs[currency]
+                        cost_pair["source_a_total"] += a_costs[currency]
+                        cost_pair["source_b_total"] += b_costs[currency]
+                        cost_pair["matched_leads"] += 1
                 for dimension, dimension_counts in counts.items():
                     a_label = _review_category(a_rows[0].get(label_columns[dimension], ""))
                     b_label = _review_category(b_rows[0].get(label_columns[dimension], ""))
@@ -349,6 +377,18 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "minimum_labeled_met": matched >= min_labeled,
                 }
             value_result = dimensions["value_correct"]
+            paired_cost_comparison = {}
+            for currency, cost_pair in paired_costs.items():
+                matched_cost_leads = int(cost_pair["matched_leads"])
+                a_mean = _ratio(float(cost_pair["source_a_total"]), matched_cost_leads)
+                b_mean = _ratio(float(cost_pair["source_b_total"]), matched_cost_leads)
+                paired_cost_comparison[currency] = {
+                    "matched_leads_with_priced_attempts_from_both_sources": matched_cost_leads,
+                    "source_a_mean_estimated_cost_per_matched_lead": a_mean,
+                    "source_b_mean_estimated_cost_per_matched_lead": b_mean,
+                    "mean_cost_difference_a_minus_b": (a_mean - b_mean) if a_mean is not None and b_mean is not None else None,
+                    "costs_include_failed_attempts_when_recorded": True,
+                }
             comparisons.append({
                 "field": field,
                 "engine_path": cohort[0],
@@ -362,6 +402,7 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                 "source_b_leads_with_result": len(b_present),
                 "source_b_result_coverage": _ratio(len(b_present), len(leads_by_cohort[cohort])),
                 "shared_leads_with_result": len(shared),
+                "paired_provider_attempt_cost_by_currency": paired_cost_comparison,
                 "dimensions": dimensions,
                 "matched_adjudicated_leads": value_result["matched_adjudicated_leads"],
                 "source_a_wins": value_result["source_a_wins"],
