@@ -154,13 +154,14 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
 
 
 def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
-    """Measure latest Ledger fit judgements by research lane and enrichment profile."""
+    """Measure Ledger fit judgements and associate them with same-lane field results."""
     headers, rows = _read(source)
     column = next((name for name in headers if name.strip().casefold() == "enrichment_review"), "")
     if not column:
         raise ValueError("Ledger CSV needs the enrichment_review column. Make it visible before exporting the grid.")
 
     latest: dict[tuple[int, str], dict[str, str]] = {}
+    row_results: dict[int, list[dict[str, Any]]] = {}
     malformed = 0
     valid_history_entries = 0
     for row_number, row in enumerate(rows, 2):
@@ -183,8 +184,16 @@ def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
             profile = str(item.get("profile_key") or "unknown").strip() or "unknown"
             latest[(row_number, lane)] = {"judgment": item["judgment"], "lane": lane, "profile_key": profile,
                                           "reviewed_at": str(item.get("reviewed_at") or ""),
-                                          "research_checked_at": str(item.get("research_checked_at") or "")}
+                                          "research_checked_at": str(item.get("research_checked_at") or ""),
+                                          "row_number": row_number}
             valid_history_entries += 1
+
+        result_column = next((name for name in headers if name.strip().casefold() == "field_results"), "")
+        if result_column:
+            result_payload = _json(row.get(result_column))
+            if isinstance(result_payload, list):
+                row_results[row_number] = [item for item in result_payload
+                                           if isinstance(item, dict) and item.get("schema") == "dbi.field-result.v1"]
 
     def summarize(items: list[dict[str, str]]) -> dict[str, Any]:
         counts = {label: sum(item["judgment"] == label for item in items) for label in ("good_fit", "not_a_fit", "uncertain")}
@@ -202,11 +211,66 @@ def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
         group = [item for item in latest_items if item["lane"] == lane and item["profile_key"] == profile]
         by_lane_profile[f"{lane}|{profile}"] = summarize(group)
 
+    lane_aliases = {"website_enrichment": "website", "herald_research": "herald", "presence_research": "presence"}
+    joined: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
+    matched_reviews = 0
+    unmatched_reviews = 0
+    for review in latest_items:
+        matching = []
+        for result in row_results.get(int(review["row_number"]), []):
+            metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+            result_lane = lane_aliases.get(str(metadata.get("lane") or ""), "")
+            if result_lane != review["lane"]:
+                continue
+            matching.append(result)
+        if not matching:
+            unmatched_reviews += 1
+            continue
+        matched_reviews += 1
+        for result in matching:
+            source_info = result.get("source") if isinstance(result.get("source"), dict) else {}
+            freshness = result.get("freshness") if isinstance(result.get("freshness"), dict) else {}
+            verification = result.get("verification") if isinstance(result.get("verification"), dict) else {}
+            joined[(review["judgment"], review["lane"], review["profile_key"])].append({
+                "field": str(result.get("field") or "(blank field)"),
+                "status": str(result.get("status") or "unknown"),
+                "source_type": str(source_info.get("type") or "unknown"),
+                "source_name": str(source_info.get("name") or "unknown"),
+                "freshness_status": str(freshness.get("status") or "unknown"),
+                "verification_status": str(verification.get("status") or "unknown"),
+            })
+
+    def field_summary(items: list[dict[str, str]]) -> dict[str, Any]:
+        def counts(records: list[dict[str, str]], key: str) -> dict[str, int]:
+            values: dict[str, int] = defaultdict(int)
+            for record in records:
+                values[record[key]] += 1
+            return dict(sorted(values.items()))
+
+        fields: dict[str, list[dict[str, str]]] = defaultdict(list)
+        for item in items:
+            fields[item["field"]].append(item)
+        return {"field_result_records": len(items), "fields": {
+            field: {"records": len(records),
+                    "status_counts": counts(records, "status"),
+                    "accepted_rate": _ratio(sum(r["status"] == "accepted" for r in records), len(records)),
+                    "source_type_counts": counts(records, "source_type"),
+                    "source_name_counts": counts(records, "source_name"),
+                    "freshness_status_counts": counts(records, "freshness_status"),
+                    "verification_status_counts": counts(records, "verification_status")}
+            for field, records in sorted(fields.items())}}
+
+    field_join = {f"{judgment}|{lane}|{profile}": field_summary(items)
+                  for (judgment, lane, profile), items in sorted(joined.items())}
+
     report = {"schema": "dbi.ledger-fit-evaluation.v1", "source_file": str(Path(source).resolve()),
               "source_rows": len(rows), "valid_history_entries": valid_history_entries,
               "latest_by_row_and_lane": summarize(latest_items), "by_lane_and_profile": by_lane_profile,
+              "field_results_join": {"reviewed_rows_with_matching_lane_results": matched_reviews,
+                                     "reviewed_rows_without_matching_lane_results": unmatched_reviews,
+                                     "by_judgment_lane_and_profile": field_join},
               "malformed_or_unsupported_entries": malformed,
-              "interpretation": "Fit rates summarize human decisions, not factual accuracy, conversion, ability to pay, or population-wide lead quality. Each grid row contributes its latest review per lane; repeated reviews are retained in the source history but do not get extra weight here. Profile groups with small samples should be treated as descriptive only."}
+              "interpretation": "Fit rates summarize human decisions, not factual accuracy, conversion, ability to pay, or population-wide lead quality. Field-result status, provider and freshness counts are descriptive associations among same-row results in the reviewed lane; fit judgements do not verify those fields. Each grid row contributes its latest review per lane; repeated reviews are retained in the source history but do not get extra weight here. Profile groups with small samples should be treated as descriptive only."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-ledger-fit-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
