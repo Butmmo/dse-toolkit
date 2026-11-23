@@ -20,7 +20,7 @@ Each `review_labels` item has `labeled`, `rate`, `wilson_95.lower`, `wilson_95.u
 
 ## Limits
 
-The Wilson interval describes sampling uncertainty for a simple binary proportion under the observed review sample. It does not adjust for repeated field observations from the same lead, selection bias, unreliable adjudication, source mismatch, or a nonrepresentative sample. The minimum count is a warning threshold, not a significance test or guarantee of statistical power. Do not make a provider or waterfall decision from the interval or threshold alone.
+The Wilson interval describes sampling uncertainty for a simple binary proportion under the observed review sample. It does not adjust for repeated field observations from the same lead, selection bias, unreliable adjudication, source mismatch, or a nonrepresentative sample. Stage 59 adds descriptive paired comparisons for the same lead and field. The minimum count is a warning threshold, not a significance test or guarantee of statistical power. Do not make a provider or waterfall decision from the interval or threshold alone.
 
 No SQL migration is needed. No automated tests were added or run.
 

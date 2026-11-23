@@ -2,7 +2,7 @@
 
 ## What changed
 
-The evaluation report now includes `by_field_and_source`. Each entry is one field, source type, and source name cohort, with the same metrics as the main report: accepted coverage, declared cost, yes/no/unknown/blank/invalid review counts, adjudicated label rates, reviewer agreement, and freshness metadata. Empty source details are grouped as `unattributed` instead of disappearing from the report.
+The evaluation report now includes `by_field_and_source`. Each entry is one field, source type, and source name cohort, with the same metrics as the main report: accepted coverage, declared cost, yes/no/unknown/blank/invalid review counts, adjudicated label rates, reviewer agreement, and freshness metadata. Stage 59 adds matched same-lead comparisons where multiple sources have results for the same field. Empty source details are grouped as `unattributed` instead of disappearing from the report.
 
 This lets the benchmark compare how the same field performs across named providers or evidence sources without mixing unlike fields together. The source contract does not guarantee that every producer uses `source.name` as a provider name, so inspect both `source_type` and `source_name` before treating a cohort as a provider.
 

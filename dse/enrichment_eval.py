@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import itertools
 import json
 import random
 from collections import defaultdict
@@ -271,6 +272,87 @@ def _agreement(items: list[dict[str, str]], field: str) -> dict:
             "cohen_kappa": kappa, "confusion_matrix": confusion}
 
 
+def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int) -> list[dict]:
+    if "source_row" not in headers:
+        return []
+    label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
+                     for field in REVIEW_FIELDS[:4]}
+    cases: dict[tuple[str, tuple[str, str, str], str], dict[tuple[str, str], list[dict[str, str]]]] = defaultdict(lambda: defaultdict(list))
+    leads_by_cohort: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    by_field_cohort_sources: dict[tuple[str, tuple[str, str, str]], set[tuple[str, str]]] = defaultdict(set)
+    for row in rows:
+        lead_id = (row.get("source_row") or "").strip()
+        field = (row.get("field") or "").strip()
+        if not lead_id:
+            continue
+        cohort = tuple((row.get(name) or "unknown").strip() or "unknown"
+                       for name in ("engine_path", "enrichment_profile", "research_lane"))
+        leads_by_cohort[cohort].add(lead_id)
+        if not field:
+            continue
+        source = ((row.get("source_type") or "unattributed").strip() or "unattributed",
+                  (row.get("source_name") or "unattributed").strip() or "unattributed")
+        by_field_cohort_sources[(field, cohort)].add(source)
+        cases[(field, cohort, lead_id)][source].append(row)
+
+    comparisons = []
+    for (field, cohort), sources in sorted(by_field_cohort_sources.items()):
+        for source_a, source_b in itertools.combinations(sorted(sources), 2):
+            a_present = {lead for (case_field, case_cohort, lead), result_map in cases.items()
+                         if case_field == field and case_cohort == cohort and source_a in result_map}
+            b_present = {lead for (case_field, case_cohort, lead), result_map in cases.items()
+                         if case_field == field and case_cohort == cohort and source_b in result_map}
+            shared = a_present & b_present
+            wins_a = wins_b = ties = duplicate = unlabeled = 0
+            a_yes = b_yes = 0
+            for lead in shared:
+                a_rows = cases[(field, cohort, lead)][source_a]
+                b_rows = cases[(field, cohort, lead)][source_b]
+                if len(a_rows) != 1 or len(b_rows) != 1:
+                    duplicate += 1
+                    continue
+                a_label = _review_category(a_rows[0].get(label_columns["value_correct"], ""))
+                b_label = _review_category(b_rows[0].get(label_columns["value_correct"], ""))
+                if a_label not in {"yes", "no"} or b_label not in {"yes", "no"}:
+                    unlabeled += 1
+                    continue
+                a_yes += a_label == "yes"
+                b_yes += b_label == "yes"
+                if a_label == b_label:
+                    ties += 1
+                elif a_label == "yes":
+                    wins_a += 1
+                else:
+                    wins_b += 1
+            matched = wins_a + wins_b + ties
+            comparisons.append({
+                "field": field,
+                "engine_path": cohort[0],
+                "enrichment_profile": cohort[1],
+                "research_lane": cohort[2],
+                "source_a": {"type": source_a[0], "name": source_a[1]},
+                "source_b": {"type": source_b[0], "name": source_b[1]},
+                "sample_leads": len(leads_by_cohort[cohort]),
+                "source_a_leads_with_result": len(a_present),
+                "source_a_result_coverage": _ratio(len(a_present), len(leads_by_cohort[cohort])),
+                "source_b_leads_with_result": len(b_present),
+                "source_b_result_coverage": _ratio(len(b_present), len(leads_by_cohort[cohort])),
+                "shared_leads_with_result": len(shared),
+                "matched_adjudicated_leads": matched,
+                "source_a_wins": wins_a,
+                "source_b_wins": wins_b,
+                "ties": ties,
+                "source_a_value_correct_rate": _ratio(a_yes, matched),
+                "source_b_value_correct_rate": _ratio(b_yes, matched),
+                "paired_rate_difference_a_minus_b": _ratio(a_yes - b_yes, matched),
+                "excluded_unknown_or_unlabeled": unlabeled,
+                "excluded_duplicate_result_sets": duplicate,
+                "minimum_labeled_count": min_labeled,
+                "minimum_labeled_met": matched >= min_labeled,
+            })
+    return comparisons
+
+
 def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path]:
     """Summarize reviewed quality, coverage, freshness and declared provider cost."""
     if min_labeled < 1:
@@ -348,10 +430,11 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
               "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
                                        **metrics(items)}
                                       for (field, source_type, source_name), items in sorted(by_field_source.items())],
+              "paired_source_comparisons": _paired_source_comparisons(rows, headers, min_labeled),
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
-              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
+              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. Paired source wins compare adjudicated value correctness for the same lead and field; they are descriptive and do not prove general provider superiority. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
