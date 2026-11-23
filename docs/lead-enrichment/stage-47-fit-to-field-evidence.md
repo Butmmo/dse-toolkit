@@ -2,7 +2,7 @@
 
 ## What changed
 
-`score-ledger` now joins each row's latest fit review by research lane to the row's `dbi.field-result.v1` records for that same lane. The report groups field-result counts by fit judgement, lane and enrichment profile, then summarizes fields, result statuses, provider/source names, freshness statuses and verification statuses. This gives a descriptive view of what research and fields were present on leads reviewers marked good fit, not a fit or uncertain.
+`score-ledger` joins each row's latest fit review by research lane to the row's `dbi.field-result.v1` records for that same lane. The report groups field-result counts by fit judgement, lane and enrichment profile, then summarizes fields, result statuses, provider/source names, freshness statuses and verification statuses. Stage 48 adds a cautious profile comparison against other profiles in the same lane.
 
 ## Use
 

@@ -153,8 +153,10 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
     return report, output
 
 
-def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
+def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dict, Path]:
     """Measure Ledger fit judgements and associate them with same-lane field results."""
+    if min_decided < 1:
+        raise ValueError("--min-decided must be at least 1.")
     headers, rows = _read(source)
     column = next((name for name in headers if name.strip().casefold() == "enrichment_review"), "")
     if not column:
@@ -211,6 +213,27 @@ def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
         group = [item for item in latest_items if item["lane"] == lane and item["profile_key"] == profile]
         by_lane_profile[f"{lane}|{profile}"] = summarize(group)
 
+    profile_comparison: dict[str, dict[str, Any]] = {}
+    for lane, profile in keys:
+        group = [item for item in latest_items if item["lane"] == lane and item["profile_key"] == profile]
+        alternatives = [item for item in latest_items if item["lane"] == lane and item["profile_key"] != profile]
+        profile_metrics = summarize(group)
+        alternative_metrics = summarize(alternatives)
+        group_rate = profile_metrics["good_fit_rate_among_decided"]
+        alternatives_rate = alternative_metrics["good_fit_rate_among_decided"]
+        decided = profile_metrics["judgment_counts"]["good_fit"] + profile_metrics["judgment_counts"]["not_a_fit"]
+        alternatives_decided = alternative_metrics["judgment_counts"]["good_fit"] + alternative_metrics["judgment_counts"]["not_a_fit"]
+        delta = round((group_rate - alternatives_rate) * 100, 1) if group_rate is not None and alternatives_rate is not None else None
+        profile_comparison[f"{lane}|{profile}"] = {
+            "profile_decided_reviews": decided,
+            "profile_good_fit_rate_among_decided": group_rate,
+            "other_profiles_decided_reviews": alternatives_decided,
+            "other_profiles_good_fit_rate_among_decided": alternatives_rate,
+            "good_fit_rate_delta_percentage_points": delta,
+            "sample_status": "too_few_profile_reviews" if decided < min_decided else
+                             "too_few_other_profile_reviews" if alternatives_decided < min_decided else "descriptive_only",
+            "comparison_note": "Other-profile baseline includes only different profile keys in the same lane; it is descriptive and non-causal."}
+
     lane_aliases = {"website_enrichment": "website", "herald_research": "herald", "presence_research": "presence"}
     joined: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     matched_reviews = 0
@@ -266,6 +289,8 @@ def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
     report = {"schema": "dbi.ledger-fit-evaluation.v1", "source_file": str(Path(source).resolve()),
               "source_rows": len(rows), "valid_history_entries": valid_history_entries,
               "latest_by_row_and_lane": summarize(latest_items), "by_lane_and_profile": by_lane_profile,
+              "profile_comparison": {"minimum_decided_reviews": min_decided,
+                                     "by_lane_and_profile": profile_comparison},
               "field_results_join": {"reviewed_rows_with_matching_lane_results": matched_reviews,
                                      "reviewed_rows_without_matching_lane_results": unmatched_reviews,
                                      "by_judgment_lane_and_profile": field_join},
@@ -291,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     l = sub.add_parser("score-ledger", help="score fit reviews exported from a Ledger grid")
     l.add_argument("source", help="Ledger grid CSV with an enrichment_review column")
     l.add_argument("--out", default="", help="JSON report output path")
+    l.add_argument("--min-decided", type=int, default=10, help="minimum good-fit plus not-a-fit reviews before a profile is marked descriptive only (default: 10)")
     args = parser.parse_args(argv)
     try:
         if args.action == "prepare":
@@ -298,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "score":
             score(args.source, args.out)
         else:
-            score_ledger(args.source, args.out)
+            score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:
         parser.exit(2, f"Error: {exc}\n")
     return 0
