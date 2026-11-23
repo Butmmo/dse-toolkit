@@ -10061,7 +10061,7 @@
     "dse.enrich": {
       "label": "Lead enrichment: find emails, owners and phones",
       "group": "Grow",
-      "help": "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here. For a waterfall experiment, run each A/B config against the exact same source CSV and lead cap. The toolkit records and checks the sample fingerprint, gives each variant a separate output, and blocks direct Engine imports until you assign one variant per lead. Review and approve the spend ceiling for each run separately.",
+      "help": "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here. For a live waterfall experiment, select the approval receipt created by the paired preflight. It binds this variant to the exact config, source CSV and capped cohort, and fixes the per-variant spend allowance. The toolkit records separate outputs and blocks direct Engine imports until you assign one variant per lead.",
       "script": "dse.py",
       "args": [
         {
@@ -10105,6 +10105,10 @@
         {
           "flag": "--allow-unknown-provider-cost",
           "field": "allow_unknown_provider_cost"
+        },
+        {
+          "opt": "--experiment-approval",
+          "field": "experiment_approval"
         },
         {
           "flag": "--dry-run",
@@ -10185,6 +10189,13 @@
           "label": "Allow configured providers with unknown prices (charges can exceed numeric estimate)",
           "type": "bool",
           "default": false
+        },
+        {
+          "name": "experiment_approval",
+          "label": "Paired preflight approval receipt (required for live experiment variants)",
+          "type": "file",
+          "required": false,
+          "glob": "my-lists/waterfall-experiment-*-approval-*.json"
         },
         {
           "name": "dry_run",
@@ -11923,7 +11934,7 @@
     "dse.enrich_waterfall_experiment_preflight": {
       "label": "Lead enrichment: preflight a paired comparison",
       "group": "Grow",
-      "help": "Read-only check before spending: confirms the matching A/B config pair, reviews local keys and adapter mappings, fingerprints the exact bounded source cohort, and totals both known-price estimates against one combined ceiling. Unknown provider prices require an explicit acknowledgment. It reads no lead values into the report, makes no network/provider calls, and writes no files.",
+      "help": "Check before spending: confirms the matching A/B config pair, reviews local keys and adapter mappings, fingerprints the exact bounded source cohort, and totals both known-price estimates against one combined ceiling. Unknown provider prices require an explicit acknowledgment. If ready, it saves a local approval receipt bound to both configs, the source CSV and cohort cap. The report contains no lead row values and this tool makes no network/provider calls.",
       "script": "dse.py",
       "args": [
         { "lit": "enrich" },
@@ -11945,15 +11956,18 @@
         { "name": "allow_unknown", "label": "Acknowledge provider prices that are unknown", "type": "bool", "default": false }
       ],
       "timeout_min": 2,
-      "outputs": [],
+      "outputs": [
+        { "glob": "my-lists/waterfall-experiment-*-approval-*.json", "upload": false, "label": "Local paired-run approval receipt" }
+      ],
       "category": "source",
       "source": "Local source CSV and local waterfall configs",
-      "cost": "Read-only local preflight; no network, provider charges, cloud AI, or files written.",
+      "cost": "Local preflight and approval receipt only; no network, provider charges, or cloud AI. Receipt stays on this PC.",
       "outputs_summary": [
         "Checks matching A/B experiment identity, field, provider pair, keys, and mappings",
         "Fingerprints the exact bounded lead cohort without returning its row data",
         "Combines conservative A and B known-price estimates against one approved ceiling",
-        "Reports unknown prices, missing keys, and whether the pair is ready to run"
+        "Reports unknown prices, missing keys, and whether the pair is ready to run",
+        "Writes a receipt only when the combined ceiling and readiness checks pass"
       ]
     },
     "dse.enrich_waterfall_build_experiment": {

@@ -432,6 +432,30 @@ def review_experiment_pair(source_path: str, config_a_path: str, config_b_path: 
     currency = next(iter(currencies), None)
     estimate = sum(float(r["maximum_estimated_spend"]) for r in reviews)
     unknown = sorted({name for r in reviews for name in r["unknown_price_providers"]})
+    ready = estimate <= approved_combined_max + 1e-9 and (not unknown or allow_unknown)
+    ready = ready and all(r["live_keys_ready"] and r["all_adapter_mappings_valid"] for r in reviews)
+    approval_path = None
+    if ready:
+        approval = {"schema": "dbi.waterfall-experiment-approval.v1", "experiment_id": ea["id"],
+                    "field": ea["field"], "providers": ea["providers"], "source_sha256": source_hash,
+                    "cohort_sha256": cohort_hash, "lead_count": len(sampled), "lead_cap": lead_count,
+                    "config_sha256": {"A": hashlib.sha256(pa.read_bytes()).hexdigest(),
+                                      "B": hashlib.sha256(pb.read_bytes()).hexdigest()},
+                    "variant_maximums": {"A": round(float(reviews[0]["maximum_estimated_spend"]), 8),
+                                         "B": round(float(reviews[1]["maximum_estimated_spend"]), 8)},
+                    "combined_known_price_estimate": round(estimate, 8), "currency": currency,
+                    "approved_combined_maximum": approved_combined_max,
+                    "unknown_price_providers": unknown, "unknown_price_acknowledged": bool(allow_unknown)}
+        approval_id = hashlib.sha256(json.dumps(approval, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+        approval["approval_id"] = approval_id
+        approval_path = ROOT / "my-lists" / f"waterfall-experiment-{ea['id']}-approval-{approval_id}.json"
+        approval_path.parent.mkdir(parents=True, exist_ok=True)
+        serialized = json.dumps(approval, ensure_ascii=False, indent=2) + "\n"
+        if approval_path.exists() and approval_path.read_text(encoding="utf-8") != serialized:
+            raise ValueError("A conflicting approval receipt already exists. Preserve it and review the experiment files.")
+        if not approval_path.exists():
+            with approval_path.open("x", encoding="utf-8") as handle:
+                handle.write(serialized)
     report = {"type": "waterfall_experiment_preflight", "experiment_id": ea["id"],
               "field": ea["field"], "providers": ea["providers"], "source_csv": source.name,
               "source_sha256": source_hash, "cohort_sha256": cohort_hash,
@@ -441,11 +465,11 @@ def review_experiment_pair(source_path: str, config_a_path: str, config_b_path: 
               "combined_known_price_estimate": round(estimate, 8), "currency": currency,
               "approved_combined_maximum": approved_combined_max,
               "within_approved_ceiling": estimate <= approved_combined_max + 1e-9,
+              "approval_receipt": approval_path.relative_to(ROOT).as_posix() if approval_path else None,
               "unknown_price_providers": unknown, "unknown_price_acknowledged": bool(allow_unknown),
-              "ready_to_run": estimate <= approved_combined_max + 1e-9 and (not unknown or allow_unknown)
-                  and all(r["live_keys_ready"] and r["all_adapter_mappings_valid"] for r in reviews),
+              "ready_to_run": ready,
               "missing_api_keys": sorted({name for r in reviews for name in r["missing_api_keys"]}),
-              "network_requests": 0, "paid_provider_calls": 0, "files_written": 0,
+              "network_requests": 0, "paid_provider_calls": 0, "files_written": 1 if approval_path else 0,
               "lead_row_values_returned": False, "api_key_values_returned": False}
     return json.dumps(report, ensure_ascii=False, separators=(",", ":"))
 
