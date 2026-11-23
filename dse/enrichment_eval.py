@@ -1631,8 +1631,8 @@ def _send_outcome_brief(report: dict) -> str:
              "These are descriptive observations from explicitly logged Send Desk actions. They do not prove that a variant caused an outcome or that one provider is better.", ""]
     for cohort in report["cohorts"]:
         lines.extend([f"## Experiment `{cohort['experiment_id']}` · field `{cohort['field'] or 'unspecified'}`", "",
-                      "| Variant | Assigned leads | Sent leads | Replies | Reply rate (95% interval) | Calls booked | Booked rate (95% interval) | Wins | Win rate (95% interval) | Sample note |",
-                      "|---|---:|---:|---:|---|---:|---|---:|---|---|"])
+                      "| Variant | Assigned | Sent | Send coverage | Skipped | Unmarked | Replies | Reply rate (95% interval) | Calls booked | Booked rate (95% interval) | Wins | Win rate (95% interval) | Sample note |",
+                      "|---|---:|---:|---:|---:|---:|---:|---|---:|---|---:|---|---|"])
         for variant in ("A", "B"):
             m = cohort["variants"].get(variant)
             if not m:
@@ -1642,7 +1642,7 @@ def _send_outcome_brief(report: dict) -> str:
                 ci = intervals[key]
                 return "not available" if ci is None else f"{ci['lower']:.1%}–{ci['upper']:.1%}"
             note = "Low sample (<30 sent)" if m["low_sample_caution"] else "30+ sent; still descriptive"
-            lines.append(f"| {variant} | {m['assigned_unique_leads']} | {m['sent_unique_leads']} | {m['replied_unique_leads']} | {pct(m['reply_rate_per_sent_lead'])} ({interval('replied')}) | {m['booked_unique_leads']} | {pct(m['booked_rate_per_sent_lead'])} ({interval('booked')}) | {m['won_unique_leads']} | {pct(m['won_rate_per_sent_lead'])} ({interval('won')}) | {note} |")
+            lines.append(f"| {variant} | {m['assigned_unique_leads']} | {m['sent_unique_leads']} | {pct(m['send_coverage_rate'])} | {m['skipped_unique_leads']} | {m['unmarked_unique_leads']} | {m['replied_unique_leads']} | {pct(m['reply_rate_per_sent_lead'])} ({interval('replied')}) | {m['booked_unique_leads']} | {pct(m['booked_rate_per_sent_lead'])} ({interval('booked')}) | {m['won_unique_leads']} | {pct(m['won_rate_per_sent_lead'])} ({interval('won')}) | {note} |")
             mature = m["mature_window"]
             lines.append(f"\n{variant} fixed-window outcomes ({mature['window_days']} days): {mature['mature_sent_leads']} mature sent leads; {mature['awaiting_window_leads']} still awaiting the full window; replies {pct(mature['reply_rate'])}, booked {pct(mature['booked_rate'])}, wins {pct(mature['won_rate'])}.\n")
         lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
@@ -1708,6 +1708,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
     minimum_sent_caution = 30
     for (eid, field, variant), leads in sorted(cohorts.items()):
         sent = sum(bool(x["sent"]) for x in leads.values())
+        skipped = sum(bool(x["skipped"]) and not bool(x["sent"]) for x in leads.values())
+        unmarked = max(0, len(leads) - sent - skipped)
         groups[(eid, field)] = groups.get((eid, field), {"experiment_id": eid, "field": field, "variants": {}})
         counts = {key: sum(bool(x[key]) for x in leads.values()) for key in ("replied", "booked", "won", "lost")}
         mature_leads = {}
@@ -1727,6 +1729,10 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         mature_counts = {key: sum(bool(x[key]) for x in mature_leads.values()) for key in ("replied", "booked", "won")}
         mature_id_sets[(eid, field, variant)] = set(mature_leads)
         metric = {"assigned_unique_leads": len(leads), "sent_unique_leads": sent,
+                  "skipped_unique_leads": skipped, "unmarked_unique_leads": unmarked,
+                  "send_coverage_rate": _ratio(sent, len(leads)),
+                  "skip_rate_per_assigned_lead": _ratio(skipped, len(leads)),
+                  "unmarked_rate_per_assigned_lead": _ratio(unmarked, len(leads)),
                   "replied_unique_leads": counts["replied"], "booked_unique_leads": counts["booked"],
                   "won_unique_leads": counts["won"], "lost_unique_leads": counts["lost"],
                   "low_sample_caution": sent < minimum_sent_caution,
