@@ -1735,6 +1735,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
 
     if not 1 <= maturity_days <= 365:
         raise ValueError("Maturity window must be between 1 and 365 days.")
+    if experiment_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", experiment_id):
+        raise ValueError("Experiment ID may contain only letters, numbers, dots, underscores, and hyphens (up to 80 characters).")
     load(engine)
     as_of = date.today()
     hist = desklog.history(engine)
