@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import itertools
 import json
 import math
@@ -269,6 +270,95 @@ def plan_waterfall_experiment(source: str, field: str, provider_a: str, provider
     print(f"Created paired waterfall experiment manifest for {len(selected)} of {len(eligible)} eligible leads: {output}")
     print("Each lead is listed once with both order variants. This does not run providers or outreach; maintain isolated outputs and an approved spend cap when executing manually.")
     return output
+
+
+def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", out: str = "", engine: str = "") -> tuple[Path, dict]:
+    """Select exactly one A/B enriched row per lead using a stable hash assignment."""
+    headers, rows = _read(source)
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field", "waterfall_experiment_lead_id"}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Input CSV is missing required experiment columns: " + ", ".join(missing))
+    if not experiment_id.strip():
+        raise ValueError("Experiment ID cannot be blank.")
+    selected = [row for row in rows if (row.get("waterfall_experiment_id") or "").strip() == experiment_id]
+    if not selected:
+        raise ValueError(f"No rows for experiment {experiment_id!r} were found in {source}.")
+    fields = {(row.get("waterfall_experiment_field") or "").strip() for row in selected}
+    if len(fields) != 1 or not next(iter(fields)):
+        raise ValueError("Select rows from exactly one nonblank experiment field per outreach assignment.")
+
+    by_lead: dict[str, dict[str, dict[str, str]]] = defaultdict(dict)
+    for row_number, row in enumerate(selected, 2):
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        if not lead_id:
+            raise ValueError(f"Experiment row {row_number} has no stable lead ID.")
+        if variant not in {"A", "B"}:
+            raise ValueError(f"Experiment row {row_number} has invalid variant {variant!r}; expected A or B.")
+        if variant in by_lead[lead_id]:
+            raise ValueError(f"Lead {lead_id!r} has more than one {variant} row; resolve duplicates before assignment.")
+        by_lead[lead_id][variant] = row
+    unpaired = [lead for lead, variants in by_lead.items() if set(variants) != {"A", "B"}]
+    if unpaired:
+        sample = ", ".join(repr(x) for x in unpaired[:5])
+        raise ValueError(f"{len(unpaired)} lead(s) do not have exactly one A and one B enrichment row (for example {sample}); no assignment file was written.")
+
+    extra = ["waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant", "waterfall_outreach_assignment_seed"]
+    assigned_rows = []
+    counts = {"A": 0, "B": 0}
+    for lead_id in sorted(by_lead):
+        digest = hashlib.sha256(f"{experiment_id}\0{seed}\0{lead_id}".encode("utf-8")).digest()
+        variant = "A" if digest[0] % 2 == 0 else "B"
+        row = dict(by_lead[lead_id][variant])
+        row["waterfall_experiment_variant"] = variant
+        row["waterfall_outreach_assignment_experiment_id"] = experiment_id
+        row["waterfall_outreach_assignment_variant"] = variant
+        row["waterfall_outreach_assignment_seed"] = str(seed)
+        assigned_rows.append(row)
+        counts[variant] += 1
+    if engine:
+        if out:
+            raise ValueError("Choose an Engine destination or an explicit output path, not both.")
+        from .engines import engine_dir, load, validate_waterfall_outreach_rows
+        cfg = load(engine)
+        validate_waterfall_outreach_rows(engine, assigned_rows)
+        output = engine_dir(engine) / "imports" / (Path(source).stem + "-outreach-assigned.csv")
+    else:
+        output = Path(out) if out else Path(source).with_name(Path(source).stem + "-outreach-assigned.csv")
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=list(dict.fromkeys([*headers, *extra])), extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(assigned_rows)
+    output_bytes = ("\ufeff" + buffer.getvalue()).encode("utf-8")
+    if output.exists() and output.read_bytes() != output_bytes:
+        raise ValueError(f"Assignment output already exists with different contents; it was left untouched: {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path = output.with_name(output.stem + "-assignment.json")
+    manifest = {"schema": "dbi.waterfall-outreach-assignment.v1", "experiment_id": experiment_id,
+                "experiment_field": next(iter(fields)), "seed": str(seed),
+                "assignment_algorithm": "sha256_parity_experiment_id_seed_stable_lead_id",
+                "lead_count": len(by_lead), "source_rows": len(selected), "variant_counts": counts,
+                "one_variant_per_lead": True, "source_file_name": Path(source).name,
+                "source_sha256": hashlib.sha256(Path(source).read_bytes()).hexdigest(),
+                "assigned_csv_name": output.name, "assigned_csv_sha256": hashlib.sha256(output_bytes).hexdigest(),
+                "engine": cfg.get("slug") if engine else None}
+    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
+        raise ValueError(f"Assignment audit already exists with different contents; it was left untouched: {manifest_path}")
+    if not output.exists():
+        output.write_bytes(output_bytes)
+    if not manifest_path.exists():
+        manifest_path.write_bytes(manifest_bytes)
+    result = {"experiment_id": experiment_id, "experiment_field": next(iter(fields)), "seed": str(seed),
+              "lead_count": len(by_lead), "variant_counts": counts, "assignment": "stable SHA-256 parity of experiment ID, seed, and lead ID",
+              "one_variant_per_lead": True, "source_rows": len(selected), "engine": cfg.get("slug") if engine else None,
+              "output": str(output.resolve()), "assignment_manifest": str(manifest_path.resolve()),
+              "source_sha256": manifest["source_sha256"], "assigned_csv_sha256": manifest["assigned_csv_sha256"]}
+    print(f"Assigned {len(by_lead)} paired leads to one outreach variant each (A {counts['A']}, B {counts['B']}): {output}")
+    print(f"Wrote data-minimized assignment audit: {manifest_path}")
+    print("The same experiment ID, seed, and lead ID always produce the same assignment. Store this output as the only outreach input for these leads.")
+    return output, result
 
 
 def pair_reviewers(source: str, out: str = "") -> Path:
@@ -1633,6 +1723,8 @@ def _send_outcome_brief(report: dict) -> str:
         lines.extend([f"## Experiment `{cohort['experiment_id']}` · field `{cohort['field'] or 'unspecified'}`", "",
                       "| Variant | Assigned | Sent | Send coverage | Skipped | Unmarked | Replies | Reply rate (95% interval) | Calls booked | Booked rate (95% interval) | Wins | Win rate (95% interval) | Sample note |",
                       "|---|---:|---:|---:|---:|---:|---:|---|---:|---|---:|---|---|"])
+        seeds = ", ".join(cohort["outreach_assignment_seeds"]) or "not recorded (legacy rows)"
+        lines.append(f"Outreach assignment mode: `{cohort['outreach_assignment_mode']}`; seed(s): {seeds}; metadata-eligible for comparison: {cohort['comparison_eligible']}.\n")
         for variant in ("A", "B"):
             m = cohort["variants"].get(variant)
             if not m:
@@ -1656,6 +1748,8 @@ def _send_outcome_brief(report: dict) -> str:
                 cats = ", ".join(f"{str(label).replace('|', '/')} ({count})" for label, count in sorted(mature_cats.items()))
                 lines.append(f"Reply categories inside the fixed window, mature leads only (categories can overlap): {cats}.\n")
         lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
+        if cohort.get("comparison_suppressed_reason"):
+            lines.append(f"A/B comparison suppressed: {cohort['comparison_suppressed_reason']}.\n")
         comparison = next((item for item in report["comparisons"]
                            if item["experiment_id"] == cohort["experiment_id"] and item["field"] == cohort["field"]), None)
         if comparison and comparison.get("mature_window_days"):
@@ -1674,12 +1768,18 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
 
     if not 1 <= maturity_days <= 365:
         raise ValueError("Maturity window must be between 1 and 365 days.")
+    if experiment_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", experiment_id):
+        raise ValueError("Experiment ID may contain only letters, numbers, dots, underscores, and hyphens (up to 80 characters).")
     load(engine)
     as_of = date.today()
     hist = desklog.history(engine)
     cohorts: dict[tuple[str, str, str], dict[str, dict[str, bool]]] = defaultdict(dict)
     provider_orders: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     config_hashes: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    assignment_modes: dict[tuple[str, str], set[str]] = defaultdict(set)
+    assignment_seeds: dict[tuple[str, str], set[str]] = defaultdict(set)
+    assignment_leads: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    missing_assignment_seed: set[tuple[str, str]] = set()
     provider_metadata_missing: set[tuple[str, str, str]] = set()
     config_metadata_missing: set[tuple[str, str, str]] = set()
     missing_ids = 0
@@ -1695,6 +1795,26 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             missing_ids += 1
             continue
         field = (row.get("waterfall_experiment_field") or "").strip()
+        assignment_experiment = (row.get("waterfall_outreach_assignment_experiment_id") or "").strip()
+        assignment_variant = (row.get("waterfall_outreach_assignment_variant") or "").strip().upper()
+        assignment_seed = (row.get("waterfall_outreach_assignment_seed") or "").strip()
+        assignment_key = (eid, field)
+        if assignment_experiment:
+            if assignment_experiment != eid:
+                raise ValueError(f"Lead {lead_id!r} has an outreach assignment for experiment {assignment_experiment!r}, but its row is tagged {eid!r}.")
+            if assignment_variant not in {"A", "B"} or assignment_variant != variant:
+                raise ValueError(f"Lead {lead_id!r} has an invalid or conflicting outreach assignment variant.")
+            mode = "single_variant_assigned"
+            if assignment_seed:
+                assignment_seeds[assignment_key].add(assignment_seed)
+            else:
+                missing_assignment_seed.add(assignment_key)
+        else:
+            if assignment_variant or assignment_seed:
+                raise ValueError(f"Lead {lead_id!r} has incomplete outreach assignment metadata.")
+            mode = "legacy_variant_tag_unassigned"
+        assignment_modes[assignment_key].add(mode)
+        assignment_leads[(eid, field, mode)].add(lead_id)
         cohort_key = (eid, field, variant)
         provider_raw = (row.get("waterfall_experiment_providers") or "").strip()
         if provider_raw:
@@ -1810,12 +1930,27 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         groups[(eid, field)]["variants"][variant] = metric
     comparisons = []
     for item in groups.values():
+        assignment_key = (item["experiment_id"], item["field"])
+        modes = assignment_modes[assignment_key]
+        item["outreach_assignment_mode"] = next(iter(modes)) if len(modes) == 1 else "mixed_assigned_and_legacy"
+        item["outreach_assignment_leads"] = {mode: len(assignment_leads[(item["experiment_id"], item["field"], mode)]) for mode in sorted(modes)}
+        item["outreach_assignment_seeds"] = sorted(assignment_seeds[assignment_key])
+        item["assignment_seed_missing"] = assignment_key in missing_assignment_seed
+        item["comparison_eligible"] = len(modes) == 1 and not item["assignment_seed_missing"] and (item["outreach_assignment_mode"] != "single_variant_assigned" or len(item["outreach_assignment_seeds"]) == 1)
+        if len(modes) > 1:
+            item["comparison_suppressed_reason"] = "assigned and legacy unassigned rows are mixed"
+        elif item["assignment_seed_missing"]:
+            item["comparison_suppressed_reason"] = "explicitly assigned rows are missing the assignment seed"
+        elif item["outreach_assignment_mode"] == "single_variant_assigned" and len(item["outreach_assignment_seeds"]) != 1:
+            item["comparison_suppressed_reason"] = "multiple assignment seeds are mixed"
+        else:
+            item["comparison_suppressed_reason"] = ""
         variants = item["variants"]
         ids_by_variant = {v: set(cohorts[(item["experiment_id"], item["field"], v)]) for v in ("A", "B")}
         overlap = ids_by_variant["A"] & ids_by_variant["B"]
         item["same_leads_in_both_variants"] = len(overlap)
         item["interpretation"] = "descriptive only; no causal winner is declared"
-        if "A" in variants and "B" in variants:
+        if "A" in variants and "B" in variants and item["comparison_eligible"]:
             mature_overlap = mature_id_sets[(item["experiment_id"], item["field"], "A")] & mature_id_sets[(item["experiment_id"], item["field"], "B")]
             mature_a = variants["A"]["mature_window"]
             mature_b = variants["B"]["mature_window"]
@@ -1844,7 +1979,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
-              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; their per-variant counts remain pooled and should be read with that warning. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1889,6 +2024,12 @@ def main(argv: list[str] | None = None) -> int:
     wx.add_argument("--leads", type=int, default=50)
     wx.add_argument("--seed", type=int, default=42)
     wx.add_argument("--out", default="", help="manifest CSV output path")
+    ao = sub.add_parser("assign-outreach", help="assign each paired experiment lead to exactly one outreach variant")
+    ao.add_argument("source", help="combined A/B enriched CSV with stable experiment lead IDs")
+    ao.add_argument("--experiment-id", required=True)
+    ao.add_argument("--seed", default="42", help="sticky assignment seed (same seed preserves assignments)")
+    ao.add_argument("--engine", default="", help="optional Engine: validate existing exposures and save directly to its imports folder")
+    ao.add_argument("--out", default="", help="assigned CSV output path")
     so = sub.add_parser("score-send-outcomes", help="join experiment variants to explicit Send Desk outcomes for one engine")
     so.add_argument("engine", help="engine slug")
     so.add_argument("--experiment-id", default="", help="limit the report to one experiment ID")
@@ -1915,6 +2056,8 @@ def main(argv: list[str] | None = None) -> int:
             plan_waterfall_experiment(args.source, args.field, args.provider_a, args.provider_b,
                                       args.engine_path, args.enrichment_profile, args.research_lane,
                                       args.leads, args.seed, args.out)
+        elif args.action == "assign-outreach":
+            assign_outreach_variant(args.source, args.experiment_id, args.seed, args.out, args.engine)
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
         elif args.action == "score-send-outcomes":
