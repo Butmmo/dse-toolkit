@@ -19,4 +19,5 @@ Run the A and B configs on the same CSV and cap, pair the verified outputs in HQ
 ## Verification
 
 - Checked the Python modules, CLI mapping, and catalog entry for syntax and argument consistency.
+- Pushed to `codex/hq-runner-id-routing` and restarted the PC runner; its startup log reports 181 tools.
 - No live lead enrichment, paid calls, Engine writes, or paired-file uploads were performed.
