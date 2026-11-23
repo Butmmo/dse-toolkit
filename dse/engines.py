@@ -217,7 +217,7 @@ def import_candidates(cfg: dict, need: int, render: bool, fresh) -> list[dict]:
 
 
 def validate_waterfall_outreach_rows(slug: str, candidates: list[dict]) -> None:
-    """Stop paired A/B experiment leads from entering Engine send lists without single-variant assignment."""
+    """Keep experiment variants, assignment modes, and assignment seeds consistent per Engine cohort."""
     tagged = []
     for row in candidates:
         experiment = (row.get("waterfall_experiment_id") or "").strip()
@@ -235,24 +235,54 @@ def validate_waterfall_outreach_rows(slug: str, candidates: list[dict]) -> None:
             raise ValueError(f"Experiment lead {lead_id!r} has conflicting outreach assignment metadata; regenerate it with `eval-enrichment assign-outreach`.")
         if not assignment_id and (assignment_variant or assignment_seed):
             raise ValueError(f"Experiment lead {lead_id!r} has incomplete outreach assignment metadata; regenerate it with `eval-enrichment assign-outreach`.")
-        tagged.append((experiment, field, lead_id, variant))
+        tagged.append((experiment, field, lead_id, variant, "single_variant_assigned" if assignment_id else "legacy_variant_tag_unassigned", assignment_seed))
     if not tagged:
         return
 
     exposures: dict[tuple[str, str, str], set[str]] = {}
-    for experiment, field, lead_id, variant in tagged:
+    modes: dict[tuple[str, str], set[str]] = {}
+    seeds: dict[tuple[str, str], set[str]] = {}
+
+    def record(experiment: str, field: str, lead_id: str, variant: str, mode: str, seed: str) -> None:
         exposures.setdefault((experiment, field, lead_id), set()).add(variant)
+        cohort = (experiment, field)
+        modes.setdefault(cohort, set()).add(mode)
+        if mode == "single_variant_assigned":
+            if not seed:
+                raise ValueError(f"Experiment {experiment!r} has assigned rows without an assignment seed; reassign the complete cohort before outreach.")
+            seeds.setdefault(cohort, set()).add(seed)
+
+    for experiment, field, lead_id, variant, mode, seed in tagged:
+        record(experiment, field, lead_id, variant, mode, seed)
     for p in (engine_dir(slug) / "send-lists").rglob("*.csv"):
         try:
-            for row in read_csv(p):
-                experiment = (row.get("waterfall_experiment_id") or "").strip()
-                variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
-                lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
-                field = (row.get("waterfall_experiment_field") or "").strip()
-                if experiment and lead_id and variant in {"A", "B"}:
-                    exposures.setdefault((experiment, field, lead_id), set()).add(variant)
+            existing_rows = read_csv(p)
         except Exception:
             continue
+        for row in existing_rows:
+            experiment = (row.get("waterfall_experiment_id") or "").strip()
+            variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+            lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+            field = (row.get("waterfall_experiment_field") or "").strip()
+            if experiment and lead_id and variant in {"A", "B"}:
+                assignment_id = (row.get("waterfall_outreach_assignment_experiment_id") or "").strip()
+                assignment_variant = (row.get("waterfall_outreach_assignment_variant") or "").strip().upper()
+                assignment_seed = (row.get("waterfall_outreach_assignment_seed") or "").strip()
+                if assignment_id and (assignment_id != experiment or assignment_variant != variant):
+                    raise ValueError(f"Existing Send Desk list {p.name} has conflicting assignment metadata for experiment {experiment!r}.")
+                if not assignment_id and (assignment_variant or assignment_seed):
+                    raise ValueError(f"Existing Send Desk list {p.name} has incomplete assignment metadata for experiment {experiment!r}.")
+                record(experiment, field, lead_id, variant,
+                       "single_variant_assigned" if assignment_id else "legacy_variant_tag_unassigned", assignment_seed)
+
+    mixed = [(key, value) for key, value in modes.items() if len(value) > 1]
+    if mixed:
+        (experiment, _field), value = mixed[0]
+        raise ValueError(f"Blocked Engine list: experiment {experiment!r} mixes assigned and legacy unassigned rows ({', '.join(sorted(value))}). Keep the cohort on one assignment workflow before continuing.")
+    inconsistent_seeds = [(key, value) for key, value in seeds.items() if len(value) > 1]
+    if inconsistent_seeds:
+        (experiment, _field), value = inconsistent_seeds[0]
+        raise ValueError(f"Blocked Engine list: experiment {experiment!r} has multiple outreach assignment seeds ({', '.join(sorted(value))}). Use one fixed seed for the whole experiment cohort.")
     conflicts = [(key, variants) for key, variants in exposures.items() if len(variants) > 1]
     if conflicts:
         (experiment, _field, lead_id), variants = conflicts[0]

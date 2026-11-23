@@ -279,8 +279,8 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
     missing = sorted(required - set(headers))
     if missing:
         raise ValueError("Input CSV is missing required experiment columns: " + ", ".join(missing))
-    if not experiment_id.strip():
-        raise ValueError("Experiment ID cannot be blank.")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", experiment_id or ""):
+        raise ValueError("Experiment ID must be 1-80 letters, numbers, dots, underscores, or hyphens, starting with a letter or number.")
     selected = [row for row in rows if (row.get("waterfall_experiment_id") or "").strip() == experiment_id]
     if not selected:
         raise ValueError(f"No rows for experiment {experiment_id!r} were found in {source}.")
@@ -323,9 +323,9 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
         from .engines import engine_dir, load, validate_waterfall_outreach_rows
         cfg = load(engine)
         validate_waterfall_outreach_rows(engine, assigned_rows)
-        output = engine_dir(engine) / "imports" / (Path(source).stem + "-outreach-assigned.csv")
+        output = engine_dir(engine) / "imports" / (Path(source).stem + f"-{experiment_id}-outreach-assigned.csv")
     else:
-        output = Path(out) if out else Path(source).with_name(Path(source).stem + "-outreach-assigned.csv")
+        output = Path(out) if out else Path(source).with_name(Path(source).stem + f"-{experiment_id}-outreach-assigned.csv")
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=list(dict.fromkeys([*headers, *extra])), extrasaction="ignore")
     writer.writeheader()
@@ -1758,6 +1758,16 @@ def _send_outcome_brief(report: dict) -> str:
             lines.append(f"Fixed {comparison['mature_window_days']}-day A-minus-B differences (descriptive): replies {pp(comparison['mature_reply_rate_a_minus_b'])}, booked {pp(comparison['mature_booked_rate_a_minus_b'])}, wins {pp(comparison['mature_won_rate_a_minus_b'])}. Mature leads sent in both variants: {comparison['mature_same_leads_sent_in_both_variants']}.\n")
     lines.extend(["## Interpretation", "", report["interpretation"], "",
                   "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
+    audits = report.get("assignment_audit_checks", [])
+    if audits:
+        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches |",
+                      "|---|---|---|---|---:|---:|---:|---:|---|"])
+        for audit in audits:
+            expected, seen = audit["expected_variant_counts"], audit["send_list_variant_counts"]
+            hash_status = "matches" if audit["assigned_csv_hash_matches"] else "missing or mismatch"
+            seed_status = "yes" if audit["assignment_seed_matches"] is True else "pending" if audit["assignment_seed_matches"] is None else "no"
+            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} |")
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -1779,6 +1789,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
     assignment_modes: dict[tuple[str, str], set[str]] = defaultdict(set)
     assignment_seeds: dict[tuple[str, str], set[str]] = defaultdict(set)
     assignment_leads: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    assignment_variant_leads: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     missing_assignment_seed: set[tuple[str, str]] = set()
     provider_metadata_missing: set[tuple[str, str, str]] = set()
     config_metadata_missing: set[tuple[str, str, str]] = set()
@@ -1805,6 +1816,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             if assignment_variant not in {"A", "B"} or assignment_variant != variant:
                 raise ValueError(f"Lead {lead_id!r} has an invalid or conflicting outreach assignment variant.")
             mode = "single_variant_assigned"
+            assignment_variant_leads[(eid, field, variant)].add(lead_id)
             if assignment_seed:
                 assignment_seeds[assignment_key].add(assignment_seed)
             else:
@@ -1973,13 +1985,65 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                                    if mature_a["booked_rate"] is not None and mature_b["booked_rate"] is not None else None,
                                "mature_won_rate_a_minus_b": _ratio(mature_a["won_count"], mature_a["mature_sent_leads"]) - _ratio(mature_b["won_count"], mature_b["mature_sent_leads"])
                                    if mature_a["won_rate"] is not None and mature_b["won_rate"] is not None else None})
+    imports_dir = engine_dir(engine) / "imports"
+    audit_candidates = sorted(imports_dir.glob(f"*-{experiment_id}-outreach-assigned-assignment.json")) if experiment_id else sorted(imports_dir.glob("*-outreach-assigned-assignment.json"))
+    assignment_audit_checks = []
+    for audit_path in audit_candidates:
+        try:
+            audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if audit.get("schema") != "dbi.waterfall-outreach-assignment.v1":
+            continue
+        eid = str(audit.get("experiment_id") or "")
+        field = str(audit.get("experiment_field") or "")
+        assigned_name = str(audit.get("assigned_csv_name") or "")
+        csv_path = (audit_path.parent / assigned_name).resolve() if assigned_name and Path(assigned_name).name == assigned_name else None
+        csv_exists = bool(csv_path and csv_path.is_file() and imports_dir.resolve() in csv_path.parents)
+        csv_hash_matches = bool(csv_exists and hashlib.sha256(csv_path.read_bytes()).hexdigest() == audit.get("assigned_csv_sha256"))
+        observed = {variant: len(assignment_variant_leads[(eid, field, variant)]) for variant in ("A", "B")}
+        expected_raw = audit.get("variant_counts") if isinstance(audit.get("variant_counts"), dict) else {}
+        expected = {variant: int(expected_raw.get(variant, 0) or 0) for variant in ("A", "B")}
+        observed_total = sum(observed.values())
+        expected_total = int(audit.get("lead_count", 0) or 0)
+        seeds = assignment_seeds[(eid, field)]
+        seed_matches = seeds == {str(audit.get("seed") or "")} if observed_total else None
+        if not csv_exists:
+            status = "assigned_csv_missing"
+        elif not csv_hash_matches:
+            status = "assigned_csv_hash_mismatch"
+        elif observed_total < expected_total:
+            status = "send_lists_incomplete"
+        elif observed_total > expected_total or observed != expected or seed_matches is False:
+            status = "send_list_assignment_mismatch"
+        else:
+            status = "verified_in_send_lists"
+        assignment_audit_checks.append({"experiment_id": eid, "experiment_field": field,
+             "audit_file": audit_path.name, "assigned_csv": assigned_name,
+             "source_sha256": audit.get("source_sha256"), "assigned_csv_sha256": audit.get("assigned_csv_sha256"),
+             "assigned_csv_exists": csv_exists, "assigned_csv_hash_matches": csv_hash_matches,
+             "expected_lead_count": expected_total, "expected_variant_counts": expected,
+             "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
+             "assignment_seed_matches": seed_matches, "status": status})
+    blocked_audit_keys = {(check["experiment_id"], check["experiment_field"]): check["status"]
+                          for check in assignment_audit_checks if check["status"] != "verified_in_send_lists"}
+    if blocked_audit_keys:
+        comparisons = [comparison for comparison in comparisons
+                       if (comparison["experiment_id"], comparison["field"]) not in blocked_audit_keys]
+        for key, status in blocked_audit_keys.items():
+            cohort = groups.get(key)
+            if cohort:
+                cohort["comparison_eligible"] = False
+                cohort["comparison_suppressed_reason"] = f"assignment audit status is {status}"
+                cohort["interpretation"] = "A/B comparison withheld until the staged assignment is reconciled with Send Desk lists"
     report = {"schema": "dbi.waterfall-send-outcomes.v1", "engine": engine, "experiment_filter": experiment_id or None,
               "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
+              "assignment_audit_checks": assignment_audit_checks,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
-              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; their per-variant counts remain pooled and should be read with that warning. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; when an assignment audit exists, comparisons are also withheld until the assigned CSV hash, expected counts, seed, and complete Send Desk-list coverage reconcile. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
