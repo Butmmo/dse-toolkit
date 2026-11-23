@@ -871,6 +871,8 @@ def provider_spend_preview(waterfall_config_path: str, lead_count: int, provider
     """Read-only price/call-cap estimate; opens no lead list and makes no network requests."""
     if not 1 <= lead_count <= 2000:
         raise ValueError("Preview between 1 and 2000 leads.")
+    if budget_override is not None and not 0 <= budget_override <= 5000:
+        raise ValueError("Provider-call override must be between 0 and 5000.")
     config = wf.load_config(waterfall_config_path, provider, budget_override)
     providers = wf.provider_configs(config, dry_run=True) if config["providers"] else []
     fields = wf.load_field_waterfalls(waterfall_config_path, budget_override, dry_run=True)

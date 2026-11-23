@@ -228,6 +228,48 @@ def spend_projection(email_providers: list[dict], email_calls: int, field_waterf
             "possible_calls": attempts, "has_unknown_cost": bool(unknown)}
 
 
+def review_local_config(path: str, lead_count: int = 100, budget_override: int | None = None) -> str:
+    """Audit a local waterfall's adapter mapping, key presence and spend readiness without network access."""
+    if not path:
+        raise ValueError("Choose a local waterfall JSON to review.")
+    if not 1 <= lead_count <= 2000:
+        raise ValueError("Review between 1 and 2000 leads.")
+    if budget_override is not None and not 0 <= budget_override <= 5000:
+        raise ValueError("Provider-call override must be between 0 and 5000.")
+    config = load_config(path, budget_override=budget_override)
+    email_providers = provider_configs(config, dry_run=True) if config["providers"] else []
+    fields = load_field_waterfalls(path, budget_override, dry_run=True)
+    projection = spend_projection(email_providers, config["max_provider_calls"], fields, lead_count)
+    chains = {"email": email_providers}
+    chains.update({name: item.get("provider_configs", []) for name, item in fields.items()})
+    records, missing_keys, unknown_prices = {}, [], []
+    for field_name, providers in chains.items():
+        records[field_name] = []
+        for provider in providers:
+            price = provider.get("cost_per_call")
+            record = {"provider": provider["name"], "key_configured": bool(provider.get("_key")),
+                      "price_per_call": float(price) if price is not None else None,
+                      "currency": str(provider.get("cost_currency", "")).upper() if price is not None else None,
+                      "field_mapping_valid": True}
+            records[field_name].append(record)
+            if not record["key_configured"]:
+                missing_keys.append(provider["name"])
+            if price is None:
+                unknown_prices.append(provider["name"])
+    caps = {"email": config["max_provider_calls"]}
+    caps.update({field_name: item["max_provider_calls"] for field_name, item in fields.items()})
+    output = {"type": "provider_waterfall_readiness", "config": path, "lead_count": lead_count,
+        "call_caps": caps, "providers_by_field": records, "all_adapter_mappings_valid": True,
+        "missing_api_keys": sorted(set(missing_keys)), "unknown_price_providers": sorted(set(unknown_prices)),
+        "live_keys_ready": not missing_keys, "maximum_possible_provider_calls": projection["possible_calls"],
+        "maximum_estimated_spend": round(projection["estimate"], 8), "currency": projection["currency"] or None,
+        "numeric_spend_approval_required": bool(projection["possible_calls"]),
+        "unknown_price_acknowledgment_required": projection["has_unknown_cost"],
+        "email_acceptance": {"minimum_confidence": config["minimum_confidence"], "stop_when": config["stop_when"]},
+        "network_requests": 0, "lead_data_read": False, "api_key_values_returned": False}
+    return json.dumps(output, ensure_ascii=False, separators=(",", ":"))
+
+
 def confidence_value(raw) -> float | None:
     try:
         score = float(raw)

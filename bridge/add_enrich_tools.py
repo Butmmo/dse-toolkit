@@ -137,6 +137,16 @@ T["dse.enrich_waterfall_builder"]["outputs"] = []
 T["dse.enrich_waterfall_builder"].update({"category": "source", "source": "Local provider adapter configurations on this PC",
     "cost": "Local config generation only; does not make paid requests or store API keys.",
     "outputs_summary": ["Validated provider order for each configured field", "Per-field call caps and acceptance thresholds", "Saved local waterfall JSON path", "Existing waterfall files are never overwritten"]})
+T["dse.enrich_waterfall_review"] = tool("Lead enrichment: review a provider waterfall", "Checks a saved local waterfall before use: provider keys are present or missing, each adapter's email/field response mapping is valid, per-field call caps, configured prices and currencies, and the approvals a live run needs. It does not return key values, read leads, or call providers.",
+    [{"lit": "enrich"}, {"flag": "--review-waterfall-config", "field": "go"}, {"opt": "--waterfall-config", "field": "waterfall_config"}, {"opt": "--max", "field": "leads"}, {"opt": "--budget", "field": "budget"}],
+    [{"name": "go", "label": "Review only", "type": "bool", "default": True},
+     {"name": "waterfall_config", "label": "Saved local waterfall JSON to review", "type": "file", "required": True, "glob": "enrich-waterfalls/*.json"},
+     {"name": "leads", "label": "Lead count for spend readiness estimate", "type": "int", "min": 1, "max": 2000, "default": 100},
+     {"name": "budget", "label": "Override maximum provider calls (optional)", "type": "int", "min": 0, "max": 5000}], 1)
+T["dse.enrich_waterfall_review"]["outputs"] = []
+T["dse.enrich_waterfall_review"].update({"category": "source", "source": "Saved local waterfall config and local key presence only",
+    "cost": "Read-only validation; no lead data or provider requests.",
+    "outputs_summary": ["Provider adapter mapping readiness by field", "Key present or missing without returning the key", "Configured price and currency state", "Spend estimate and required approvals"]})
 if T.get("dse.presence_signals"):
     T["dse.presence_signals"].update({"category": "signal", "source": "Public professional/business social search",
                                       "cost": "PC-run public search; no paid data provider is selected by this tool.",

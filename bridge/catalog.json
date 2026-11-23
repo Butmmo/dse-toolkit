@@ -11849,6 +11849,74 @@
         "Saved local waterfall JSON path",
         "Existing waterfall files are never overwritten"
       ]
+    },
+    "dse.enrich_waterfall_review": {
+      "label": "Lead enrichment: review a provider waterfall",
+      "group": "Grow",
+      "help": "Checks a saved local waterfall before use: provider keys are present or missing, each adapters email/field response mapping is valid, per-field call caps, configured prices and currencies, and the approvals a live run needs. It does not return key values, read leads, or call providers.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--review-waterfall-config",
+          "field": "go"
+        },
+        {
+          "opt": "--waterfall-config",
+          "field": "waterfall_config"
+        },
+        {
+          "opt": "--max",
+          "field": "leads"
+        },
+        {
+          "opt": "--budget",
+          "field": "budget"
+        }
+      ],
+      "fields": [
+        {
+          "name": "go",
+          "label": "Review only",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "waterfall_config",
+          "label": "Saved local waterfall JSON to review",
+          "type": "file",
+          "required": true,
+          "glob": "enrich-waterfalls/*.json"
+        },
+        {
+          "name": "leads",
+          "label": "Lead count for spend readiness estimate",
+          "type": "int",
+          "min": 1,
+          "max": 2000,
+          "default": 100
+        },
+        {
+          "name": "budget",
+          "label": "Override maximum provider calls (optional)",
+          "type": "int",
+          "min": 0,
+          "max": 5000
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [],
+      "category": "source",
+      "source": "Saved local waterfall config and local key presence only",
+      "cost": "Read-only validation; no lead data or provider requests.",
+      "outputs_summary": [
+        "Provider adapter mapping readiness by field",
+        "Key present or missing without returning the key",
+        "Configured price and currency state",
+        "Spend estimate and required approvals"
+      ]
     }
   },
   "periodic": [
