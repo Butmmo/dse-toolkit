@@ -235,6 +235,7 @@ def main():
     en.add_argument("--budget", type=int, default=None, help="override the provider-call cap in the waterfall config"); en.add_argument("--dry-run", action="store_true", help="project optional provider calls without making provider requests")
     en.add_argument("--max-provider-spend", type=float, default=None, help="required approved ceiling for known configured-provider charges")
     en.add_argument("--allow-unknown-provider-cost", action="store_true", help="acknowledge configured providers with unknown prices; unknown charges are outside the numeric ceiling")
+    en.add_argument("--experiment-approval", default="", help="paired preflight approval receipt required for live experiment variants")
     en.add_argument("--spend-preview", action="store_true", help="read-only estimate from provider prices and waterfall caps; does not read lead data or make requests")
     en.add_argument("--build-waterfall-config", action="store_true", help="validate providers and save a local ordered waterfall JSON (never overwrites)")
     en.add_argument("--build-waterfall-experiment", action="store_true", help="create two local config drafts from one waterfall by swapping two provider positions")
@@ -242,6 +243,11 @@ def main():
     en.add_argument("--experiment-provider-a", default="")
     en.add_argument("--experiment-provider-b", default="")
     en.add_argument("--review-waterfall-config", action="store_true", help="read-only check local provider mappings, keys and spend readiness")
+    en.add_argument("--review-waterfall-experiment", action="store_true", help="read-only preflight for a paired A/B waterfall run")
+    en.add_argument("--experiment-config-a", default="")
+    en.add_argument("--experiment-config-b", default="")
+    en.add_argument("--max-combined-provider-spend", type=float, default=None)
+    en.add_argument("--allow-unknown-experiment-cost", action="store_true")
     en.add_argument("--waterfall-name", default="", help="name for the locally saved waterfall config")
     en.add_argument("--email-providers", default="", help="ordered provider names, comma separated")
     en.add_argument("--phone-providers", default="", help="ordered phone-provider names, comma separated")
@@ -355,6 +361,11 @@ def main():
                     a.experiment_provider_a, a.experiment_provider_b))
             elif a.review_waterfall_config:
                 print(enrich.wf.review_local_config(a.waterfall_config, a.max, a.budget))
+            elif a.review_waterfall_experiment:
+                if a.max_combined_provider_spend is None:
+                    sys.exit("Set --max-combined-provider-spend to approve a numeric combined ceiling.")
+                print(enrich.wf.review_experiment_pair(a.source, a.experiment_config_a, a.experiment_config_b,
+                    a.max, a.max_combined_provider_spend, a.allow_unknown_experiment_cost))
             elif a.spend_preview:
                 print(enrich.provider_spend_preview(a.waterfall_config, a.max, a.provider, a.budget))
             elif a.catalog:
@@ -370,7 +381,8 @@ def main():
             elif a.source:
                 print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget,
                                          waterfall_config_path=a.waterfall_config, dry_run=a.dry_run,
-                                         max_provider_spend=a.max_provider_spend, allow_unknown_provider_cost=a.allow_unknown_provider_cost))
+                                         max_provider_spend=a.max_provider_spend, allow_unknown_provider_cost=a.allow_unknown_provider_cost,
+                                         experiment_approval_path=a.experiment_approval))
             else:
                 sys.exit("Give a CSV to enrich (python dse.py enrich leads.csv), or --site https://their-site.com, or --providers.")
         except ValueError as e:

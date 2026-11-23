@@ -276,7 +276,8 @@ def pair_experiment_variants(variant_a_path: str, variant_b_path: str) -> tuple[
     """Combine verified A/B enrichment outputs only when their recorded source cohort matches exactly."""
     root = Path(__file__).resolve().parents[1]
     required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
-                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"}
+                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                "waterfall_experiment_approval_id"}
 
     def load_variant(path_value: str, expected_variant: str):
         path = Path(path_value)
@@ -300,6 +301,7 @@ def pair_experiment_variants(variant_a_path: str, variant_b_path: str) -> tuple[
         fields = set()
         provider_pairs = set()
         config_hashes = set()
+        approval_ids = set()
         variants = set()
         for row_number, row in enumerate(rows, 2):
             lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
@@ -319,19 +321,42 @@ def pair_experiment_variants(variant_a_path: str, variant_b_path: str) -> tuple[
             fields.add(field)
             provider_pairs.add(tuple(providers))
             config_hashes.add((row.get("waterfall_config_sha256") or "").strip().lower())
+            approval_ids.add((row.get("waterfall_experiment_approval_id") or "").strip())
             variants.add(variant)
         if len(ids) != len(set(ids)):
             raise ValueError(f"Variant {expected_variant} contains duplicate lead IDs; no paired file was written.")
-        if len(experiment_ids) != 1 or len(fields) != 1 or len(provider_pairs) != 1 or len(config_hashes) != 1 or "" in config_hashes:
-            raise ValueError(f"Variant {expected_variant} mixes experiment IDs, fields, provider pairs, or config fingerprints.")
-        return path, relative, headers, rows, ids, next(iter(experiment_ids)), next(iter(fields)), next(iter(provider_pairs)), next(iter(config_hashes))
+        if (len(experiment_ids) != 1 or len(fields) != 1 or len(provider_pairs) != 1 or len(config_hashes) != 1
+                or "" in config_hashes or len(approval_ids) != 1 or "" in approval_ids):
+            raise ValueError(f"Variant {expected_variant} mixes experiment IDs, fields, provider pairs, config fingerprints, or approval receipts.")
+        return (path, relative, headers, rows, ids, next(iter(experiment_ids)), next(iter(fields)),
+                next(iter(provider_pairs)), next(iter(config_hashes)), next(iter(approval_ids)))
 
-    path_a, rel_a, headers_a, rows_a, ids_a, experiment_id, field, providers_a, config_hash_a = load_variant(variant_a_path, "A")
-    path_b, rel_b, headers_b, rows_b, ids_b, experiment_b, field_b, providers_b, config_hash_b = load_variant(variant_b_path, "B")
+    path_a, rel_a, headers_a, rows_a, ids_a, experiment_id, field, providers_a, config_hash_a, approval_a = load_variant(variant_a_path, "A")
+    path_b, rel_b, headers_b, rows_b, ids_b, experiment_b, field_b, providers_b, config_hash_b, approval_b = load_variant(variant_b_path, "B")
     if experiment_b != experiment_id or field_b != field or providers_b != providers_a:
         raise ValueError("The selected files are not the A and B variants of the same experiment field and provider pair.")
     if ids_a != ids_b:
         raise ValueError("The selected variants do not contain the same leads in the same order; no paired CSV was written.")
+    if approval_a != approval_b:
+        raise ValueError("The selected variants were run under different approval receipts; no paired CSV was written.")
+    approval_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-approval-{approval_a}.json"
+    try:
+        receipt = json.loads(approval_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("The local approval receipt for this pair is missing or unreadable; no paired CSV was written.") from None
+    receipt_body = {key: value for key, value in receipt.items() if key != "approval_id"}
+    receipt_digest = hashlib.sha256(json.dumps(receipt_body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+    try:
+        receipt_maximums = receipt.get("variant_maximums", {})
+        receipt_total = sum(float(value) for value in receipt_maximums.values())
+        receipt_estimate = float(receipt.get("combined_known_price_estimate", -1))
+        receipt_ceiling = float(receipt.get("approved_combined_maximum", -1))
+    except (AttributeError, TypeError, ValueError):
+        raise ValueError("The approval receipt has invalid spend fields; no paired CSV was written.") from None
+    if (receipt_digest != approval_a or abs(receipt_total - receipt_estimate) > 1e-7
+            or receipt_ceiling < receipt_estimate - 1e-9
+            or (receipt.get("unknown_price_providers") and not receipt.get("unknown_price_acknowledged"))):
+        raise ValueError("The approval receipt was changed or its combined spend approval is invalid; no paired CSV was written.")
     manifest_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-cohort.json"
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -345,12 +370,26 @@ def pair_experiment_variants(variant_a_path: str, variant_b_path: str) -> tuple[
             or manifest.get("sample_rows") != len(ids_a)
             or manifest.get("cohort_sha256") != expected_cohort):
         raise ValueError("The selected CSV rows do not match the experiment's recorded cohort; no paired file was written.")
+    if (manifest.get("approval_id") != approval_a
+            or receipt.get("schema") != "dbi.waterfall-experiment-approval.v1"
+            or receipt.get("approval_id") != approval_a
+            or receipt.get("experiment_id") != experiment_id
+            or receipt.get("field") != field
+            or receipt.get("providers") != list(providers_a)
+            or receipt.get("cohort_sha256") != expected_cohort
+            or receipt.get("lead_count") != len(ids_a)
+            or receipt.get("lead_cap") != manifest.get("sample_limit")
+            or receipt.get("config_sha256", {}).get("A") != config_hash_a
+            or receipt.get("config_sha256", {}).get("B") != config_hash_b
+            or receipt.get("source_sha256") != manifest.get("source_sha256")):
+        raise ValueError("The paired outputs do not match their shared approved configs, source, cohort, or receipt; no paired CSV was written.")
     records = manifest.get("variants")
     record_a = records.get("A") if isinstance(records, dict) else None
     record_b = records.get("B") if isinstance(records, dict) else None
     if not isinstance(record_a, dict) or not isinstance(record_b, dict):
         raise ValueError("Both variants must complete and be recorded before they can be paired.")
     if (record_a.get("result_csv") != rel_a or record_b.get("result_csv") != rel_b
+            or record_a.get("approval_id") != approval_a or record_b.get("approval_id") != approval_b
             or record_a.get("config_sha256") != config_hash_a or record_b.get("config_sha256") != config_hash_b
             or record_a.get("result_sha256") != hashlib.sha256(path_a.read_bytes()).hexdigest()
             or record_b.get("result_sha256") != hashlib.sha256(path_b.read_bytes()).hexdigest()):
@@ -374,13 +413,14 @@ def pair_experiment_variants(variant_a_path: str, variant_b_path: str) -> tuple[
             if output.read_bytes() != output_bytes:
                 raise ValueError(f"A different paired output appeared during creation and was left untouched: {output.relative_to(root).as_posix()}") from None
     manifest["paired_csv"] = {"path": output.relative_to(root).as_posix(),
-                              "sha256": hashlib.sha256(output_bytes).hexdigest(), "rows": len(rows_a) + len(rows_b)}
+                              "sha256": hashlib.sha256(output_bytes).hexdigest(), "rows": len(rows_a) + len(rows_b),
+                              "approval_id": approval_a}
     temp_path = manifest_path.with_suffix(".json.tmp")
     temp_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temp_path.replace(manifest_path)
     result = {"experiment_id": experiment_id, "field": field, "lead_count": len(ids_a),
               "rows": len(rows_a) + len(rows_b), "variants": {"A": len(rows_a), "B": len(rows_b)},
-              "output": output.relative_to(root).as_posix(), "outreach_assigned": False}
+              "approval_id": approval_a, "output": output.relative_to(root).as_posix(), "outreach_assigned": False}
     print(f"Paired {len(ids_a)} leads across A and B ({len(rows_a) + len(rows_b)} rows): {result['output']}")
     print("The verified paired file is ready for the assign-outreach step; no variant was selected and no Engine was changed.")
     return output, result

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import csv
 import math
 from pathlib import Path
 import re
@@ -355,6 +356,122 @@ def review_local_config(path: str, lead_count: int = 100, budget_override: int |
         "email_acceptance": {"minimum_confidence": config["minimum_confidence"], "stop_when": config["stop_when"]},
         "network_requests": 0, "lead_data_read": False, "api_key_values_returned": False}
     return json.dumps(output, ensure_ascii=False, separators=(",", ":"))
+
+
+def review_experiment_pair(source_path: str, config_a_path: str, config_b_path: str,
+                           lead_count: int, approved_combined_max: float, allow_unknown: bool = False) -> str:
+    """Read-only preflight for a paired A/B run; reads only stable lead IDs from the CSV."""
+    if not 1 <= lead_count <= 2000:
+        raise ValueError("Experiment cohort must be between 1 and 2000 leads.")
+    if not math.isfinite(approved_combined_max) or approved_combined_max < 0:
+        raise ValueError("Combined approved spend ceiling must be a finite non-negative number.")
+
+    def local_path(value: str) -> Path:
+        path = Path(value)
+        return path if path.is_absolute() else ROOT / path
+
+    source = local_path(source_path)
+    paths = [local_path(config_a_path), local_path(config_b_path)]
+    if not source.is_file() or source.suffix.lower() != ".csv":
+        raise ValueError("Choose an existing local source CSV.")
+    configs = []
+    for path in paths:
+        if not path.is_file():
+            raise ValueError("Both local A and B waterfall config files must exist.")
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        experiment = raw.get("waterfall_experiment") if isinstance(raw, dict) else None
+        if not isinstance(experiment, dict):
+            raise ValueError("Both configs must be drafts created by the waterfall experiment builder.")
+        configs.append((raw, experiment, path))
+    (a, ea, pa), (b, eb, pb) = configs
+    if (str(ea.get("id")) != str(eb.get("id")) or ea.get("variant") != "A" or eb.get("variant") != "B"
+            or ea.get("field") != eb.get("field") or ea.get("providers") != eb.get("providers")
+            or ea.get("source_config_sha256") != eb.get("source_config_sha256")):
+        raise ValueError("A and B must be the matching experiment pair with the same field, providers, and source config fingerprint.")
+    field_name = ea["field"]
+    key = "providers" if field_name == "email" else "field_waterfalls"
+    order_a = list(a.get(key, []) if field_name == "email" else a.get(key, {}).get(field_name, {}).get("providers", []))
+    order_b = list(b.get(key, []) if field_name == "email" else b.get(key, {}).get(field_name, {}).get("providers", []))
+    first, second = ea["providers"]
+    if (len(order_a) != len(order_b) or first not in order_a or second not in order_a
+            or order_b != [second if name == first else first if name == second else name for name in order_a]):
+        raise ValueError("A and B do not contain the expected provider-order swap.")
+    baseline_a, baseline_b = dict(a), dict(b)
+    baseline_a.pop("waterfall_experiment", None); baseline_b.pop("waterfall_experiment", None)
+    if field_name == "email":
+        baseline_b["providers"] = baseline_a["providers"]
+    else:
+        baseline_b["field_waterfalls"] = dict(baseline_b.get("field_waterfalls", {}))
+        baseline_b["field_waterfalls"][field_name] = dict(baseline_b["field_waterfalls"].get(field_name, {}))
+        baseline_b["field_waterfalls"][field_name]["providers"] = baseline_a.get("field_waterfalls", {}).get(field_name, {}).get("providers", [])
+    if baseline_a != baseline_b:
+        raise ValueError("A and B change settings beyond the selected provider order; rebuild the experiment pair.")
+    with source.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames:
+            raise ValueError("Source CSV needs a header row.")
+        sampled = []
+        for row_number, row in enumerate(reader, 2):
+            if len(sampled) >= lead_count:
+                break
+            lead_id = str(row.get("waterfall_experiment_lead_id") or row.get("source_row")
+                          or row.get("lead_id") or row.get("id") or f"input-row:{row_number}").strip()
+            if not lead_id:
+                raise ValueError("Source CSV contains an empty stable lead ID.")
+            sampled.append(lead_id)
+    if not sampled:
+        raise ValueError("Source CSV has no lead rows.")
+    if len(set(sampled)) != len(sampled):
+        raise ValueError("The selected bounded cohort has duplicate stable lead IDs.")
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    cohort_hash = hashlib.sha256(json.dumps(sampled, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    reviews = [json.loads(review_local_config(str(path), len(sampled))) for path in paths]
+    currencies = {r["currency"] for r in reviews if r.get("currency")}
+    if len(currencies) > 1:
+        raise ValueError("The two configs use different currencies; combined spend cannot be approved safely.")
+    currency = next(iter(currencies), None)
+    estimate = sum(float(r["maximum_estimated_spend"]) for r in reviews)
+    unknown = sorted({name for r in reviews for name in r["unknown_price_providers"]})
+    ready = estimate <= approved_combined_max + 1e-9 and (not unknown or allow_unknown)
+    ready = ready and all(r["live_keys_ready"] and r["all_adapter_mappings_valid"] for r in reviews)
+    approval_path = None
+    if ready:
+        approval = {"schema": "dbi.waterfall-experiment-approval.v1", "experiment_id": ea["id"],
+                    "field": ea["field"], "providers": ea["providers"], "source_sha256": source_hash,
+                    "cohort_sha256": cohort_hash, "lead_count": len(sampled), "lead_cap": lead_count,
+                    "config_sha256": {"A": hashlib.sha256(pa.read_bytes()).hexdigest(),
+                                      "B": hashlib.sha256(pb.read_bytes()).hexdigest()},
+                    "variant_maximums": {"A": round(float(reviews[0]["maximum_estimated_spend"]), 8),
+                                         "B": round(float(reviews[1]["maximum_estimated_spend"]), 8)},
+                    "combined_known_price_estimate": round(estimate, 8), "currency": currency,
+                    "approved_combined_maximum": approved_combined_max,
+                    "unknown_price_providers": unknown, "unknown_price_acknowledged": bool(allow_unknown)}
+        approval_id = hashlib.sha256(json.dumps(approval, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+        approval["approval_id"] = approval_id
+        approval_path = ROOT / "my-lists" / f"waterfall-experiment-{ea['id']}-approval-{approval_id}.json"
+        approval_path.parent.mkdir(parents=True, exist_ok=True)
+        serialized = json.dumps(approval, ensure_ascii=False, indent=2) + "\n"
+        if approval_path.exists() and approval_path.read_text(encoding="utf-8") != serialized:
+            raise ValueError("A conflicting approval receipt already exists. Preserve it and review the experiment files.")
+        if not approval_path.exists():
+            with approval_path.open("x", encoding="utf-8") as handle:
+                handle.write(serialized)
+    report = {"type": "waterfall_experiment_preflight", "experiment_id": ea["id"],
+              "field": ea["field"], "providers": ea["providers"], "source_csv": source.name,
+              "source_sha256": source_hash, "cohort_sha256": cohort_hash,
+              "lead_count": len(sampled), "requested_lead_cap": lead_count,
+              "variant_configs": {"A": {"path": str(pa), "config_sha256": hashlib.sha256(pa.read_bytes()).hexdigest(), "estimated_maximum": reviews[0]["maximum_estimated_spend"]},
+                                  "B": {"path": str(pb), "config_sha256": hashlib.sha256(pb.read_bytes()).hexdigest(), "estimated_maximum": reviews[1]["maximum_estimated_spend"]}},
+              "combined_known_price_estimate": round(estimate, 8), "currency": currency,
+              "approved_combined_maximum": approved_combined_max,
+              "within_approved_ceiling": estimate <= approved_combined_max + 1e-9,
+              "approval_receipt": approval_path.relative_to(ROOT).as_posix() if approval_path else None,
+              "unknown_price_providers": unknown, "unknown_price_acknowledged": bool(allow_unknown),
+              "ready_to_run": ready,
+              "missing_api_keys": sorted({name for r in reviews for name in r["missing_api_keys"]}),
+              "network_requests": 0, "paid_provider_calls": 0, "files_written": 1 if approval_path else 0,
+              "lead_row_values_returned": False, "api_key_values_returned": False}
+    return json.dumps(report, ensure_ascii=False, separators=(",", ":"))
 
 
 def confidence_value(raw) -> float | None:

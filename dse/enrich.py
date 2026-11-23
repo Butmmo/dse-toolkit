@@ -1124,7 +1124,8 @@ def import_ready(rows: list[dict], headers: list[str]) -> list[dict]:
                     "Employees": r.get(m.get("employees", ""), "") or "", "lead_score": r.get("lead_score", ""), "lead_why": r.get("lead_why", "")}
         if r.get("waterfall_experiment_id"):
             for field in ("waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
-                          "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
+                          "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                          "waterfall_experiment_approval_id"):
                 ready_row[field] = r.get(field, "")
         out.append(ready_row)
     return out
@@ -1132,7 +1133,8 @@ def import_ready(rows: list[dict], headers: list[str]) -> list[dict]:
 
 def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, render: bool = True, today: dt.date | None = None, pause: float = PAGE_PAUSE,
                 provider: str = "", budget: int | None = None, waterfall_config_path: str = "", dry_run: bool = False,
-                max_provider_spend: float | None = None, allow_unknown_provider_cost: bool = False) -> str:
+                max_provider_spend: float | None = None, allow_unknown_provider_cost: bool = False,
+                experiment_approval_path: str = "") -> str:
     p = Path(src)
     if not p.is_absolute():
         p = (ROOT / src) if (ROOT / src).exists() else p
@@ -1202,6 +1204,48 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
                 raise ValueError("This experiment already has a different source list or sample cap recorded. Use the exact same CSV and --max for both variants; no provider calls were made.")
             if not dry_run and experiment_context["variant"] in sample_manifest.get("variants", {}):
                 raise ValueError(f"Variant {variant} already has an output recorded for this experiment. Preserve that result; use a new experiment config for another run.")
+    approval_receipt = None
+    if experiment_context and not dry_run:
+        if not experiment_approval_path:
+            raise ValueError("A paid waterfall experiment run requires its approval receipt. Run the paired preflight first and select its approval JSON.")
+        receipt_path = Path(experiment_approval_path)
+        if not receipt_path.is_absolute():
+            receipt_path = (ROOT / receipt_path) if (ROOT / receipt_path).exists() else receipt_path
+        try:
+            approval_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise ValueError("The selected waterfall experiment approval receipt is missing or unreadable.") from None
+        expected = {"schema": "dbi.waterfall-experiment-approval.v1", "experiment_id": experiment_context["id"],
+                    "field": experiment_context["field"], "providers": experiment_context["providers"],
+                    "source_sha256": experiment_context["source_sha256"], "cohort_sha256": experiment_context["cohort_sha256"],
+                    "lead_count": experiment_context["sample_rows"], "lead_cap": experiment_context["sample_limit"]}
+        if any(approval_receipt.get(key) != value for key, value in expected.items()):
+            raise ValueError("This approval receipt does not match the experiment, exact source CSV, or bounded cohort. No provider calls were made.")
+        if approval_receipt.get("config_sha256", {}).get(experiment_context["variant"]) != experiment_context["config_sha256"]:
+            raise ValueError("This approval receipt does not match the selected variant config. No provider calls were made.")
+        if not approval_receipt.get("approval_id") or not isinstance(approval_receipt.get("variant_maximums"), dict):
+            raise ValueError("This approval receipt is incomplete. Run the paired preflight again.")
+        receipt_body = {key: value for key, value in approval_receipt.items() if key != "approval_id"}
+        expected_approval_id = hashlib.sha256(json.dumps(receipt_body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+        if approval_receipt["approval_id"] != expected_approval_id:
+            raise ValueError("This approval receipt has changed since preflight. Create a fresh receipt before running.")
+        current_projection = wf.spend_projection(provs, config["max_provider_calls"], field_configs, experiment_context["sample_rows"])
+        variant_maximum = float(approval_receipt["variant_maximums"].get(experiment_context["variant"], -1))
+        combined_estimate = float(approval_receipt.get("combined_known_price_estimate", -1))
+        total_variant_maximum = sum(float(value) for value in approval_receipt["variant_maximums"].values())
+        if (abs(variant_maximum - float(current_projection["estimate"])) > 1e-7
+                or abs(combined_estimate - total_variant_maximum) > 1e-7
+                or float(approval_receipt.get("approved_combined_maximum", -1)) < combined_estimate - 1e-9
+                or (current_projection["has_unknown_cost"] and not approval_receipt.get("unknown_price_acknowledged"))):
+            raise ValueError("The receipt's spend limits no longer match the current waterfall pricing and caps. Run the paired preflight again.")
+        if sample_manifest_path.exists() and sample_manifest.get("approval_id") != approval_receipt["approval_id"]:
+            raise ValueError("This experiment cohort was started under a different or older approval. Preserve its outputs and start a new experiment before spending again.")
+        if max_provider_spend is not None and abs(max_provider_spend - float(approval_receipt["variant_maximums"][experiment_context["variant"]])) > 1e-8:
+            raise ValueError("For this experiment, the run ceiling is fixed by the paired approval receipt. Remove the separate spend ceiling.")
+        max_provider_spend = float(approval_receipt["variant_maximums"][experiment_context["variant"]])
+        allow_unknown_provider_cost = bool(approval_receipt.get("unknown_price_acknowledged"))
+    elif experiment_approval_path:
+        raise ValueError("An experiment approval receipt is only valid with a waterfall experiment config.")
     LISTS.mkdir(exist_ok=True)
     stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
     experiment_suffix = (f"-wfexp-{experiment_context['id']}-{experiment_context['variant'].lower()}"
@@ -1234,7 +1278,10 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
             row["waterfall_experiment_field"] = str(experiment.get("field") or "")
             row["waterfall_experiment_providers"] = providers_json
             row["waterfall_config_sha256"] = config_digest
+            row["waterfall_experiment_approval_id"] = approval_receipt["approval_id"] if approval_receipt else ""
         stats["waterfall_experiment"] = experiment
+        if approval_receipt:
+            stats["waterfall_experiment_approval_id"] = approval_receipt["approval_id"]
     write_csv(out_csv, out_rows, first=list(headers))
     provider_names = ", ".join(config["providers"])
     text = summary(stats, out_rows, p.name, bud, provider_names, dry_run, provs)
@@ -1260,8 +1307,11 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
                                "cohort_sha256": experiment_context["cohort_sha256"],
                                "sample_limit": experiment_context["sample_limit"],
                                "sample_rows": experiment_context["sample_rows"], "variants": {}}
+        if approval_receipt:
+            sample_manifest["approval_id"] = approval_receipt["approval_id"]
         sample_manifest.setdefault("variants", {})[experiment_context["variant"]] = {
             "config_sha256": experiment_context["config_sha256"],
+            "approval_id": approval_receipt["approval_id"] if approval_receipt else "",
             "result_csv": out_csv.relative_to(ROOT).as_posix(),
             "result_sha256": hashlib.sha256(out_csv.read_bytes()).hexdigest(),
         }
