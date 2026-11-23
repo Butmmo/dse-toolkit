@@ -9,7 +9,7 @@ import json
 import math
 import random
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -502,8 +502,11 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
 
 
 def _decision_brief(report: dict) -> str:
+    provenance = report.get("scoring_provenance", {})
     lines = ["# Enrichment benchmark decision brief", "",
              f"Reviewed field rows: {report.get('review_rows', 0)}", "",
+             f"Scored at (UTC): {provenance.get('scored_at_utc', 'unknown')}",
+             f"Source SHA-256: `{provenance.get('source_sha256', 'unknown')}`", "",
              "> This is a descriptive summary of reviewed benchmark evidence. It does not automatically select a provider. Cost figures are configured estimates, not invoices.", ""]
     comparisons = report.get("paired_source_comparisons") or []
     if not comparisons:
@@ -734,7 +737,19 @@ def score(source: str, out: str = "", min_labeled: int = 20,
                 "provider_attempts_with_unknown_price": unknown_provider_attempts,
                 "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded. Cost per human-reviewed correct result uses priced provider costs only from rows explicitly labeled yes or no for value_correct, divided by explicitly yes-labeled rows with priced provider attempts. Unknown-price attempts remain separately counted. The lead-cluster percentile bootstrap is descriptive sampling uncertainty; it cannot correct sampling bias or establish population performance. Estimates use configured call prices, not invoices."}
 
+    source_sha256 = hashlib.sha256(Path(source).read_bytes()).hexdigest()
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
+              "scoring_provenance": {
+                  "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                  "source_sha256": source_sha256,
+                  "settings": {
+                      "minimum_labeled_caution_threshold": min_labeled,
+                      "cost_bootstrap_replicates": cost_bootstrap_reps,
+                      "cost_bootstrap_seed": cost_bootstrap_seed,
+                      "paired_bootstrap_replicates": paired_bootstrap_reps,
+                      "paired_bootstrap_seed": paired_bootstrap_seed,
+                  },
+              },
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
               "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
                                        **metrics(items)}
