@@ -222,6 +222,18 @@ def _ratio(numerator: float, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
 
+def _wilson(successes: int, total: int, z: float = 1.959963984540054) -> dict | None:
+    """Return a Wilson score interval for a binary proportion (95% by default)."""
+    if total <= 0:
+        return None
+    rate = successes / total
+    z2 = z * z
+    denominator = 1 + z2 / total
+    center = (rate + z2 / (2 * total)) / denominator
+    margin = z * ((rate * (1 - rate) / total + z2 / (4 * total * total)) ** 0.5) / denominator
+    return {"lower": max(0.0, center - margin), "upper": min(1.0, center + margin)}
+
+
 def _review_category(value: str) -> str | None:
     normalized = (value or "").strip().casefold()
     if normalized in YES:
@@ -259,8 +271,10 @@ def _agreement(items: list[dict[str, str]], field: str) -> dict:
             "cohen_kappa": kappa, "confusion_matrix": confusion}
 
 
-def score(source: str, out: str = "") -> tuple[dict, Path]:
+def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path]:
     """Summarize reviewed quality, coverage, freshness and declared provider cost."""
+    if min_labeled < 1:
+        raise ValueError("--min-labeled must be at least 1.")
     headers, rows = _read(source)
     required = {"field", "status", *REVIEW_FIELDS[:4]}
     missing = sorted(required - set(headers))
@@ -313,10 +327,15 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
         return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
                 "status_counts": {status: sum((r.get("status") or "").strip().casefold() == status for r in items)
                                   for status in ("accepted", "candidate", "not_found", "rejected", "error")},
-                "review_labels": {k: {"label_column": label_columns[k], "labeled": len(v),
-                                      "yes": sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v),
-                                      "rate": _ratio(sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v), len(v))}
-                                  for k, v in labeled.items()},
+                "review_labels": {k: {
+                    "label_column": label_columns[k],
+                    "labeled": len(v),
+                    "yes": sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v),
+                    "rate": _ratio(sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v), len(v)),
+                    "wilson_95": _wilson(sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v), len(v)),
+                    "minimum_labeled_count": min_labeled,
+                    "minimum_labeled_met": len(v) >= min_labeled,
+                } for k, v in labeled.items()},
                 "review_responses": responses,
                 "reviewer_agreement": {field: _agreement(items, field) for field in REVIEW_FIELDS[:4]
                                         if f"reviewer_a_{field}" in headers and f"reviewer_b_{field}" in headers},
@@ -331,7 +350,8 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
                                       for (field, source_type, source_name), items in sorted(by_field_source.items())],
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
-              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
+              "minimum_labeled_for_caution_flag": min_labeled,
+              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -648,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("score", help="score a completed human-review CSV")
     s.add_argument("source", help="review CSV with yes/no labels")
     s.add_argument("--out", default="", help="JSON report output path")
+    s.add_argument("--min-labeled", type=int, default=20, help="minimum yes/no labels before a cohort is flagged as reaching the caution threshold (default: 20)")
     sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
     sm.add_argument("source", help="prepared human-review CSV from `prepare`")
     sm.add_argument("--leads", type=int, default=40, help="maximum leads to sample (default: 40)")
@@ -666,7 +687,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "prepare":
             prepare(args.source, args.out)
         elif args.action == "score":
-            score(args.source, args.out)
+            score(args.source, args.out, args.min_labeled)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
         elif args.action == "pair-reviewers":

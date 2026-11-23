@@ -9,7 +9,7 @@ Added a local CLI harness to turn an enriched CSV's `field_results` contract int
 - evidence adequacy;
 - freshness acceptability.
 
-The scorer reports accepted-result coverage, status counts, labeled yes rates, review response counts and declared cost totals by currency, including cost per accepted field. Prepared sheets retain Engine path, enrichment profile and research lane when available; the report can compare those cohorts. Stage 53 adds lead-level stratified sampling; Stage 54 defines a shared review rubric; Stage 56 adds independent paired review and agreement metrics; Stage 57 breaks results down by field and source/provider name.
+The scorer reports accepted-result coverage, labeled yes rates with Wilson 95% intervals, review response counts, and declared costs. Prepared sheets retain Engine path, enrichment profile and research lane when available. Stages 53–57 add stratified sampling, a shared rubric, independent paired review, agreement metrics and field/source breakdowns; Stage 58 flags small labeled denominators.
 
 ## Use
 

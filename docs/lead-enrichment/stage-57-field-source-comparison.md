@@ -14,7 +14,7 @@ Complete the paired reviewer and adjudication workflow from Stage 56, then score
 python dse.py eval-enrichment score my-lists\ledger-export-enrichment-review-benchmark-sample-paired-review.csv
 ```
 
-Open the generated JSON report and compare entries in `by_field_and_source`. Check `fields`, `review_labels.*.labeled`, `review_responses`, and the source identity before comparing yes rates. The declared cost is reported only where supplied by the field-result producer; it can be estimated and may not reflect actual provider invoices.
+Open the generated JSON report and compare entries in `by_field_and_source`. Check `fields`, `review_labels.*.labeled`, `review_responses`, and the source identity before comparing yes rates. Stage 58 adds uncertainty intervals and a configurable low-count flag to each rate. The declared cost is reported only where supplied by the field-result producer; it can be estimated and may not reflect actual provider invoices.
 
 ## Interpretation limits
 
