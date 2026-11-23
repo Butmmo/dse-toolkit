@@ -1645,6 +1645,9 @@ def _send_outcome_brief(report: dict) -> str:
             lines.append(f"| {variant} | {m['assigned_unique_leads']} | {m['sent_unique_leads']} | {pct(m['send_coverage_rate'])} | {m['skipped_unique_leads']} | {m['unmarked_unique_leads']} | {m['replied_unique_leads']} | {pct(m['reply_rate_per_sent_lead'])} ({interval('replied')}) | {m['booked_unique_leads']} | {pct(m['booked_rate_per_sent_lead'])} ({interval('booked')}) | {m['won_unique_leads']} | {pct(m['won_rate_per_sent_lead'])} ({interval('won')}) | {note} |")
             mature = m["mature_window"]
             lines.append(f"\n{variant} fixed-window outcomes ({mature['window_days']} days): {mature['mature_sent_leads']} mature sent leads; {mature['awaiting_window_leads']} still awaiting the full window; replies {pct(mature['reply_rate'])}, booked {pct(mature['booked_rate'])}, wins {pct(mature['won_rate'])}.\n")
+            if m["reply_categories_unique_leads"]:
+                cats = ", ".join(f"{str(label).replace('|', '/')} ({count})" for label, count in sorted(m["reply_categories_unique_leads"].items()))
+                lines.append(f"Logged reply categories, unique leads per category (categories can overlap): {cats}.\n")
         lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
         comparison = next((item for item in report["comparisons"]
                            if item["experiment_id"] == cohort["experiment_id"] and item["field"] == cohort["field"]), None)
@@ -1685,7 +1688,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         flags = outcomes._flags(events)
         lead = cohorts[(eid, field, variant)].setdefault(lead_id,
                   {**{k: False for k in ("sent", "replied", "booked", "won", "lost", "skipped")},
-                   "_sent_dates": [], "_outcome_dates": {k: [] for k in ("replied", "booked", "won")}})
+                   "_sent_dates": [], "_outcome_dates": {k: [] for k in ("replied", "booked", "won")},
+                   "_reply_categories": set()})
         for key in ("sent", "replied", "booked", "won", "lost", "skipped"):
             lead[key] = lead[key] or bool(flags.get(key))
         for event in events:
@@ -1698,6 +1702,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                 lead["_sent_dates"].append(day)
             if event.get("status") in ("replied", "booked", "won") and not desklog.is_out_of_office(event):
                 lead["_outcome_dates"][event["status"]].append(day)
+            if event.get("status") == "replied" and not desklog.is_out_of_office(event):
+                lead["_reply_categories"].add((event.get("category") or "uncategorized").strip().casefold())
 
     if not cohorts:
         raise ValueError("No tagged experiment rows with stable lead IDs were found for this engine" +
@@ -1712,6 +1718,10 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         unmarked = max(0, len(leads) - sent - skipped)
         groups[(eid, field)] = groups.get((eid, field), {"experiment_id": eid, "field": field, "variants": {}})
         counts = {key: sum(bool(x[key]) for x in leads.values()) for key in ("replied", "booked", "won", "lost")}
+        reply_categories = defaultdict(int)
+        for lead in leads.values():
+            for category in lead["_reply_categories"]:
+                reply_categories[category] += 1
         mature_leads = {}
         missing_sent_date = 0
         for lead_id, lead in leads.items():
@@ -1733,6 +1743,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                   "send_coverage_rate": _ratio(sent, len(leads)),
                   "skip_rate_per_assigned_lead": _ratio(skipped, len(leads)),
                   "unmarked_rate_per_assigned_lead": _ratio(unmarked, len(leads)),
+                  "reply_categories_unique_leads": dict(sorted(reply_categories.items())),
                   "replied_unique_leads": counts["replied"], "booked_unique_leads": counts["booked"],
                   "won_unique_leads": counts["won"], "lost_unique_leads": counts["lost"],
                   "low_sample_caution": sent < minimum_sent_caution,
