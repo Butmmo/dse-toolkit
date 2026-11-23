@@ -11547,6 +11547,86 @@
         "Separates existing lead/enrichment observations from prospect-confirmed commercial qualification checks",
         "Keeps up to six local path-advice snapshots, marking advice as changed, unchanged, or not generated in that run"
       ]
+    },
+    "dse.enrich_spend_preview": {
+      "label": "Lead enrichment: preview provider spend",
+      "group": "Grow",
+      "help": "Calculates a conservative estimate from the provider prices and call caps in a local waterfall config. It does not open a lead CSV, read lead data, visit websites, call providers, or write files. Unknown provider prices are listed separately and are not covered by the numeric estimate.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--spend-preview",
+          "field": "go"
+        },
+        {
+          "opt": "--waterfall-config",
+          "field": "waterfall_config"
+        },
+        {
+          "opt": "--provider",
+          "field": "provider"
+        },
+        {
+          "opt": "--budget",
+          "field": "budget"
+        },
+        {
+          "opt": "--max",
+          "field": "leads"
+        }
+      ],
+      "fields": [
+        {
+          "name": "go",
+          "label": "Preview only",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "waterfall_config",
+          "label": "Local provider waterfall JSON (optional if using one provider)",
+          "type": "file",
+          "required": false,
+          "glob": "enrich-waterfalls/*.json"
+        },
+        {
+          "name": "provider",
+          "label": "One configured provider (optional; use instead of a waterfall file)",
+          "type": "choice",
+          "required": false,
+          "choices_from": "providers",
+          "choices": []
+        },
+        {
+          "name": "budget",
+          "label": "Override maximum provider calls (optional)",
+          "type": "int",
+          "min": 0,
+          "max": 5000
+        },
+        {
+          "name": "leads",
+          "label": "Lead count to estimate for",
+          "type": "int",
+          "min": 1,
+          "max": 2000,
+          "default": 100
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [],
+      "category": "source",
+      "source": "Local waterfall provider price and call-cap configuration",
+      "cost": "Read-only local estimate; no lead data or provider requests.",
+      "outputs_summary": [
+        "Maximum possible calls by field",
+        "Conservative known-price estimate and currency",
+        "Unknown-price providers and separate acknowledgment requirement",
+        "Not a vendor invoice"
+      ]
     }
   },
   "periodic": [

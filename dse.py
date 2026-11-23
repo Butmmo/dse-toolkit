@@ -235,6 +235,7 @@ def main():
     en.add_argument("--budget", type=int, default=None, help="override the provider-call cap in the waterfall config"); en.add_argument("--dry-run", action="store_true", help="project optional provider calls without making provider requests")
     en.add_argument("--max-provider-spend", type=float, default=None, help="required approved ceiling for known configured-provider charges")
     en.add_argument("--allow-unknown-provider-cost", action="store_true", help="acknowledge configured providers with unknown prices; unknown charges are outside the numeric ceiling")
+    en.add_argument("--spend-preview", action="store_true", help="read-only estimate from provider prices and waterfall caps; does not read lead data or make requests")
     en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
     en.add_argument("--catalog", action="store_true", help="show supported, candidate, retired, and restricted enrichment providers")
     en.add_argument("--usage", action="store_true", help="show this PC's optional enrichment-provider usage estimates")
@@ -322,6 +323,8 @@ def main():
         try:
             if a.providers:
                 print(enrich_providers.describe())
+            elif a.spend_preview:
+                print(enrich.provider_spend_preview(a.waterfall_config, a.max, a.provider, a.budget))
             elif a.catalog:
                 print(enrich_providers.describe_catalog())
             elif a.usage:

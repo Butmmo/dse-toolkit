@@ -96,6 +96,17 @@ T["dse.enrich_usage"]["outputs"] = []
 T["dse.enrich_usage"].update({"category": "source", "source": "Local provider-call journal on this PC",
                               "cost": "Read-only usage summary; no provider call or payment is made.",
                               "outputs_summary": ["Provider requests and outcomes", "Configured monetary estimates by currency", "Requests where monetary cost remains unknown", "Clear distinction from vendor invoices"]})
+T["dse.enrich_spend_preview"] = tool("Lead enrichment: preview provider spend", "Calculates a conservative estimate from the provider prices and call caps in a local waterfall config. It does not open a lead CSV, read lead data, visit websites, call providers, or write files. Unknown provider prices are listed separately and are not covered by the numeric estimate.",
+    [{"lit": "enrich"}, {"flag": "--spend-preview", "field": "go"}, {"opt": "--waterfall-config", "field": "waterfall_config"}, {"opt": "--provider", "field": "provider"}, {"opt": "--budget", "field": "budget"}, {"opt": "--max", "field": "leads"}],
+    [{"name": "go", "label": "Preview only", "type": "bool", "default": True},
+     {"name": "waterfall_config", "label": "Local provider waterfall JSON (optional if using one provider)", "type": "file", "required": False, "glob": "enrich-waterfalls/*.json"},
+     {"name": "provider", "label": "One configured provider (optional; use instead of a waterfall file)", "type": "choice", "required": False, "choices_from": "providers", "choices": []},
+     {"name": "budget", "label": "Override maximum provider calls (optional)", "type": "int", "min": 0, "max": 5000},
+     {"name": "leads", "label": "Lead count to estimate for", "type": "int", "min": 1, "max": 2000, "default": 100}], 1)
+T["dse.enrich_spend_preview"]["outputs"] = []
+T["dse.enrich_spend_preview"].update({"category": "source", "source": "Local waterfall provider price and call-cap configuration",
+    "cost": "Read-only local estimate; no lead data or provider requests.",
+    "outputs_summary": ["Maximum possible calls by field", "Conservative known-price estimate and currency", "Unknown-price providers and separate acknowledgment requirement", "Not a vendor invoice"]})
 if T.get("dse.presence_signals"):
     T["dse.presence_signals"].update({"category": "signal", "source": "Public professional/business social search",
                                       "cost": "PC-run public search; no paid data provider is selected by this tool.",

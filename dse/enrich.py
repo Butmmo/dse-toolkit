@@ -866,6 +866,34 @@ def _provider_spend(email_providers: list[dict], email_calls: int, field_configs
     return projection, approval
 
 
+def provider_spend_preview(waterfall_config_path: str, lead_count: int, provider: str = "",
+                           budget_override: int | None = None) -> str:
+    """Read-only price/call-cap estimate; opens no lead list and makes no network requests."""
+    if not 1 <= lead_count <= 2000:
+        raise ValueError("Preview between 1 and 2000 leads.")
+    config = wf.load_config(waterfall_config_path, provider, budget_override)
+    providers = wf.provider_configs(config, dry_run=True) if config["providers"] else []
+    fields = wf.load_field_waterfalls(waterfall_config_path, budget_override, dry_run=True)
+    projection = wf.spend_projection(providers, config["max_provider_calls"], fields, lead_count)
+    by_field = {}
+    if providers:
+        by_field["email"] = min(config["max_provider_calls"], lead_count * len(providers))
+    for field_name, field_config in fields.items():
+        rung_providers = field_config.get("provider_configs", [])
+        by_field[field_name] = min(field_config["max_provider_calls"], lead_count * len(rung_providers))
+    result = {"type": "configured_provider_spend_preview", "lead_count": lead_count,
+              "maximum_possible_provider_calls": projection["possible_calls"],
+              "maximum_estimated_spend": round(projection["estimate"], 8),
+              "currency": projection["currency"] or None,
+              "calls_by_field": by_field,
+              "unknown_price_providers": projection["unknown_providers"],
+              "unknown_price_acknowledgment_required": projection["has_unknown_cost"],
+              "numeric_spend_approval_required": bool(projection["possible_calls"]),
+              "pricing_basis": "local configured cost_per_call; conservative maximum assumes the most expensive configured rung for every possible attempt",
+              "invoice": False, "network_requests": 0, "lead_data_read": False, "files_written": 0}
+    return json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+
+
 def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], render: bool, max_rows: int, today: dt.date | None = None, pause: float = PAGE_PAUSE,
                 provider: dict | None = None, budget: "ep.Budget | None" = None, providers: list[dict] | None = None,
                 waterfall_config: dict | None = None, dry_run: bool = False, field_waterfalls: dict | None = None) -> tuple[list[dict], dict]:
