@@ -423,6 +423,8 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
         correct_values = sum((r.get(label_columns["value_correct"]) or "").strip().casefold() in YES for r in labeled["value_correct"])
         costs: dict[str, float] = defaultdict(float)
         provider_attempt_costs: dict[str, float] = defaultdict(float)
+        provider_cost_review_denominator: dict[str, int] = defaultdict(int)
+        human_correct_with_provider_attempts = 0
         provider_cost_details: dict[str, dict] = defaultdict(lambda: {"calls": 0, "estimated_cost_by_currency": {}, "unknown_price_calls": 0})
         unknown_provider_attempts = 0
         for row in items:
@@ -437,6 +439,8 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
             if not isinstance(waterfall_cost, dict):
                 continue
             provider_map = waterfall_cost.get("providers") if isinstance(waterfall_cost.get("providers"), dict) else {}
+            row_currencies = set()
+            row_has_attempts = False
             for provider_name, attempt in provider_map.items():
                 if not isinstance(attempt, dict):
                     continue
@@ -447,13 +451,21 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                 attempt_amount, attempt_currency = attempt.get("estimated_cost"), attempt.get("currency")
                 detail = provider_cost_details[str(provider_name)]
                 detail["calls"] += attempt_count
+                row_has_attempts |= attempt_count > 0
                 if isinstance(attempt_amount, (int, float)) and math.isfinite(float(attempt_amount)) and attempt_currency:
                     provider_attempt_costs[str(attempt_currency)] += float(attempt_amount)
+                    row_currencies.add(str(attempt_currency))
                     currency_totals = detail["estimated_cost_by_currency"]
                     currency_totals[str(attempt_currency)] = currency_totals.get(str(attempt_currency), 0.0) + float(attempt_amount)
                 elif attempt_count:
                     unknown_provider_attempts += attempt_count
                     detail["unknown_price_calls"] += attempt_count
+            label_column = label_columns["value_correct"]
+            is_human_correct = (row.get(label_column) or "").strip().casefold() in YES
+            if row_has_attempts and is_human_correct:
+                human_correct_with_provider_attempts += 1
+                for currency in row_currencies:
+                    provider_cost_review_denominator[currency] += 1
         accepted = sum((r.get("status") or "").strip().casefold() == "accepted" for r in items)
         fresh_known = [r for r in items if (r.get("freshness_status") or "").strip() and (r.get("freshness_status") or "").casefold() != "unknown"]
         return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
@@ -477,8 +489,12 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                 "provider_attempt_cost_estimate_by_currency": dict(provider_attempt_costs),
                 "provider_attempt_cost_estimate_by_provider": dict(provider_cost_details),
                 "provider_attempt_estimate_per_accepted_result_by_currency": {currency: _ratio(amount, accepted) for currency, amount in provider_attempt_costs.items()},
+                "human_reviewed_correct_results_with_provider_attempts": human_correct_with_provider_attempts,
+                "provider_attempt_estimate_per_human_reviewed_correct_result_by_currency": {
+                    currency: _ratio(amount, provider_cost_review_denominator[currency]) for currency, amount in provider_attempt_costs.items()},
+                "provider_attempt_cost_human_correct_denominator_by_currency": dict(provider_cost_review_denominator),
                 "provider_attempts_with_unknown_price": unknown_provider_attempts,
-                "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded; estimates use configured call prices, not invoices. Cost per accepted result divides by system-accepted fields, not human-verified correctness."}
+                "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded. Cost per human-reviewed correct result uses only explicitly yes-labeled value_correct rows that had priced provider attempts in that currency; unknown-price attempts remain separately counted. Estimates use configured call prices, not invoices, and do not establish general accuracy or causal provider superiority."}
 
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
@@ -499,6 +515,7 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
         fmt = lambda key: "n/a" if m[key]["rate"] is None else f"{m[key]['rate']:.1%} ({m[key]['labeled']} labeled)"
         print(f"  {field}: coverage {values['coverage']:.1%}; value correctness {fmt('value_correct')}; identity correctness {fmt('identity_correct')}; evidence adequacy {fmt('evidence_adequate')}; freshness accepted {fmt('freshness_acceptable')}")
     print("Costs are summed only when a result declares a numeric amount and currency; unknown costs are omitted.")
+    print("Provider waterfall cost-per-human-reviewed-correct metrics use only explicitly yes-labeled value_correct rows; estimates are not invoices.")
     return report, output
 
 
