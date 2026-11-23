@@ -12102,6 +12102,66 @@
         "The original paired enrichment CSV is not modified"
       ]
     },
+    "dse.waterfall_pair_variants": {
+      "label": "Waterfall experiments: pair verified A/B results",
+      "group": "Waterfall experiments",
+      "help": "Choose the completed A and B result CSVs from the same experiment. This local tool checks the shared cohort record, source-sample fingerprint, exact lead order, experiment metadata, and file hashes before combining the two rows per lead. It never selects a variant, imports into an Engine, sends outreach, or uploads the paired lead CSV. Next, use Assign outreach variants to choose one result per lead.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "eval-enrichment"
+        },
+        {
+          "lit": "pair-variants"
+        },
+        {
+          "field": "variant_a"
+        },
+        {
+          "field": "variant_b"
+        }
+      ],
+      "fields": [
+        {
+          "name": "variant_a",
+          "label": "Completed A variant CSV",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*-wfexp-*-a.csv",
+          "exclude": "dry-run"
+        },
+        {
+          "name": "variant_b",
+          "label": "Completed B variant CSV",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*-wfexp-*-b.csv",
+          "exclude": "dry-run"
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": [
+        {
+          "glob": "my-lists/waterfall-experiment-*-paired.csv",
+          "upload": false,
+          "label": "Paired A/B CSV kept on this PC"
+        },
+        {
+          "glob": "my-lists/waterfall-experiment-*-cohort.json",
+          "upload": false,
+          "label": "Local experiment cohort record"
+        }
+      ],
+      "category": "enrich",
+      "source": "Two local result CSVs and their local cohort record",
+      "cost": "No network, paid provider, cloud AI, Engine update, or upload of paired lead rows. The output stays on this PC.",
+      "outputs_summary": [
+        "Validates both variants belong to the same experiment and configured provider pair",
+        "Checks exact source cohort, lead order, variant tags, and recorded file hashes",
+        "Creates one paired CSV with exactly one A and one B row per lead",
+        "Paired CSV and cohort record stay on this PC for the next assignment step"
+      ]
+    },
     "dse.waterfall_score_outcomes": {
       "label": "Waterfall experiments: score Send Desk outcomes",
       "group": "Waterfall experiments",

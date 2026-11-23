@@ -272,6 +272,120 @@ def plan_waterfall_experiment(source: str, field: str, provider_a: str, provider
     return output
 
 
+def pair_experiment_variants(variant_a_path: str, variant_b_path: str) -> tuple[Path, dict]:
+    """Combine verified A/B enrichment outputs only when their recorded source cohort matches exactly."""
+    root = Path(__file__).resolve().parents[1]
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"}
+
+    def load_variant(path_value: str, expected_variant: str):
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = root / path
+        path = path.resolve()
+        try:
+            relative = path.relative_to(root.resolve()).as_posix()
+        except ValueError:
+            raise ValueError("Choose both variant CSVs from this toolkit's local my-lists folder.") from None
+        headers, rows = _read(path)
+        missing = sorted(required - set(headers))
+        if missing:
+            raise ValueError(f"Variant {expected_variant} is missing experiment metadata columns: " + ", ".join(missing))
+        if len(headers) != len(set(headers)):
+            raise ValueError(f"Variant {expected_variant} has duplicate CSV headers; preserve the source and correct the duplicate columns before pairing.")
+        if not rows:
+            raise ValueError(f"Variant {expected_variant} has no lead rows.")
+        ids = []
+        experiment_ids = set()
+        fields = set()
+        provider_pairs = set()
+        config_hashes = set()
+        variants = set()
+        for row_number, row in enumerate(rows, 2):
+            lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+            variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+            experiment_id = (row.get("waterfall_experiment_id") or "").strip()
+            field = (row.get("waterfall_experiment_field") or "").strip()
+            try:
+                providers = json.loads(row.get("waterfall_experiment_providers") or "")
+            except (TypeError, ValueError):
+                providers = None
+            if not lead_id or not experiment_id or variant != expected_variant or not field:
+                raise ValueError(f"Variant {expected_variant} has incomplete or conflicting experiment metadata at row {row_number}.")
+            if not isinstance(providers, list) or len(providers) != 2 or any(not isinstance(name, str) for name in providers):
+                raise ValueError(f"Variant {expected_variant} has invalid provider metadata at row {row_number}.")
+            ids.append(lead_id)
+            experiment_ids.add(experiment_id)
+            fields.add(field)
+            provider_pairs.add(tuple(providers))
+            config_hashes.add((row.get("waterfall_config_sha256") or "").strip().lower())
+            variants.add(variant)
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"Variant {expected_variant} contains duplicate lead IDs; no paired file was written.")
+        if len(experiment_ids) != 1 or len(fields) != 1 or len(provider_pairs) != 1 or len(config_hashes) != 1 or "" in config_hashes:
+            raise ValueError(f"Variant {expected_variant} mixes experiment IDs, fields, provider pairs, or config fingerprints.")
+        return path, relative, headers, rows, ids, next(iter(experiment_ids)), next(iter(fields)), next(iter(provider_pairs)), next(iter(config_hashes))
+
+    path_a, rel_a, headers_a, rows_a, ids_a, experiment_id, field, providers_a, config_hash_a = load_variant(variant_a_path, "A")
+    path_b, rel_b, headers_b, rows_b, ids_b, experiment_b, field_b, providers_b, config_hash_b = load_variant(variant_b_path, "B")
+    if experiment_b != experiment_id or field_b != field or providers_b != providers_a:
+        raise ValueError("The selected files are not the A and B variants of the same experiment field and provider pair.")
+    if ids_a != ids_b:
+        raise ValueError("The selected variants do not contain the same leads in the same order; no paired CSV was written.")
+    manifest_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-cohort.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("The local experiment cohort record is missing or unreadable. Preserve both CSVs and inspect the matching waterfall-experiment cohort file.") from None
+    expected_cohort = hashlib.sha256(json.dumps(ids_a, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    if (manifest.get("schema") != "dbi.waterfall-experiment-cohort.v1"
+            or manifest.get("id") != experiment_id
+            or manifest.get("field") != field
+            or manifest.get("providers") != list(providers_a)
+            or manifest.get("sample_rows") != len(ids_a)
+            or manifest.get("cohort_sha256") != expected_cohort):
+        raise ValueError("The selected CSV rows do not match the experiment's recorded cohort; no paired file was written.")
+    records = manifest.get("variants")
+    record_a = records.get("A") if isinstance(records, dict) else None
+    record_b = records.get("B") if isinstance(records, dict) else None
+    if not isinstance(record_a, dict) or not isinstance(record_b, dict):
+        raise ValueError("Both variants must complete and be recorded before they can be paired.")
+    if (record_a.get("result_csv") != rel_a or record_b.get("result_csv") != rel_b
+            or record_a.get("config_sha256") != config_hash_a or record_b.get("config_sha256") != config_hash_b
+            or record_a.get("result_sha256") != hashlib.sha256(path_a.read_bytes()).hexdigest()
+            or record_b.get("result_sha256") != hashlib.sha256(path_b.read_bytes()).hexdigest()):
+        raise ValueError("One selected result no longer matches the locally recorded experiment output. Preserve it and rerun only through the original workflow.")
+    headers = list(dict.fromkeys([*headers_a, *headers_b]))
+    output = root / "my-lists" / f"waterfall-experiment-{experiment_id}-paired.csv"
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows([*rows_a, *rows_b])
+    output_bytes = ("\ufeff" + buffer.getvalue()).encode("utf-8")
+    if output.exists():
+        if output.read_bytes() != output_bytes:
+            raise ValueError(f"A different paired output already exists; it was left untouched: {output.relative_to(root).as_posix()}")
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with output.open("xb") as file:
+                file.write(output_bytes)
+        except FileExistsError:
+            if output.read_bytes() != output_bytes:
+                raise ValueError(f"A different paired output appeared during creation and was left untouched: {output.relative_to(root).as_posix()}") from None
+    manifest["paired_csv"] = {"path": output.relative_to(root).as_posix(),
+                              "sha256": hashlib.sha256(output_bytes).hexdigest(), "rows": len(rows_a) + len(rows_b)}
+    temp_path = manifest_path.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(manifest_path)
+    result = {"experiment_id": experiment_id, "field": field, "lead_count": len(ids_a),
+              "rows": len(rows_a) + len(rows_b), "variants": {"A": len(rows_a), "B": len(rows_b)},
+              "output": output.relative_to(root).as_posix(), "outreach_assigned": False}
+    print(f"Paired {len(ids_a)} leads across A and B ({len(rows_a) + len(rows_b)} rows): {result['output']}")
+    print("The verified paired file is ready for the assign-outreach step; no variant was selected and no Engine was changed.")
+    return output, result
+
+
 def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", out: str = "", engine: str = "") -> tuple[Path, dict]:
     """Select exactly one A/B enriched row per lead using a stable hash assignment."""
     headers, rows = _read(source)
@@ -2088,6 +2202,9 @@ def main(argv: list[str] | None = None) -> int:
     wx.add_argument("--leads", type=int, default=50)
     wx.add_argument("--seed", type=int, default=42)
     wx.add_argument("--out", default="", help="manifest CSV output path")
+    pv = sub.add_parser("pair-variants", help="verify and combine the recorded A/B waterfall result files")
+    pv.add_argument("variant_a", help="completed A result CSV from my-lists")
+    pv.add_argument("variant_b", help="completed B result CSV from my-lists")
     ao = sub.add_parser("assign-outreach", help="assign each paired experiment lead to exactly one outreach variant")
     ao.add_argument("source", help="combined A/B enriched CSV with stable experiment lead IDs")
     ao.add_argument("--experiment-id", required=True)
@@ -2120,6 +2237,8 @@ def main(argv: list[str] | None = None) -> int:
             plan_waterfall_experiment(args.source, args.field, args.provider_a, args.provider_b,
                                       args.engine_path, args.enrichment_profile, args.research_lane,
                                       args.leads, args.seed, args.out)
+        elif args.action == "pair-variants":
+            pair_experiment_variants(args.variant_a, args.variant_b)
         elif args.action == "assign-outreach":
             assign_outreach_variant(args.source, args.experiment_id, args.seed, args.out, args.engine)
         elif args.action == "pair-reviewers":

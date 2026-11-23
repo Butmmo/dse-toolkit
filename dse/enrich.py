@@ -1263,6 +1263,7 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
         sample_manifest.setdefault("variants", {})[experiment_context["variant"]] = {
             "config_sha256": experiment_context["config_sha256"],
             "result_csv": out_csv.relative_to(ROOT).as_posix(),
+            "result_sha256": hashlib.sha256(out_csv.read_bytes()).hexdigest(),
         }
         temp_manifest = sample_manifest_path.with_suffix(".json.tmp")
         temp_manifest.write_text(json.dumps(sample_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
