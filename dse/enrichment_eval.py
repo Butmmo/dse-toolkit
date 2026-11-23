@@ -608,14 +608,17 @@ def _decision_brief(report: dict) -> str:
             lines.append(f"- Paired cost metadata excluded {unknown} unknown-price calls and {invalid} invalid-price calls across both sources.")
         lines.append("")
     advisories = report.get("waterfall_evidence_advisories") or []
+    plans = report.get("waterfall_experiment_plans") or []
     lines.extend(["## Waterfall experiments to consider", ""])
-    if advisories:
-        for item in advisories:
+    if plans:
+        for item in plans:
+            variant_a, variant_b = item["variants"]
             lines.append(
-                f"- For `{item.get('field')}` in `{item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}`, consider testing `{item.get('candidate_to_test_earlier')}` earlier than `{item.get('compared_with')}`. This signal comes from {item.get('matched_reviewed_leads')} matched reviewed leads; check trade-offs: {', '.join(item.get('other_dimensions_with_opposing_point_estimate_direction') or []) or 'none flagged'}; no config was changed."
+                f"- For `{item.get('field')}` in `{item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}`, compare A `{ ' > '.join(variant_a['provider_order']) }` with B `{ ' > '.join(variant_b['provider_order']) }`. Hold the lead sample, thresholds, stop rules, budget and currency constant. Review coverage, correctness dimensions, freshness, cost, failures and unknown prices. No run or config change was made."
             )
     else:
-        lines.append("No configured-provider pair currently has a directional interval and enough reviewed labels to produce an experiment suggestion.")
+        lines.append("No configured-provider pair currently has a directional interval and enough reviewed labels to produce an experiment plan.")
+    lines.append("The reviewed-pair minimum is a caution threshold, not a sample-size or power guarantee. Run only on an approved small sample and keep outreach disabled during the comparison.")
     lines.append("")
     lines.extend(["## How to read this", "",
                   "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
@@ -662,6 +665,31 @@ def _waterfall_evidence_advisories(comparisons: list[dict]) -> list[dict]:
             "automatic_config_change": False,
         })
     return advisories
+
+
+def _waterfall_experiment_plans(advisories: list[dict], min_labeled: int) -> list[dict]:
+    plans = []
+    for advisory in advisories:
+        provider_a = advisory["candidate_to_test_earlier"]
+        provider_b = advisory["compared_with"]
+        plans.append({
+            "field": advisory["field"],
+            "engine_path": advisory["engine_path"],
+            "enrichment_profile": advisory["enrichment_profile"],
+            "research_lane": advisory["research_lane"],
+            "providers": [provider_a, provider_b],
+            "variants": [
+                {"variant": "A", "provider_order": [provider_a, provider_b]},
+                {"variant": "B", "provider_order": [provider_b, provider_a]},
+            ],
+            "hold_constant": ["same lead sample", "same field acceptance thresholds", "same stop rules", "same provider-call budget", "same currency and pricing configuration"],
+            "measure": ["accepted coverage", "reviewed value correctness", "identity correctness", "evidence adequacy", "freshness", "provider-attempt cost", "failure and unknown-price rates"],
+            "reviewed_pairs_caution_threshold": min_labeled,
+            "guardrails": ["run on a small approved sample", "do not send outreach from the experiment", "review evidence and cost before wider rollout", "this threshold is a caution flag, not a power guarantee"],
+            "automatic_execution": False,
+            "automatic_config_change": False,
+        })
+    return plans
 
 
 def score(source: str, out: str = "", min_labeled: int = 20,
@@ -851,6 +879,7 @@ def score(source: str, out: str = "", min_labeled: int = 20,
     source_sha256 = hashlib.sha256(Path(source).read_bytes()).hexdigest()
     paired_comparisons = _paired_source_comparisons(
         rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed)
+    waterfall_advisories = _waterfall_evidence_advisories(paired_comparisons)
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "scoring_provenance": {
                   "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -868,7 +897,8 @@ def score(source: str, out: str = "", min_labeled: int = 20,
                                        **metrics(items)}
                                       for (field, source_type, source_name), items in sorted(by_field_source.items())],
               "paired_source_comparisons": paired_comparisons,
-              "waterfall_evidence_advisories": _waterfall_evidence_advisories(paired_comparisons),
+              "waterfall_evidence_advisories": waterfall_advisories,
+              "waterfall_experiment_plans": _waterfall_experiment_plans(waterfall_advisories, min_labeled),
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
