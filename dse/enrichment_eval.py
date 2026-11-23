@@ -329,7 +329,8 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                                   "excluded_unknown_or_unlabeled": 0, "excluded_duplicate_result_sets": 0}
                       for dimension in REVIEW_FIELDS[:4]}
             paired_costs: dict[str, dict[str, float | int]] = defaultdict(
-                lambda: {"source_a_total": 0.0, "source_b_total": 0.0, "matched_leads": 0}
+                lambda: {"source_a_total": 0.0, "source_b_total": 0.0, "matched_leads": 0,
+                         "source_a_correct": 0, "source_b_correct": 0}
             )
             paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
             for lead in shared:
@@ -348,6 +349,8 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                         cost_pair["source_a_total"] += a_costs[currency]
                         cost_pair["source_b_total"] += b_costs[currency]
                         cost_pair["matched_leads"] += 1
+                        cost_pair["source_a_correct"] += a_value_label == "yes"
+                        cost_pair["source_b_correct"] += b_value_label == "yes"
                 for dimension, dimension_counts in counts.items():
                     a_label = _review_category(a_rows[0].get(label_columns[dimension], ""))
                     b_label = _review_category(b_rows[0].get(label_columns[dimension], ""))
@@ -417,8 +420,39 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "source_a_mean_estimated_cost_per_matched_lead": a_mean,
                     "source_b_mean_estimated_cost_per_matched_lead": b_mean,
                     "mean_cost_difference_a_minus_b": (a_mean - b_mean) if a_mean is not None and b_mean is not None else None,
+                    "source_a_value_correct_rate_on_priced_subset": _ratio(int(cost_pair["source_a_correct"]), matched_cost_leads),
+                    "source_b_value_correct_rate_on_priced_subset": _ratio(int(cost_pair["source_b_correct"]), matched_cost_leads),
+                    "priced_subset_value_correct_rate_difference_a_minus_b": _ratio(
+                        int(cost_pair["source_a_correct"]) - int(cost_pair["source_b_correct"]), matched_cost_leads),
                     "costs_include_failed_attempts_when_recorded": True,
                 }
+                cost_difference = paired_cost_comparison[currency]["mean_cost_difference_a_minus_b"]
+                quality_difference = paired_cost_comparison[currency]["priced_subset_value_correct_rate_difference_a_minus_b"]
+                if cost_difference is not None and quality_difference is not None and cost_difference != 0:
+                    cheaper_source = "source_a" if cost_difference < 0 else "source_b"
+                    cheaper_quality = quality_difference if cheaper_source == "source_a" else -quality_difference
+                    paired_cost_comparison[currency]["descriptive_cost_quality_readout"] = (
+                        f"{cheaper_source} had lower estimated cost and no lower reviewed correctness on this priced matched subset."
+                        if cheaper_quality >= 0 else
+                        f"{cheaper_source} had lower estimated cost, alongside lower reviewed correctness on this priced matched subset."
+                    )
+                else:
+                    paired_cost_comparison[currency]["descriptive_cost_quality_readout"] = "No clear cost direction in the priced matched subset."
+            value_interval = value_result["paired_rate_difference_cluster_bootstrap_95"]
+            if value_result["matched_adjudicated_leads"] < min_labeled:
+                evidence_status = "below_minimum_labeled_caution_threshold"
+                quality_direction = "insufficient_reviewed_leads"
+            elif value_interval["lower"] is not None and value_interval["lower"] > 0:
+                evidence_status, quality_direction = "interval_directional", "source_a_higher_reviewed_correctness"
+            elif value_interval["upper"] is not None and value_interval["upper"] < 0:
+                evidence_status, quality_direction = "interval_directional", "source_b_higher_reviewed_correctness"
+            else:
+                evidence_status, quality_direction = "no_clear_interval_direction", "unclear"
+            value_sign = value_result["paired_rate_difference_a_minus_b"]
+            tradeoffs = [name for name, values in dimensions.items()
+                         if name != "value_correct" and values["paired_rate_difference_a_minus_b"] is not None
+                         and value_sign is not None
+                         and values["paired_rate_difference_a_minus_b"] * value_sign < 0]
             comparisons.append({
                 "field": field,
                 "engine_path": cohort[0],
@@ -444,6 +478,13 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "neither_rate": _ratio(len(neither), len(cohort_leads)),
                 },
                 "paired_provider_attempt_cost_by_currency": paired_cost_comparison,
+                "decision_readout": {
+                    "evidence_status": evidence_status,
+                    "value_correctness_direction": quality_direction,
+                    "dimensions_with_opposing_point_estimate_direction": tradeoffs,
+                    "automatic_provider_selection": False,
+                    "note": "Descriptive comparison of this matched reviewed cohort; use business importance, evidence strength, coverage, and cost together.",
+                },
                 "dimensions": dimensions,
                 "matched_adjudicated_leads": value_result["matched_adjudicated_leads"],
                 "source_a_wins": value_result["source_a_wins"],
