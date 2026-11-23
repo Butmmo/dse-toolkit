@@ -6,6 +6,7 @@ import csv
 import hashlib
 import json
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,21 @@ REVIEW_FIELDS = ["value_correct", "identity_correct", "evidence_adequate", "fres
 YES = {"y", "yes", "true", "1"}
 NO = {"n", "no", "false", "0"}
 FIT_JUDGMENTS = {"good_fit", "not_a_fit", "uncertain"}
+TARGET_CONTEXT_FIELDS = {
+    "requested_business_profile": "business_profile",
+    "requested_decision_maker": "decision_maker",
+    "requested_role": "role",
+    "requested_legal_form": "legal_form",
+    "requested_path": "path",
+    "requested_search_strategy": "search_strategy",
+}
+OBSERVED_CONTEXT_FIELDS = {
+    "business_profiles": ("business_profile", "key"),
+    "roles": ("role_evidence", "label"),
+    "legal_forms": ("legal_form_mention", "key"),
+    "person_role_candidates": ("person_role_candidate", "title"),
+    "presence_signal_categories": ("presence_signal_category", ""),
+}
 
 
 def _json(value: Any) -> Any:
@@ -153,14 +169,21 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
     return report, output
 
 
-def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
-    """Measure latest Ledger fit judgements by research lane and enrichment profile."""
+def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dict, Path]:
+    """Measure Ledger fit judgements and associate them with same-lane field results."""
+    if min_decided < 1:
+        raise ValueError("--min-decided must be at least 1.")
     headers, rows = _read(source)
     column = next((name for name in headers if name.strip().casefold() == "enrichment_review"), "")
     if not column:
         raise ValueError("Ledger CSV needs the enrichment_review column. Make it visible before exporting the grid.")
+    desk_status_column = next((name for name in headers
+                               if name.strip().casefold().replace(" ", "_") in {"desk_status", "c_desk_status"}), "")
+    desk_last_column = next((name for name in headers
+                             if name.strip().casefold().replace(" ", "_") in {"desk_last_update", "desk_last", "c_desk_last"}), "")
 
-    latest: dict[tuple[int, str], dict[str, str]] = {}
+    latest: dict[tuple[int, str], dict[str, Any]] = {}
+    row_results: dict[int, list[dict[str, Any]]] = {}
     malformed = 0
     valid_history_entries = 0
     for row_number, row in enumerate(rows, 2):
@@ -181,12 +204,66 @@ def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
             if lane not in {"herald", "website", "presence"}:
                 lane = "unknown"
             profile = str(item.get("profile_key") or "unknown").strip() or "unknown"
+            raw_context = item.get("target_context") if isinstance(item.get("target_context"), dict) else {}
+            target_context = {}
+            for field in TARGET_CONTEXT_FIELDS:
+                value = raw_context.get(field)
+                if isinstance(value, (str, int, float)) and str(value).strip():
+                    target_context[field] = str(value).strip()[:160]
+            raw_observed = item.get("observed_context") if isinstance(item.get("observed_context"), dict) else {}
+            observed_context: dict[str, list[str]] = {}
+            for field, (_, item_key) in OBSERVED_CONTEXT_FIELDS.items():
+                raw_values = raw_observed.get(field)
+                if not isinstance(raw_values, list):
+                    continue
+                observed_values = []
+                for raw_value in raw_values[:12]:
+                    value = raw_value if not item_key and isinstance(raw_value, str) else raw_value.get(item_key) if item_key and isinstance(raw_value, dict) else ""
+                    if isinstance(value, str) and value.strip():
+                        observed_values.append(value.strip()[:120])
+                if observed_values:
+                    observed_context[field] = list(dict.fromkeys(observed_values))
+            raw_desk_status = str(row.get(desk_status_column) or "").strip().casefold().replace("_", " ") if desk_status_column else "not_available"
+            if raw_desk_status in {"call booked", "booked call"}:
+                raw_desk_status = "booked"
+            if raw_desk_status == "to do":
+                raw_desk_status = "not_recorded"
+            elif not raw_desk_status:
+                raw_desk_status = "not_recorded"
+            elif raw_desk_status not in {"sent", "skipped", "replied", "booked", "won", "lost", "not_available"}:
+                raw_desk_status = "other"
+            desk_date = str(row.get(desk_last_column) or "").strip()[:10] if desk_last_column else ""
+            review_date = str(item.get("reviewed_at") or "")[:10]
+            try:
+                desk_day = date.fromisoformat(desk_date)
+                review_day = date.fromisoformat(review_date)
+            except ValueError:
+                desk_timing = "unknown"
+            else:
+                if desk_day > review_day:
+                    desk_timing = "after_review"
+                elif desk_day == review_day:
+                    desk_timing = "same_day_order_unknown"
+                else:
+                    desk_timing = "before_review"
             latest[(row_number, lane)] = {"judgment": item["judgment"], "lane": lane, "profile_key": profile,
                                           "reviewed_at": str(item.get("reviewed_at") or ""),
-                                          "research_checked_at": str(item.get("research_checked_at") or "")}
+                                          "research_checked_at": str(item.get("research_checked_at") or ""),
+                                          "target_context": target_context,
+                                          "observed_context": observed_context,
+                                          "desk_status": raw_desk_status,
+                                          "desk_timing": desk_timing,
+                                          "row_number": row_number}
             valid_history_entries += 1
 
-    def summarize(items: list[dict[str, str]]) -> dict[str, Any]:
+        result_column = next((name for name in headers if name.strip().casefold() == "field_results"), "")
+        if result_column:
+            result_payload = _json(row.get(result_column))
+            if isinstance(result_payload, list):
+                row_results[row_number] = [item for item in result_payload
+                                           if isinstance(item, dict) and item.get("schema") == "dbi.field-result.v1"]
+
+    def summarize(items: list[dict[str, Any]]) -> dict[str, Any]:
         counts = {label: sum(item["judgment"] == label for item in items) for label in ("good_fit", "not_a_fit", "uncertain")}
         decided = counts["good_fit"] + counts["not_a_fit"]
         return {"latest_row_lane_reviews": len(items), "judgment_counts": counts,
@@ -202,11 +279,183 @@ def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
         group = [item for item in latest_items if item["lane"] == lane and item["profile_key"] == profile]
         by_lane_profile[f"{lane}|{profile}"] = summarize(group)
 
+    profile_comparison: dict[str, dict[str, Any]] = {}
+    for lane, profile in keys:
+        group = [item for item in latest_items if item["lane"] == lane and item["profile_key"] == profile]
+        alternatives = [item for item in latest_items if item["lane"] == lane and item["profile_key"] != profile]
+        profile_metrics = summarize(group)
+        alternative_metrics = summarize(alternatives)
+        group_rate = profile_metrics["good_fit_rate_among_decided"]
+        alternatives_rate = alternative_metrics["good_fit_rate_among_decided"]
+        decided = profile_metrics["judgment_counts"]["good_fit"] + profile_metrics["judgment_counts"]["not_a_fit"]
+        alternatives_decided = alternative_metrics["judgment_counts"]["good_fit"] + alternative_metrics["judgment_counts"]["not_a_fit"]
+        delta = round((group_rate - alternatives_rate) * 100, 1) if group_rate is not None and alternatives_rate is not None else None
+        profile_comparison[f"{lane}|{profile}"] = {
+            "profile_decided_reviews": decided,
+            "profile_good_fit_rate_among_decided": group_rate,
+            "other_profiles_decided_reviews": alternatives_decided,
+            "other_profiles_good_fit_rate_among_decided": alternatives_rate,
+            "good_fit_rate_delta_percentage_points": delta,
+            "sample_status": "too_few_profile_reviews" if decided < min_decided else
+                             "too_few_other_profile_reviews" if alternatives_decided < min_decided else "descriptive_only",
+            "comparison_note": "Other-profile baseline includes only different profile keys in the same lane; it is descriptive and non-causal."}
+
+    target_segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    target_segment_labels: dict[tuple[str, str, str], str] = {}
+    target_context_coverage = {dimension: 0 for dimension in TARGET_CONTEXT_FIELDS.values()}
+    for review in latest_items:
+        context = review["target_context"]
+        for field, dimension in TARGET_CONTEXT_FIELDS.items():
+            value = context.get(field)
+            if not value:
+                continue
+            target_context_coverage[dimension] += 1
+            key = (review["lane"], dimension, value.casefold())
+            target_segment_groups[key].append(review)
+            target_segment_labels.setdefault(key, value)
+    target_segments: dict[str, dict[str, Any]] = {}
+    for key, group in sorted(target_segment_groups.items()):
+        lane, dimension, _ = key
+        metrics = summarize(group)
+        decided = metrics["judgment_counts"]["good_fit"] + metrics["judgment_counts"]["not_a_fit"]
+        target_segments[f"{lane}|{dimension}|{target_segment_labels[key]}"] = {
+            **metrics, "decided_reviews": decided,
+            "sample_status": "too_few_decided_reviews" if decided < min_decided else "descriptive_only"}
+
+    observed_segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    observed_segment_labels: dict[tuple[str, str, str], str] = {}
+    observed_context_coverage = {dimension: 0 for dimension, _ in OBSERVED_CONTEXT_FIELDS.values()}
+    for review in latest_items:
+        context = review["observed_context"]
+        for field, (dimension, _) in OBSERVED_CONTEXT_FIELDS.items():
+            values = context.get(field, [])
+            if not values:
+                continue
+            observed_context_coverage[dimension] += 1
+            for value in values:
+                key = (review["lane"], dimension, value.casefold())
+                observed_segment_groups[key].append(review)
+                observed_segment_labels.setdefault(key, value)
+    observed_segments: dict[str, dict[str, Any]] = {}
+    for key, group in sorted(observed_segment_groups.items()):
+        lane, dimension, _ = key
+        metrics = summarize(group)
+        decided = metrics["judgment_counts"]["good_fit"] + metrics["judgment_counts"]["not_a_fit"]
+        observed_segments[f"{lane}|{dimension}|{observed_segment_labels[key]}"] = {
+            **metrics, "decided_reviews": decided,
+            "sample_status": "too_few_decided_reviews" if decided < min_decided else "descriptive_only"}
+
+    def outcome_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+        counts: dict[str, int] = defaultdict(int)
+        timing: dict[str, int] = defaultdict(int)
+        for item in items:
+            counts[item["desk_status"]] += 1
+            timing[item["desk_timing"]] += 1
+        return {"fit_reviews": len(items), "desk_status_column_found": bool(desk_status_column),
+                "desk_last_update_column_found": bool(desk_last_column),
+                "desk_status_counts": dict(sorted(counts.items())),
+                "desk_timing_relative_to_review_counts": dict(sorted(timing.items()))}
+
+    outcomes_by_judgment_lane_profile: dict[str, dict[str, Any]] = {}
+    outcome_keys = sorted({(item["judgment"], item["lane"], item["profile_key"]) for item in latest_items})
+    for judgment, lane, profile in outcome_keys:
+        group = [item for item in latest_items if (item["judgment"], item["lane"], item["profile_key"]) == (judgment, lane, profile)]
+        outcomes_by_judgment_lane_profile[f"{judgment}|{lane}|{profile}"] = outcome_summary(group)
+
+    def outcome_segments(context_name: str, dimensions: dict[str, str], observed: bool = False) -> dict[str, dict[str, Any]]:
+        groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+        labels: dict[tuple[str, str, str], str] = {}
+        for review in latest_items:
+            context = review[context_name]
+            for field, dimension in dimensions.items():
+                raw = context.get(field, []) if observed else context.get(field)
+                values = raw if isinstance(raw, list) else [raw]
+                for value in dict.fromkeys(v for v in values if isinstance(v, str) and v.strip()):
+                    key = (review["lane"], dimension, value.casefold())
+                    groups[key].append(review)
+                    labels.setdefault(key, value)
+        out: dict[str, dict[str, Any]] = {}
+        for key, group in sorted(groups.items()):
+            lane, dimension, _ = key
+            out[f"{lane}|{dimension}|{labels[key]}"] = outcome_summary(group)
+        return out
+
+    target_outcomes = outcome_segments("target_context", TARGET_CONTEXT_FIELDS)
+    observed_outcomes = outcome_segments("observed_context", {field: config[0] for field, config in OBSERVED_CONTEXT_FIELDS.items()}, observed=True)
+
+    lane_aliases = {"website_enrichment": "website", "herald_research": "herald", "presence_research": "presence"}
+    joined: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
+    matched_reviews = 0
+    unmatched_reviews = 0
+    for review in latest_items:
+        matching = []
+        for result in row_results.get(int(review["row_number"]), []):
+            metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+            result_lane = lane_aliases.get(str(metadata.get("lane") or ""), "")
+            if result_lane != review["lane"]:
+                continue
+            matching.append(result)
+        if not matching:
+            unmatched_reviews += 1
+            continue
+        matched_reviews += 1
+        for result in matching:
+            source_info = result.get("source") if isinstance(result.get("source"), dict) else {}
+            freshness = result.get("freshness") if isinstance(result.get("freshness"), dict) else {}
+            verification = result.get("verification") if isinstance(result.get("verification"), dict) else {}
+            joined[(review["judgment"], review["lane"], review["profile_key"])].append({
+                "field": str(result.get("field") or "(blank field)"),
+                "status": str(result.get("status") or "unknown"),
+                "source_type": str(source_info.get("type") or "unknown"),
+                "source_name": str(source_info.get("name") or "unknown"),
+                "freshness_status": str(freshness.get("status") or "unknown"),
+                "verification_status": str(verification.get("status") or "unknown"),
+            })
+
+    def field_summary(items: list[dict[str, str]]) -> dict[str, Any]:
+        def counts(records: list[dict[str, str]], key: str) -> dict[str, int]:
+            values: dict[str, int] = defaultdict(int)
+            for record in records:
+                values[record[key]] += 1
+            return dict(sorted(values.items()))
+
+        fields: dict[str, list[dict[str, str]]] = defaultdict(list)
+        for item in items:
+            fields[item["field"]].append(item)
+        return {"field_result_records": len(items), "fields": {
+            field: {"records": len(records),
+                    "status_counts": counts(records, "status"),
+                    "accepted_rate": _ratio(sum(r["status"] == "accepted" for r in records), len(records)),
+                    "source_type_counts": counts(records, "source_type"),
+                    "source_name_counts": counts(records, "source_name"),
+                    "freshness_status_counts": counts(records, "freshness_status"),
+                    "verification_status_counts": counts(records, "verification_status")}
+            for field, records in sorted(fields.items())}}
+
+    field_join = {f"{judgment}|{lane}|{profile}": field_summary(items)
+                  for (judgment, lane, profile), items in sorted(joined.items())}
+
     report = {"schema": "dbi.ledger-fit-evaluation.v1", "source_file": str(Path(source).resolve()),
               "source_rows": len(rows), "valid_history_entries": valid_history_entries,
               "latest_by_row_and_lane": summarize(latest_items), "by_lane_and_profile": by_lane_profile,
+              "profile_comparison": {"minimum_decided_reviews": min_decided,
+                                     "by_lane_and_profile": profile_comparison},
+              "target_context_segments": {"minimum_decided_reviews": min_decided,
+                                          "review_coverage_by_dimension": target_context_coverage,
+                                          "by_lane_dimension_and_value": target_segments},
+              "observed_context_segments": {"minimum_decided_reviews": min_decided,
+                                             "review_coverage_by_dimension": observed_context_coverage,
+                                             "by_lane_dimension_and_value": observed_segments},
+              "send_desk_outcomes": {"desk_status_column_found": bool(desk_status_column),
+                                     "desk_last_update_column_found": bool(desk_last_column),
+                                     "by_judgment_lane_and_profile": outcomes_by_judgment_lane_profile,
+                                     "by_requested_target_segments": target_outcomes,
+                                     "by_observed_research_cue_segments": observed_outcomes},
+              "field_results_join": {"reviewed_rows_with_matching_lane_results": matched_reviews,
+                                     "reviewed_rows_without_matching_lane_results": unmatched_reviews,
+                                     "by_judgment_lane_and_profile": field_join},
               "malformed_or_unsupported_entries": malformed,
-              "interpretation": "Fit rates summarize human decisions, not factual accuracy, conversion, ability to pay, or population-wide lead quality. Each grid row contributes its latest review per lane; repeated reviews are retained in the source history but do not get extra weight here. Profile groups with small samples should be treated as descriptive only."}
+              "interpretation": "Fit rates summarize human decisions, not factual accuracy, conversion, ability to pay, or population-wide lead quality. Field-result status, provider and freshness counts are descriptive associations among same-row results in the reviewed lane; fit judgements do not verify those fields. Each grid row contributes its latest review per lane; repeated reviews are retained in the source history but do not get extra weight here. Profile groups with small samples should be treated as descriptive only."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-ledger-fit-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -227,6 +476,7 @@ def main(argv: list[str] | None = None) -> int:
     l = sub.add_parser("score-ledger", help="score fit reviews exported from a Ledger grid")
     l.add_argument("source", help="Ledger grid CSV with an enrichment_review column")
     l.add_argument("--out", default="", help="JSON report output path")
+    l.add_argument("--min-decided", type=int, default=10, help="minimum good-fit plus not-a-fit reviews before a profile is marked descriptive only (default: 10)")
     args = parser.parse_args(argv)
     try:
         if args.action == "prepare":
@@ -234,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "score":
             score(args.source, args.out)
         else:
-            score_ledger(args.source, args.out)
+            score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:
         parser.exit(2, f"Error: {exc}\n")
     return 0

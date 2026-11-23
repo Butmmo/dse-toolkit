@@ -2,7 +2,7 @@
 
 ## What changed
 
-The local enrichment evaluator now accepts a Ledger grid CSV export containing the `enrichment_review` JSON column. `score-ledger` reads the `dbi.enrichment-human-review.v1` history and writes a JSON summary of the latest judgement per row and research lane, grouped by lane and enrichment profile. It reports counts for `good_fit`, `not_a_fit`, and `uncertain`, along with whether review and research check times were recorded. Repeated reviews remain in the source history but do not give one row extra weight in the summary.
+The local enrichment evaluator now accepts a Ledger grid CSV export containing the `enrichment_review` JSON column. `score-ledger` reads the `dbi.enrichment-human-review.v1` history and writes a JSON summary of the latest judgement per row and research lane, grouped by lane and enrichment profile. It reports counts for `good_fit`, `not_a_fit`, and `uncertain`, along with whether review and research check times were recorded. Stage 47 extends it with same-row, same-lane `field_results` counts by judgement. Repeated reviews remain in the source history but do not give one row extra weight in the summary.
 
 ## Use
 
