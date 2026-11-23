@@ -12,13 +12,13 @@ Make `enrichment_review`, `Desk status`, and `Desk last update` visible and expo
 python dse.py eval-enrichment score-ledger my-lists\ledger-export.csv
 ```
 
-Read `send_desk_outcomes.by_judgment_lane_and_profile` in the JSON report. No person names, reply text, or monetary values are included in this aggregate.
+Read `send_desk_outcomes.by_judgment_lane_and_profile` for profile groups, `by_requested_target_segments` for user-requested targeting intent, and `by_observed_research_cue_segments` for returned research cues. Each segment reports current status counts and update timing relative to the review. No person names, reply text, or monetary values are included in these aggregates.
 
 ## Interpretation and limits
 
 The grid holds the current/latest Desk status, not a complete event history. Counts therefore do not form a campaign funnel or establish reply rates, conversion rates, time-to-outcome, revenue, or causal impact from enrichment. Same-day ordering is unavailable because Desk stores a date rather than a time for the grid update. Status differences are descriptive associations for the exported rows. Keep Herald, Website and Presence review lanes separate. No Supabase SQL is required.
 
-No automated tests were added or run.
+Stage 52 adds Desk-status groupings to each target and observed-cue segment. The segment groups overlap when a lead has more than one cue. No automated tests were added or run.
 
 ## Files
 

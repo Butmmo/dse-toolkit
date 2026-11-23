@@ -362,6 +362,27 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
         group = [item for item in latest_items if (item["judgment"], item["lane"], item["profile_key"]) == (judgment, lane, profile)]
         outcomes_by_judgment_lane_profile[f"{judgment}|{lane}|{profile}"] = outcome_summary(group)
 
+    def outcome_segments(context_name: str, dimensions: dict[str, str], observed: bool = False) -> dict[str, dict[str, Any]]:
+        groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+        labels: dict[tuple[str, str, str], str] = {}
+        for review in latest_items:
+            context = review[context_name]
+            for field, dimension in dimensions.items():
+                raw = context.get(field, []) if observed else context.get(field)
+                values = raw if isinstance(raw, list) else [raw]
+                for value in dict.fromkeys(v for v in values if isinstance(v, str) and v.strip()):
+                    key = (review["lane"], dimension, value.casefold())
+                    groups[key].append(review)
+                    labels.setdefault(key, value)
+        out: dict[str, dict[str, Any]] = {}
+        for key, group in sorted(groups.items()):
+            lane, dimension, _ = key
+            out[f"{lane}|{dimension}|{labels[key]}"] = outcome_summary(group)
+        return out
+
+    target_outcomes = outcome_segments("target_context", TARGET_CONTEXT_FIELDS)
+    observed_outcomes = outcome_segments("observed_context", {field: config[0] for field, config in OBSERVED_CONTEXT_FIELDS.items()}, observed=True)
+
     lane_aliases = {"website_enrichment": "website", "herald_research": "herald", "presence_research": "presence"}
     joined: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     matched_reviews = 0
@@ -427,7 +448,9 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
                                              "by_lane_dimension_and_value": observed_segments},
               "send_desk_outcomes": {"desk_status_column_found": bool(desk_status_column),
                                      "desk_last_update_column_found": bool(desk_last_column),
-                                     "by_judgment_lane_and_profile": outcomes_by_judgment_lane_profile},
+                                     "by_judgment_lane_and_profile": outcomes_by_judgment_lane_profile,
+                                     "by_requested_target_segments": target_outcomes,
+                                     "by_observed_research_cue_segments": observed_outcomes},
               "field_results_join": {"reviewed_rows_with_matching_lane_results": matched_reviews,
                                      "reviewed_rows_without_matching_lane_results": unmatched_reviews,
                                      "by_judgment_lane_and_profile": field_join},
