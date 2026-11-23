@@ -1646,6 +1646,12 @@ def _send_outcome_brief(report: dict) -> str:
             mature = m["mature_window"]
             lines.append(f"\n{variant} fixed-window outcomes ({mature['window_days']} days): {mature['mature_sent_leads']} mature sent leads; {mature['awaiting_window_leads']} still awaiting the full window; replies {pct(mature['reply_rate'])}, booked {pct(mature['booked_rate'])}, wins {pct(mature['won_rate'])}.\n")
         lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
+        comparison = next((item for item in report["comparisons"]
+                           if item["experiment_id"] == cohort["experiment_id"] and item["field"] == cohort["field"]), None)
+        if comparison and comparison.get("mature_window_days"):
+            def pp(value: float | None) -> str:
+                return "not available" if value is None else f"{value * 100:+.1f} percentage points"
+            lines.append(f"Fixed {comparison['mature_window_days']}-day A-minus-B differences (descriptive): replies {pp(comparison['mature_reply_rate_a_minus_b'])}, booked {pp(comparison['mature_booked_rate_a_minus_b'])}, wins {pp(comparison['mature_won_rate_a_minus_b'])}. Mature leads sent in both variants: {comparison['mature_same_leads_sent_in_both_variants']}.\n")
     lines.extend(["## Interpretation", "", report["interpretation"], "",
                   "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
     return "\n".join(lines)
@@ -1698,6 +1704,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                          (f" and experiment {experiment_id!r}." if experiment_id else "."))
 
     groups: dict[tuple[str, str], dict] = {}
+    mature_id_sets: dict[tuple[str, str, str], set[str]] = {}
     minimum_sent_caution = 30
     for (eid, field, variant), leads in sorted(cohorts.items()):
         sent = sum(bool(x["sent"]) for x in leads.values())
@@ -1718,6 +1725,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             mature_leads[lead_id] = {key: any(first_sent <= day <= window_end for day in lead["_outcome_dates"][key])
                                      for key in ("replied", "booked", "won")}
         mature_counts = {key: sum(bool(x[key]) for x in mature_leads.values()) for key in ("replied", "booked", "won")}
+        mature_id_sets[(eid, field, variant)] = set(mature_leads)
         metric = {"assigned_unique_leads": len(leads), "sent_unique_leads": sent,
                   "replied_unique_leads": counts["replied"], "booked_unique_leads": counts["booked"],
                   "won_unique_leads": counts["won"], "lost_unique_leads": counts["lost"],
@@ -1745,6 +1753,9 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         item["same_leads_in_both_variants"] = len(overlap)
         item["interpretation"] = "descriptive only; no causal winner is declared"
         if "A" in variants and "B" in variants:
+            mature_overlap = mature_id_sets[(item["experiment_id"], item["field"], "A")] & mature_id_sets[(item["experiment_id"], item["field"], "B")]
+            mature_a = variants["A"]["mature_window"]
+            mature_b = variants["B"]["mature_window"]
             comparisons.append({"experiment_id": item["experiment_id"], "field": item["field"],
                                "reply_rate_a_minus_b": (variants["A"]["reply_rate_per_sent_lead"] - variants["B"]["reply_rate_per_sent_lead"])
                                    if variants["A"]["reply_rate_per_sent_lead"] is not None and variants["B"]["reply_rate_per_sent_lead"] is not None else None,
@@ -1753,7 +1764,17 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                                "won_rate_a_minus_b": (variants["A"]["won_rate_per_sent_lead"] - variants["B"]["won_rate_per_sent_lead"])
                                    if variants["A"]["won_rate_per_sent_lead"] is not None and variants["B"]["won_rate_per_sent_lead"] is not None else None,
                                "same_leads_in_both_variants": len(overlap),
-                               "overlap_caution": "overlapping leads may have received both variants; compare as descriptive only" if overlap else ""})
+                               "overlap_caution": "overlapping leads may have received both variants; compare as descriptive only" if overlap else "",
+                               "mature_window_days": maturity_days,
+                               "mature_sent_leads_a": mature_a["mature_sent_leads"],
+                               "mature_sent_leads_b": mature_b["mature_sent_leads"],
+                               "mature_same_leads_sent_in_both_variants": len(mature_overlap),
+                               "mature_reply_rate_a_minus_b": _ratio(mature_a["reply_count"], mature_a["mature_sent_leads"]) - _ratio(mature_b["reply_count"], mature_b["mature_sent_leads"])
+                                   if mature_a["reply_rate"] is not None and mature_b["reply_rate"] is not None else None,
+                               "mature_booked_rate_a_minus_b": _ratio(mature_a["booked_count"], mature_a["mature_sent_leads"]) - _ratio(mature_b["booked_count"], mature_b["mature_sent_leads"])
+                                   if mature_a["booked_rate"] is not None and mature_b["booked_rate"] is not None else None,
+                               "mature_won_rate_a_minus_b": _ratio(mature_a["won_count"], mature_a["mature_sent_leads"]) - _ratio(mature_b["won_count"], mature_b["mature_sent_leads"])
+                                   if mature_a["won_rate"] is not None and mature_b["won_rate"] is not None else None})
     report = {"schema": "dbi.waterfall-send-outcomes.v1", "engine": engine, "experiment_filter": experiment_id or None,
               "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
