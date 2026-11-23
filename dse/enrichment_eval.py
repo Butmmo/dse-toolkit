@@ -709,6 +709,15 @@ def _decision_brief(report: dict) -> str:
             lines.append(
                 f"- `{item.get('experiment_id')}` / `{item.get('field')}` ({item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}): A-minus-B reviewed correctness {_display_rate(value.get('rate_difference_a_minus_b'))}; interval {interval_text}; matched leads {value.get('matched_reviewed_leads', 0)}; outputs A {availability.get('variant_a', 0)}, B {availability.get('variant_b', 0)}. Status: `{item.get('decision_status')}`."
             )
+            operational = item.get("paired_operational_outcomes", {})
+            accepted_interval = operational.get("accepted_coverage_lead_pair_bootstrap_95", {})
+            accepted_low, accepted_high = accepted_interval.get("lower"), accepted_interval.get("upper")
+            accepted_interval_text = (f"{accepted_low:+.1%} to {accepted_high:+.1%}"
+                                      if isinstance(accepted_low, (int, float)) and isinstance(accepted_high, (int, float))
+                                      else "unavailable")
+            lines.append(
+                f"  - Accepted-result coverage on {operational.get('paired_unique_leads', 0)} paired leads: A {_display_rate(operational.get('variant_a_accepted_coverage'))}, B {_display_rate(operational.get('variant_b_accepted_coverage'))}; A-minus-B interval {accepted_interval_text}."
+            )
             for currency, costs in (item.get("paired_provider_attempt_cost_by_currency") or {}).items():
                 cost_interval = costs.get("mean_cost_difference_lead_pair_bootstrap_95", {})
                 cost_low, cost_high = cost_interval.get("lower"), cost_interval.get("upper")
@@ -855,6 +864,8 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
         a_ids = {lead for lead, variants in leads.items() if variants.get("A")}
         b_ids = {lead for lead, variants in leads.items() if variants.get("B")}
         paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        paired_accepted: list[tuple[int, int]] = []
+        status_counts = {"A": defaultdict(int), "B": defaultdict(int)}
         excluded_duplicate = 0
         excluded_unlabeled = defaultdict(int)
         paired_costs: dict[str, dict[str, Any]] = defaultdict(
@@ -877,6 +888,11 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                 continue
             a_value = _review_category(variants["A"][0].get(label_columns["value_correct"], ""))
             b_value = _review_category(variants["B"][0].get(label_columns["value_correct"], ""))
+            a_status = (variants["A"][0].get("status") or "blank").strip().casefold() or "blank"
+            b_status = (variants["B"][0].get("status") or "blank").strip().casefold() or "blank"
+            status_counts["A"][a_status] += 1
+            status_counts["B"][b_status] += 1
+            paired_accepted.append((int(a_status == "accepted"), int(b_status == "accepted")))
             if a_value in {"yes", "no"} and b_value in {"yes", "no"}:
                 a_costs, a_unknown, a_invalid = _known_attempt_costs(variants["A"][0])
                 b_costs, b_unknown, b_invalid = _known_attempt_costs(variants["B"][0])
@@ -934,6 +950,34 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                 "minimum_labeled_met": len(pairs) >= min_labeled,
             }
         value = dimensions.get("value_correct", {})
+        accepted_a = sum(pair[0] for pair in paired_accepted)
+        accepted_b = sum(pair[1] for pair in paired_accepted)
+        acceptance_differences = []
+        if bootstrap_reps and paired_accepted:
+            rng = random.Random(f"{bootstrap_seed}:{experiment_id}:{field}:{engine_path}:{profile}:{lane}:acceptance")
+            for _ in range(bootstrap_reps):
+                sample = [paired_accepted[rng.randrange(len(paired_accepted))] for _ in paired_accepted]
+                acceptance_differences.append(sum(a - b for a, b in sample) / len(sample))
+            acceptance_differences.sort()
+        operational_outcomes = {
+            "paired_unique_leads": len(paired_accepted),
+            "variant_a_status_counts": dict(sorted(status_counts["A"].items())),
+            "variant_b_status_counts": dict(sorted(status_counts["B"].items())),
+            "variant_a_accepted_coverage": _ratio(accepted_a, len(paired_accepted)),
+            "variant_b_accepted_coverage": _ratio(accepted_b, len(paired_accepted)),
+            "accepted_coverage_difference_a_minus_b": _ratio(accepted_a - accepted_b, len(paired_accepted)),
+            "variant_a_acceptance_wins": sum(a == 1 and b == 0 for a, b in paired_accepted),
+            "variant_b_acceptance_wins": sum(a == 0 and b == 1 for a, b in paired_accepted),
+            "ties": sum(a == b for a, b in paired_accepted),
+            "accepted_coverage_lead_pair_bootstrap_95": {
+                "method": "percentile bootstrap; resample matched leads with replacement",
+                "seed": bootstrap_seed,
+                "requested_replicates": bootstrap_reps,
+                "valid_replicates": len(acceptance_differences),
+                "lower": acceptance_differences[max(0, math.ceil(0.025 * len(acceptance_differences)) - 1)] if acceptance_differences else None,
+                "upper": acceptance_differences[max(0, math.ceil(0.975 * len(acceptance_differences)) - 1)] if acceptance_differences else None,
+            },
+        }
         cost_comparisons = {}
         for currency, costs in paired_costs.items():
             count = int(costs["matched_leads"])
@@ -979,6 +1023,7 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                                   "only_a": len(a_ids - b_ids), "only_b": len(b_ids - a_ids),
                                   "unpaired_leads_excluded_from_quality_comparison": len(a_ids - b_ids) + len(b_ids - a_ids)},
             "duplicate_result_leads_excluded": excluded_duplicate,
+            "paired_operational_outcomes": operational_outcomes,
             "paired_provider_attempt_cost_by_currency": cost_comparisons,
             "paired_cost_input_quality": {**cost_input_quality,
                                            "scope": "paired leads with explicit yes/no value-correctness reviews",
