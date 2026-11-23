@@ -2010,8 +2010,8 @@ def _send_outcome_brief(report: dict) -> str:
                   "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
     audits = report.get("assignment_audit_checks", [])
     if audits:
-        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Cohort record | Exact lead roster | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches | Integrity detail |",
-                      "|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|"])
+        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Approval receipt | Receipt in Send Desk | Assigned CSV hash | Cohort record | Exact lead roster | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches | Integrity detail |",
+                      "|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|"])
         for audit in audits:
             expected, seen = audit["expected_variant_counts"], audit["send_list_variant_counts"]
             hash_status = "matches" if audit["assigned_csv_hash_matches"] else "missing or mismatch"
@@ -2023,7 +2023,7 @@ def _send_outcome_brief(report: dict) -> str:
             integrity_detail = str(audit.get("cohort_record_error") or "").strip()
             detail = "; ".join(x for x in (integrity_detail, roster_detail) if x) or "—"
             detail = detail.replace("|", "/").replace("\r", " ").replace("\n", " ")
-            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {cohort_status} | {roster_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} | {detail} |")
+            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {audit.get('approval_id') or 'missing'} | {'matches' if audit.get('send_list_approval_matches') else 'missing or mismatch'} | {hash_status} | {cohort_status} | {roster_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} | {detail} |")
         lines.append("")
     return "\n".join(lines)
 
@@ -2047,6 +2047,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
     assignment_seeds: dict[tuple[str, str], set[str]] = defaultdict(set)
     assignment_leads: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     assignment_variant_leads: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    assignment_variant_approval_ids: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    assignment_variant_approval_missing: set[tuple[str, str, str]] = set()
     missing_assignment_seed: set[tuple[str, str]] = set()
     provider_metadata_missing: set[tuple[str, str, str]] = set()
     config_metadata_missing: set[tuple[str, str, str]] = set()
@@ -2067,6 +2069,11 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         assignment_variant = (row.get("waterfall_outreach_assignment_variant") or "").strip().upper()
         assignment_seed = (row.get("waterfall_outreach_assignment_seed") or "").strip()
         assignment_key = (eid, field)
+        receipt_id = (row.get("waterfall_experiment_approval_id") or "").strip()
+        if receipt_id:
+            assignment_variant_approval_ids[(eid, field, variant)].add(receipt_id)
+        else:
+            assignment_variant_approval_missing.add((eid, field, variant))
         if assignment_experiment:
             if assignment_experiment != eid:
                 raise ValueError(f"Lead {lead_id!r} has an outreach assignment for experiment {assignment_experiment!r}, but its row is tagged {eid!r}.")
@@ -2268,6 +2275,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             except (OSError, ValueError) as error:
                 cohort_record_error = str(error)[:300]
         expected_ids_by_variant: dict[str, set[str]] = {"A": set(), "B": set()}
+        send_list_approval_matches = True
+        assigned_row_approval_ids: set[str] = set()
         if csv_hash_matches and cohort_record_matches and csv_path is not None:
             try:
                 _assigned_headers, assigned_rows = importer.read_rows(csv_path)
@@ -2276,6 +2285,11 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                     lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
                     if variant in expected_ids_by_variant and lead_id:
                         expected_ids_by_variant[variant].add(lead_id)
+                        receipt_id = (row.get("waterfall_experiment_approval_id") or "").strip()
+                        if receipt_id:
+                            assigned_row_approval_ids.add(receipt_id)
+                        if receipt_id != str(audit.get("approval_id") or ""):
+                            send_list_approval_matches = False
             except (OSError, ValueError) as error:
                 cohort_record_matches = False
                 cohort_record_error = (str(error) or "Could not read assigned lead roster.")[:300]
@@ -2288,6 +2302,10 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         }
         exact_roster_matches = bool(cohort_record_matches and all(
             expected_ids_by_variant[variant] == observed_ids_by_variant[variant] for variant in ("A", "B")))
+        if any((eid, field, variant) in assignment_variant_approval_missing
+               or assignment_variant_approval_ids[(eid, field, variant)] - {str(audit.get("approval_id") or "")}
+               for variant in ("A", "B")):
+            send_list_approval_matches = False
         observed = {variant: len(assignment_variant_leads[(eid, field, variant)]) for variant in ("A", "B")}
         expected_raw = audit.get("variant_counts") if isinstance(audit.get("variant_counts"), dict) else {}
         expected = {variant: int(expected_raw.get(variant, 0) or 0) for variant in ("A", "B")}
@@ -2301,6 +2319,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             status = "assigned_csv_hash_mismatch"
         elif not cohort_record_matches:
             status = "cohort_record_mismatch"
+        elif not send_list_approval_matches or assigned_row_approval_ids != {str(audit.get("approval_id") or "")}:
+            status = "approval_receipt_mismatch"
         elif observed_total < expected_total and not any(item["unexpected"] for item in roster_diffs.values()):
             status = "send_lists_incomplete"
         elif (not exact_roster_matches or observed_total > expected_total or observed != expected
@@ -2310,6 +2330,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             status = "verified_in_send_lists"
         assignment_audit_checks.append({"experiment_id": eid, "experiment_field": field,
              "audit_file": audit_path.name, "assigned_csv": assigned_name,
+             "approval_id": audit.get("approval_id"), "send_list_approval_matches": send_list_approval_matches and assigned_row_approval_ids == {str(audit.get("approval_id") or "")},
              "source_sha256": audit.get("source_sha256"), "assigned_csv_sha256": audit.get("assigned_csv_sha256"),
              "assigned_csv_exists": csv_exists, "assigned_csv_hash_matches": csv_hash_matches,
              "cohort_record_matches": cohort_record_matches, "cohort_record_error": cohort_record_error or None,
@@ -2328,6 +2349,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         seeds = assignment_seeds[eid]
         assignment_audit_checks.append({
             "experiment_id": eid[0], "experiment_field": field,
+            "approval_id": None, "send_list_approval_matches": False,
             "audit_file": None, "assigned_csv": None, "source_sha256": None, "assigned_csv_sha256": None,
             "assigned_csv_exists": False, "assigned_csv_hash_matches": False,
             "cohort_record_matches": False, "cohort_record_error": "Assignment audit sidecar is missing or unreadable.",
