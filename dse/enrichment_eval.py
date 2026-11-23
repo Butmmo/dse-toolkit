@@ -1637,6 +1637,9 @@ def _send_outcome_brief(report: dict) -> str:
             m = cohort["variants"].get(variant)
             if not m:
                 continue
+            orders = "; ".join(json.dumps(order, ensure_ascii=False) if isinstance(order, (list, dict)) else str(order)
+                                for order in m["provider_orders"]) or "not recorded"
+            lines.append(f"{variant} recorded provider order(s): `{orders}`. Config fingerprint(s): {', '.join(value[:12] for value in m['config_sha256s']) or 'not recorded'}. Metadata complete: {m['configuration_metadata_complete']}; consistent: {m['configuration_metadata_consistent']}.\n")
             intervals = m["outcome_rate_95_percent_wilson_intervals"]
             def interval(key: str) -> str:
                 ci = intervals[key]
@@ -1675,6 +1678,10 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
     as_of = date.today()
     hist = desklog.history(engine)
     cohorts: dict[tuple[str, str, str], dict[str, dict[str, bool]]] = defaultdict(dict)
+    provider_orders: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    config_hashes: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    provider_metadata_missing: set[tuple[str, str, str]] = set()
+    config_metadata_missing: set[tuple[str, str, str]] = set()
     missing_ids = 0
     for row in desklog.load_lists(engine):
         eid = (row.get("waterfall_experiment_id") or "").strip()
@@ -1688,9 +1695,24 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             missing_ids += 1
             continue
         field = (row.get("waterfall_experiment_field") or "").strip()
+        cohort_key = (eid, field, variant)
+        provider_raw = (row.get("waterfall_experiment_providers") or "").strip()
+        if provider_raw:
+            try:
+                parsed_providers = json.loads(provider_raw)
+                provider_orders[cohort_key].add(json.dumps(parsed_providers, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            except ValueError:
+                provider_orders[cohort_key].add(provider_raw)
+        else:
+            provider_metadata_missing.add(cohort_key)
+        config_hash = (row.get("waterfall_config_sha256") or "").strip().lower()
+        if config_hash:
+            config_hashes[cohort_key].add(config_hash)
+        else:
+            config_metadata_missing.add(cohort_key)
         events = hist.get((row["_source"], row["_row_id"]), [])
         flags = outcomes._flags(events)
-        lead = cohorts[(eid, field, variant)].setdefault(lead_id,
+        lead = cohorts[cohort_key].setdefault(lead_id,
                   {**{k: False for k in ("sent", "replied", "booked", "won", "lost", "skipped")},
                    "_sent_dates": [], "_outcome_dates": {k: [] for k in ("replied", "booked", "won")},
                    "_reply_categories": set(), "_reply_category_dates": defaultdict(list)})
@@ -1751,7 +1773,17 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             for category in lead["_reply_categories"]:
                 mature_reply_categories[category] += 1
         mature_id_sets[(eid, field, variant)] = set(mature_leads)
+        decoded_orders = []
+        for order in sorted(provider_orders[(eid, field, variant)]):
+            try:
+                decoded_orders.append(json.loads(order))
+            except ValueError:
+                decoded_orders.append(order)
         metric = {"assigned_unique_leads": len(leads), "sent_unique_leads": sent,
+                  "provider_orders": decoded_orders,
+                  "config_sha256s": sorted(config_hashes[(eid, field, variant)]),
+                  "configuration_metadata_complete": cohort_key not in provider_metadata_missing and cohort_key not in config_metadata_missing,
+                  "configuration_metadata_consistent": cohort_key not in provider_metadata_missing and cohort_key not in config_metadata_missing and len(provider_orders[(eid, field, variant)]) <= 1 and len(config_hashes[(eid, field, variant)]) <= 1,
                   "skipped_unique_leads": skipped, "unmarked_unique_leads": unmarked,
                   "send_coverage_rate": _ratio(sent, len(leads)),
                   "skip_rate_per_assigned_lead": _ratio(skipped, len(leads)),
