@@ -14,4 +14,5 @@ Outcome scoring discovered invalid assignment audits when it found a sidecar fil
 ## Verification
 
 - Checked Python compilation, CLI help, catalog JSON and Markdown rendering fields.
+- Pushed to `codex/hq-runner-id-routing` and restarted the PC runner; its startup log reports 181 tools.
 - No user outcome records were changed and no emails were sent.
