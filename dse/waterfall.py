@@ -383,6 +383,8 @@ def execute_chain(rungs: list[dict], accept: Callable[[dict, str], tuple[bool, s
                     record["rejected"] += 1
             record["status"] = "hit" if record["accepted"] else "miss"
         except Exception as e:
+            record["api_calls"] = int(getattr(e, "waterfall_api_calls", 0) or 0)
+            record["cache_hits"] = int(getattr(e, "waterfall_cache_hits", 0) or 0)
             record["status"], record["failures"], record["error"] = "error", 1, str(e)
         if stop_after(accepted):
             stop_reason = "acceptance_rule_met"

@@ -6,6 +6,7 @@ import csv
 import hashlib
 import itertools
 import json
+import math
 import random
 from collections import defaultdict
 from datetime import date
@@ -78,7 +79,7 @@ def prepare(source: str, out: str = "") -> Path:
     columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
-               "cost_quantity", "cost_estimated", *source_fields, *REVIEW_FIELDS]
+               "cost_quantity", "cost_estimated", "provider_waterfall_cost", "provider_cost_shared_from_duplicate_domain", *source_fields, *REVIEW_FIELDS]
     output.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     with output.open("w", encoding="utf-8-sig", newline="") as f:
@@ -112,7 +113,10 @@ def prepare(source: str, out: str = "") -> Path:
                               "identity_strength": identity.get("strength", ""), "identity_score": identity.get("score", ""),
                               "verification_status": verification.get("status", ""), "cost_amount": cost.get("amount", ""),
                               "cost_currency": cost.get("currency", ""), "cost_units": cost.get("units", ""),
-                              "cost_quantity": cost.get("quantity", ""), "cost_estimated": cost.get("estimated", "")}
+                              "cost_quantity": cost.get("quantity", ""), "cost_estimated": cost.get("estimated", ""),
+                              "provider_waterfall_cost": json.dumps(metadata.get("provider_waterfall_cost"), ensure_ascii=False, separators=(",", ":"))
+                                  if isinstance(metadata.get("provider_waterfall_cost"), dict) else "",
+                              "provider_cost_shared_from_duplicate_domain": bool(metadata.get("provider_cost_shared_from_duplicate_domain", False))}
                 output_row.update({name: row.get(name, "") for name in source_fields})
                 output_row.update({name: "" for name in REVIEW_FIELDS})
                 writer.writerow(output_row)
@@ -418,6 +422,9 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
             responses[field] = counts
         correct_values = sum((r.get(label_columns["value_correct"]) or "").strip().casefold() in YES for r in labeled["value_correct"])
         costs: dict[str, float] = defaultdict(float)
+        provider_attempt_costs: dict[str, float] = defaultdict(float)
+        provider_cost_details: dict[str, dict] = defaultdict(lambda: {"calls": 0, "estimated_cost_by_currency": {}, "unknown_price_calls": 0})
+        unknown_provider_attempts = 0
         for row in items:
             try:
                 amount = float(row.get("cost_amount") or "")
@@ -425,6 +432,28 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                 continue
             currency = (row.get("cost_currency") or "unknown").strip() or "unknown"
             costs[currency] += amount
+        for row in items:
+            waterfall_cost = _json(row.get("provider_waterfall_cost"))
+            if not isinstance(waterfall_cost, dict):
+                continue
+            provider_map = waterfall_cost.get("providers") if isinstance(waterfall_cost.get("providers"), dict) else {}
+            for provider_name, attempt in provider_map.items():
+                if not isinstance(attempt, dict):
+                    continue
+                try:
+                    attempt_count = max(0, int(attempt.get("calls", 0) or 0))
+                except (TypeError, ValueError):
+                    continue
+                attempt_amount, attempt_currency = attempt.get("estimated_cost"), attempt.get("currency")
+                detail = provider_cost_details[str(provider_name)]
+                detail["calls"] += attempt_count
+                if isinstance(attempt_amount, (int, float)) and math.isfinite(float(attempt_amount)) and attempt_currency:
+                    provider_attempt_costs[str(attempt_currency)] += float(attempt_amount)
+                    currency_totals = detail["estimated_cost_by_currency"]
+                    currency_totals[str(attempt_currency)] = currency_totals.get(str(attempt_currency), 0.0) + float(attempt_amount)
+                elif attempt_count:
+                    unknown_provider_attempts += attempt_count
+                    detail["unknown_price_calls"] += attempt_count
         accepted = sum((r.get("status") or "").strip().casefold() == "accepted" for r in items)
         fresh_known = [r for r in items if (r.get("freshness_status") or "").strip() and (r.get("freshness_status") or "").casefold() != "unknown"]
         return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
@@ -444,7 +473,12 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                                         if f"reviewer_a_{field}" in headers and f"reviewer_b_{field}" in headers},
                 "freshness_documented": len(fresh_known), "freshness_documented_rate": _ratio(len(fresh_known), len(items)),
                 "declared_cost_by_currency": dict(costs),
-                "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()}}
+                "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()},
+                "provider_attempt_cost_estimate_by_currency": dict(provider_attempt_costs),
+                "provider_attempt_cost_estimate_by_provider": dict(provider_cost_details),
+                "provider_attempt_estimate_per_accepted_result_by_currency": {currency: _ratio(amount, accepted) for currency, amount in provider_attempt_costs.items()},
+                "provider_attempts_with_unknown_price": unknown_provider_attempts,
+                "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded; estimates use configured call prices, not invoices. Cost per accepted result divides by system-accepted fields, not human-verified correctness."}
 
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
