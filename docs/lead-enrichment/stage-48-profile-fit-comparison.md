@@ -17,7 +17,7 @@ Check `profile_comparison.by_lane_and_profile` in the JSON report. The compariso
 
 ## Interpretation and limits
 
-The difference is not causal and does not prescribe a profile change. A profile's human fit rate is not field accuracy, conversion, or willingness to pay. The threshold is a visible caution flag, not a confidence interval or proof of adequate statistical power. Keep review criteria and sample selection consistent when using these comparisons.
+The difference is not causal and does not prescribe a profile change. A profile's human fit rate is not field accuracy, conversion, or willingness to pay. The threshold is a visible caution flag, not a confidence interval or proof of adequate statistical power. Stage 49 adds breakdowns by the role, business profile and other target inputs saved with each review. Keep review criteria and sample selection consistent when using these comparisons.
 
 No Supabase SQL is needed. No automated tests were added or run.
 

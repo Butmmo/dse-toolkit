@@ -14,6 +14,14 @@ REVIEW_FIELDS = ["value_correct", "identity_correct", "evidence_adequate", "fres
 YES = {"y", "yes", "true", "1"}
 NO = {"n", "no", "false", "0"}
 FIT_JUDGMENTS = {"good_fit", "not_a_fit", "uncertain"}
+TARGET_CONTEXT_FIELDS = {
+    "requested_business_profile": "business_profile",
+    "requested_decision_maker": "decision_maker",
+    "requested_role": "role",
+    "requested_legal_form": "legal_form",
+    "requested_path": "path",
+    "requested_search_strategy": "search_strategy",
+}
 
 
 def _json(value: Any) -> Any:
@@ -162,7 +170,7 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
     if not column:
         raise ValueError("Ledger CSV needs the enrichment_review column. Make it visible before exporting the grid.")
 
-    latest: dict[tuple[int, str], dict[str, str]] = {}
+    latest: dict[tuple[int, str], dict[str, Any]] = {}
     row_results: dict[int, list[dict[str, Any]]] = {}
     malformed = 0
     valid_history_entries = 0
@@ -184,9 +192,16 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
             if lane not in {"herald", "website", "presence"}:
                 lane = "unknown"
             profile = str(item.get("profile_key") or "unknown").strip() or "unknown"
+            raw_context = item.get("target_context") if isinstance(item.get("target_context"), dict) else {}
+            target_context = {}
+            for field in TARGET_CONTEXT_FIELDS:
+                value = raw_context.get(field)
+                if isinstance(value, (str, int, float)) and str(value).strip():
+                    target_context[field] = str(value).strip()[:160]
             latest[(row_number, lane)] = {"judgment": item["judgment"], "lane": lane, "profile_key": profile,
                                           "reviewed_at": str(item.get("reviewed_at") or ""),
                                           "research_checked_at": str(item.get("research_checked_at") or ""),
+                                          "target_context": target_context,
                                           "row_number": row_number}
             valid_history_entries += 1
 
@@ -197,7 +212,7 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
                 row_results[row_number] = [item for item in result_payload
                                            if isinstance(item, dict) and item.get("schema") == "dbi.field-result.v1"]
 
-    def summarize(items: list[dict[str, str]]) -> dict[str, Any]:
+    def summarize(items: list[dict[str, Any]]) -> dict[str, Any]:
         counts = {label: sum(item["judgment"] == label for item in items) for label in ("good_fit", "not_a_fit", "uncertain")}
         decided = counts["good_fit"] + counts["not_a_fit"]
         return {"latest_row_lane_reviews": len(items), "judgment_counts": counts,
@@ -233,6 +248,28 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
             "sample_status": "too_few_profile_reviews" if decided < min_decided else
                              "too_few_other_profile_reviews" if alternatives_decided < min_decided else "descriptive_only",
             "comparison_note": "Other-profile baseline includes only different profile keys in the same lane; it is descriptive and non-causal."}
+
+    target_segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    target_segment_labels: dict[tuple[str, str, str], str] = {}
+    target_context_coverage = {dimension: 0 for dimension in TARGET_CONTEXT_FIELDS.values()}
+    for review in latest_items:
+        context = review["target_context"]
+        for field, dimension in TARGET_CONTEXT_FIELDS.items():
+            value = context.get(field)
+            if not value:
+                continue
+            target_context_coverage[dimension] += 1
+            key = (review["lane"], dimension, value.casefold())
+            target_segment_groups[key].append(review)
+            target_segment_labels.setdefault(key, value)
+    target_segments: dict[str, dict[str, Any]] = {}
+    for key, group in sorted(target_segment_groups.items()):
+        lane, dimension, _ = key
+        metrics = summarize(group)
+        decided = metrics["judgment_counts"]["good_fit"] + metrics["judgment_counts"]["not_a_fit"]
+        target_segments[f"{lane}|{dimension}|{target_segment_labels[key]}"] = {
+            **metrics, "decided_reviews": decided,
+            "sample_status": "too_few_decided_reviews" if decided < min_decided else "descriptive_only"}
 
     lane_aliases = {"website_enrichment": "website", "herald_research": "herald", "presence_research": "presence"}
     joined: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
@@ -291,6 +328,9 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
               "latest_by_row_and_lane": summarize(latest_items), "by_lane_and_profile": by_lane_profile,
               "profile_comparison": {"minimum_decided_reviews": min_decided,
                                      "by_lane_and_profile": profile_comparison},
+              "target_context_segments": {"minimum_decided_reviews": min_decided,
+                                          "review_coverage_by_dimension": target_context_coverage,
+                                          "by_lane_dimension_and_value": target_segments},
               "field_results_join": {"reviewed_rows_with_matching_lane_results": matched_reviews,
                                      "reviewed_rows_without_matching_lane_results": unmatched_reviews,
                                      "by_judgment_lane_and_profile": field_join},
