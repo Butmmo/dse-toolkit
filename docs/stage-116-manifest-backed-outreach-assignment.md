@@ -19,4 +19,5 @@ Run both variants on the same CSV and cap, pair the verified outputs, assign one
 ## Verification
 
 - Checked Python compilation, CLI help, and catalog JSON/argument mapping.
+- Pushed to `codex/hq-runner-id-routing` and restarted the PC runner; its startup log reports 181 tools.
 - No lead assignment or Engine write was run during this change.
