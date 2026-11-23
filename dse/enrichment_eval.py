@@ -709,6 +709,21 @@ def _decision_brief(report: dict) -> str:
             lines.append(
                 f"- `{item.get('experiment_id')}` / `{item.get('field')}` ({item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}): A-minus-B reviewed correctness {_display_rate(value.get('rate_difference_a_minus_b'))}; interval {interval_text}; matched leads {value.get('matched_reviewed_leads', 0)}; outputs A {availability.get('variant_a', 0)}, B {availability.get('variant_b', 0)}. Status: `{item.get('decision_status')}`."
             )
+            for currency, costs in (item.get("paired_provider_attempt_cost_by_currency") or {}).items():
+                cost_interval = costs.get("mean_cost_difference_lead_pair_bootstrap_95", {})
+                cost_low, cost_high = cost_interval.get("lower"), cost_interval.get("upper")
+                cost_interval_text = (f"{cost_low:+.4g} to {cost_high:+.4g} {currency}"
+                                      if isinstance(cost_low, (int, float)) and isinstance(cost_high, (int, float))
+                                      else "unavailable")
+                efficiency = costs.get("cost_per_reviewed_correct_result", {})
+                lines.append(
+                    f"  - {currency} paired estimated spend per lead A {_display_amount(costs.get('variant_a_mean_estimated_cost_per_lead'))}, B {_display_amount(costs.get('variant_b_mean_estimated_cost_per_lead') )}; A-minus-B interval {cost_interval_text}; cost per reviewed-correct result A {_display_amount(efficiency.get('variant_a'))}, B {_display_amount(efficiency.get('variant_b'))}."
+                )
+            price_quality = item.get("paired_cost_input_quality", {})
+            excluded_unknown = int(price_quality.get("variant_a_unknown_price_calls", 0)) + int(price_quality.get("variant_b_unknown_price_calls", 0))
+            excluded_invalid = int(price_quality.get("variant_a_invalid_price_calls", 0)) + int(price_quality.get("variant_b_invalid_price_calls", 0))
+            if excluded_unknown or excluded_invalid:
+                lines.append(f"  - Cost exclusions across variants: {excluded_unknown} unknown-price calls and {excluded_invalid} invalid-price calls.")
     else:
         lines.append("No completed A/B waterfall runs with preserved experiment lead IDs were found in this review file.")
     lines.append("")
@@ -784,6 +799,38 @@ def _waterfall_experiment_plans(advisories: list[dict], min_labeled: int) -> lis
     return plans
 
 
+def _known_attempt_costs(row: dict[str, str]) -> tuple[dict[str, float], int, int]:
+    payload = _json(row.get("provider_waterfall_cost"))
+    providers = payload.get("providers") if isinstance(payload, dict) else None
+    totals: dict[str, float] = defaultdict(float)
+    unknown_calls = invalid_calls = 0
+    if not isinstance(providers, dict):
+        return {}, 0, 0
+    for attempt in providers.values():
+        if not isinstance(attempt, dict):
+            continue
+        try:
+            calls = max(0, int(attempt.get("calls", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        if not calls:
+            continue
+        currency, amount = attempt.get("currency"), attempt.get("estimated_cost")
+        if not currency or amount is None:
+            unknown_calls += calls
+            continue
+        try:
+            amount_value = float(amount)
+        except (TypeError, ValueError):
+            invalid_calls += calls
+            continue
+        if not math.isfinite(amount_value) or amount_value < 0:
+            invalid_calls += calls
+            continue
+        totals[str(currency)] += amount_value
+    return dict(totals), unknown_calls, invalid_calls
+
+
 def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int,
                                      bootstrap_reps: int, bootstrap_seed: int) -> list[dict]:
     required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_lead_id"}
@@ -810,6 +857,12 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
         paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
         excluded_duplicate = 0
         excluded_unlabeled = defaultdict(int)
+        paired_costs: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"a_total": 0.0, "b_total": 0.0, "a_correct": 0, "b_correct": 0,
+                     "differences": [], "matched_leads": 0}
+        )
+        cost_input_quality = {"variant_a_unknown_price_calls": 0, "variant_b_unknown_price_calls": 0,
+                              "variant_a_invalid_price_calls": 0, "variant_b_invalid_price_calls": 0}
         a_hashes, b_hashes = set(), set()
         for lead in a_ids | b_ids:
             variants = leads[lead]
@@ -822,6 +875,23 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                 if variants.get("A") and variants.get("B"):
                     excluded_duplicate += 1
                 continue
+            a_value = _review_category(variants["A"][0].get(label_columns["value_correct"], ""))
+            b_value = _review_category(variants["B"][0].get(label_columns["value_correct"], ""))
+            if a_value in {"yes", "no"} and b_value in {"yes", "no"}:
+                a_costs, a_unknown, a_invalid = _known_attempt_costs(variants["A"][0])
+                b_costs, b_unknown, b_invalid = _known_attempt_costs(variants["B"][0])
+                cost_input_quality["variant_a_unknown_price_calls"] += a_unknown
+                cost_input_quality["variant_b_unknown_price_calls"] += b_unknown
+                cost_input_quality["variant_a_invalid_price_calls"] += a_invalid
+                cost_input_quality["variant_b_invalid_price_calls"] += b_invalid
+                for currency in a_costs.keys() & b_costs.keys():
+                    costs = paired_costs[currency]
+                    costs["a_total"] += a_costs[currency]
+                    costs["b_total"] += b_costs[currency]
+                    costs["a_correct"] += a_value == "yes"
+                    costs["b_correct"] += b_value == "yes"
+                    costs["differences"].append(a_costs[currency] - b_costs[currency])
+                    costs["matched_leads"] += 1
             for dimension, column in label_columns.items():
                 a_label = _review_category(variants["A"][0].get(column, ""))
                 b_label = _review_category(variants["B"][0].get(column, ""))
@@ -845,8 +915,8 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                 "matched_reviewed_leads": len(pairs),
                 "variant_a_yes": a_yes,
                 "variant_b_yes": b_yes,
-                "variant_a_wins": sum(a == "yes" and b == "no" for a, b in pairs),
-                "variant_b_wins": sum(a == "no" and b == "yes" for a, b in pairs),
+                "variant_a_wins": sum(a == 1 and b == 0 for a, b in pairs),
+                "variant_b_wins": sum(a == 0 and b == 1 for a, b in pairs),
                 "ties": sum(a == b for a, b in pairs),
                 "variant_a_yes_rate": _ratio(a_yes, len(pairs)),
                 "variant_b_yes_rate": _ratio(b_yes, len(pairs)),
@@ -864,6 +934,38 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                 "minimum_labeled_met": len(pairs) >= min_labeled,
             }
         value = dimensions.get("value_correct", {})
+        cost_comparisons = {}
+        for currency, costs in paired_costs.items():
+            count = int(costs["matched_leads"])
+            a_mean, b_mean = _ratio(costs["a_total"], count), _ratio(costs["b_total"], count)
+            cost_differences = []
+            if bootstrap_reps and costs["differences"]:
+                rng = random.Random(f"{bootstrap_seed}:{experiment_id}:{field}:{engine_path}:{profile}:{lane}:{currency}:cost")
+                for _ in range(bootstrap_reps):
+                    sample = [costs["differences"][rng.randrange(len(costs["differences"]))]
+                              for _ in costs["differences"]]
+                    cost_differences.append(sum(sample) / len(sample))
+                cost_differences.sort()
+            cost_comparisons[currency] = {
+                "matched_reviewed_leads_with_known_prices_in_both_variants": count,
+                "variant_a_mean_estimated_cost_per_lead": a_mean,
+                "variant_b_mean_estimated_cost_per_lead": b_mean,
+                "mean_cost_difference_a_minus_b": a_mean - b_mean if a_mean is not None and b_mean is not None else None,
+                "cost_per_reviewed_correct_result": {
+                    "variant_a": _ratio(costs["a_total"], int(costs["a_correct"])),
+                    "variant_b": _ratio(costs["b_total"], int(costs["b_correct"])),
+                    "variant_a_reviewed_correct_denominator": int(costs["a_correct"]),
+                    "variant_b_reviewed_correct_denominator": int(costs["b_correct"]),
+                },
+                "mean_cost_difference_lead_pair_bootstrap_95": {
+                    "method": "percentile bootstrap; resample matched lead cost pairs with replacement",
+                    "seed": bootstrap_seed,
+                    "requested_replicates": bootstrap_reps,
+                    "valid_replicates": len(cost_differences),
+                    "lower": cost_differences[max(0, math.ceil(0.025 * len(cost_differences)) - 1)] if cost_differences else None,
+                    "upper": cost_differences[max(0, math.ceil(0.975 * len(cost_differences)) - 1)] if cost_differences else None,
+                },
+            }
         comparisons.append({
             "experiment_id": experiment_id,
             "field": field,
@@ -877,6 +979,10 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                                   "only_a": len(a_ids - b_ids), "only_b": len(b_ids - a_ids),
                                   "unpaired_leads_excluded_from_quality_comparison": len(a_ids - b_ids) + len(b_ids - a_ids)},
             "duplicate_result_leads_excluded": excluded_duplicate,
+            "paired_provider_attempt_cost_by_currency": cost_comparisons,
+            "paired_cost_input_quality": {**cost_input_quality,
+                                           "scope": "paired leads with explicit yes/no value-correctness reviews",
+                                           "unknown_or_invalid_prices_excluded_not_treated_as_zero": True},
             "dimensions": dimensions,
             "decision_status": "below_minimum_labeled_caution_threshold" if value.get("matched_reviewed_leads", 0) < min_labeled else "descriptive_only",
             "automatic_provider_selection": False,
