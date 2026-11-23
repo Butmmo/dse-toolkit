@@ -1943,15 +1943,20 @@ def _send_outcome_brief(report: dict) -> str:
                   "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
     audits = report.get("assignment_audit_checks", [])
     if audits:
-        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Cohort record | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches | Integrity detail |",
-                      "|---|---|---|---|---:|---:|---:|---:|---:|---|---|"])
+        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Cohort record | Exact lead roster | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches | Integrity detail |",
+                      "|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|"])
         for audit in audits:
             expected, seen = audit["expected_variant_counts"], audit["send_list_variant_counts"]
             hash_status = "matches" if audit["assigned_csv_hash_matches"] else "missing or mismatch"
             cohort_status = "matches" if audit.get("cohort_record_matches") else "missing or mismatch"
+            roster_status = "matches" if audit.get("send_list_exact_lead_roster_matches") else "missing or differs"
             seed_status = "yes" if audit["assignment_seed_matches"] is True else "pending" if audit["assignment_seed_matches"] is None else "no"
-            detail = str(audit.get("cohort_record_error") or "—").replace("|", "/").replace("\r", " ").replace("\n", " ")
-            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {cohort_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} | {detail} |")
+            diffs = audit.get("send_list_roster_differences", {})
+            roster_detail = "; ".join(f"{variant}: {diffs.get(variant, {}).get('missing', 0)} missing, {diffs.get(variant, {}).get('unexpected', 0)} unexpected" for variant in ("A", "B"))
+            integrity_detail = str(audit.get("cohort_record_error") or "").strip()
+            detail = "; ".join(x for x in (integrity_detail, roster_detail) if x) or "—"
+            detail = detail.replace("|", "/").replace("\r", " ").replace("\n", " ")
+            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {cohort_status} | {roster_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} | {detail} |")
         lines.append("")
     return "\n".join(lines)
 
@@ -2195,6 +2200,27 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                 cohort_record_matches = True
             except (OSError, ValueError) as error:
                 cohort_record_error = str(error)[:300]
+        expected_ids_by_variant: dict[str, set[str]] = {"A": set(), "B": set()}
+        if csv_hash_matches and cohort_record_matches and csv_path is not None:
+            try:
+                _assigned_headers, assigned_rows = importer.read_rows(csv_path)
+                for row in assigned_rows:
+                    variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+                    lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+                    if variant in expected_ids_by_variant and lead_id:
+                        expected_ids_by_variant[variant].add(lead_id)
+            except (OSError, ValueError) as error:
+                cohort_record_matches = False
+                cohort_record_error = (str(error) or "Could not read assigned lead roster.")[:300]
+        observed_ids_by_variant = {variant: set(assignment_variant_leads[(eid, field, variant)])
+                                   for variant in ("A", "B")}
+        roster_diffs = {
+            variant: {"missing": len(expected_ids_by_variant[variant] - observed_ids_by_variant[variant]),
+                      "unexpected": len(observed_ids_by_variant[variant] - expected_ids_by_variant[variant])}
+            for variant in ("A", "B")
+        }
+        exact_roster_matches = bool(cohort_record_matches and all(
+            expected_ids_by_variant[variant] == observed_ids_by_variant[variant] for variant in ("A", "B")))
         observed = {variant: len(assignment_variant_leads[(eid, field, variant)]) for variant in ("A", "B")}
         expected_raw = audit.get("variant_counts") if isinstance(audit.get("variant_counts"), dict) else {}
         expected = {variant: int(expected_raw.get(variant, 0) or 0) for variant in ("A", "B")}
@@ -2208,9 +2234,10 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             status = "assigned_csv_hash_mismatch"
         elif not cohort_record_matches:
             status = "cohort_record_mismatch"
-        elif observed_total < expected_total:
+        elif observed_total < expected_total and not any(item["unexpected"] for item in roster_diffs.values()):
             status = "send_lists_incomplete"
-        elif observed_total > expected_total or observed != expected or seed_matches is False:
+        elif (not exact_roster_matches or observed_total > expected_total or observed != expected
+              or seed_matches is False):
             status = "send_list_assignment_mismatch"
         else:
             status = "verified_in_send_lists"
@@ -2219,6 +2246,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
              "source_sha256": audit.get("source_sha256"), "assigned_csv_sha256": audit.get("assigned_csv_sha256"),
              "assigned_csv_exists": csv_exists, "assigned_csv_hash_matches": csv_hash_matches,
              "cohort_record_matches": cohort_record_matches, "cohort_record_error": cohort_record_error or None,
+             "send_list_exact_lead_roster_matches": exact_roster_matches,
+             "send_list_roster_differences": roster_diffs,
              "expected_lead_count": expected_total, "expected_variant_counts": expected,
              "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
              "assignment_seed_matches": seed_matches, "status": status})
