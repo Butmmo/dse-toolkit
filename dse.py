@@ -242,6 +242,11 @@ def main():
     en.add_argument("--experiment-provider-a", default="")
     en.add_argument("--experiment-provider-b", default="")
     en.add_argument("--review-waterfall-config", action="store_true", help="read-only check local provider mappings, keys and spend readiness")
+    en.add_argument("--review-waterfall-experiment", action="store_true", help="read-only preflight for a paired A/B waterfall run")
+    en.add_argument("--experiment-config-a", default="")
+    en.add_argument("--experiment-config-b", default="")
+    en.add_argument("--max-combined-provider-spend", type=float, default=None)
+    en.add_argument("--allow-unknown-experiment-cost", action="store_true")
     en.add_argument("--waterfall-name", default="", help="name for the locally saved waterfall config")
     en.add_argument("--email-providers", default="", help="ordered provider names, comma separated")
     en.add_argument("--phone-providers", default="", help="ordered phone-provider names, comma separated")
@@ -355,6 +360,11 @@ def main():
                     a.experiment_provider_a, a.experiment_provider_b))
             elif a.review_waterfall_config:
                 print(enrich.wf.review_local_config(a.waterfall_config, a.max, a.budget))
+            elif a.review_waterfall_experiment:
+                if a.max_combined_provider_spend is None:
+                    sys.exit("Set --max-combined-provider-spend to approve a numeric combined ceiling.")
+                print(enrich.wf.review_experiment_pair(a.source, a.experiment_config_a, a.experiment_config_b,
+                    a.max, a.max_combined_provider_spend, a.allow_unknown_experiment_cost))
             elif a.spend_preview:
                 print(enrich.provider_spend_preview(a.waterfall_config, a.max, a.provider, a.budget))
             elif a.catalog:

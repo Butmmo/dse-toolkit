@@ -11920,6 +11920,42 @@
         "Spend estimate and required approvals"
       ]
     },
+    "dse.enrich_waterfall_experiment_preflight": {
+      "label": "Lead enrichment: preflight a paired comparison",
+      "group": "Grow",
+      "help": "Read-only check before spending: confirms the matching A/B config pair, reviews local keys and adapter mappings, fingerprints the exact bounded source cohort, and totals both known-price estimates against one combined ceiling. Unknown provider prices require an explicit acknowledgment. It reads no lead values into the report, makes no network/provider calls, and writes no files.",
+      "script": "dse.py",
+      "args": [
+        { "lit": "enrich" },
+        { "flag": "--review-waterfall-experiment", "field": "go" },
+        { "field": "source" },
+        { "opt": "--experiment-config-a", "field": "config_a" },
+        { "opt": "--experiment-config-b", "field": "config_b" },
+        { "opt": "--max", "field": "leads" },
+        { "opt": "--max-combined-provider-spend", "field": "ceiling" },
+        { "flag": "--allow-unknown-experiment-cost", "field": "allow_unknown" }
+      ],
+      "fields": [
+        { "name": "go", "label": "Review only", "type": "bool", "default": true },
+        { "name": "source", "label": "Exact local source CSV for both variants", "type": "file", "required": true, "glob": "my-lists/*.csv", "exclude": "wfexp-,paired" },
+        { "name": "config_a", "label": "Matching experiment config A", "type": "file", "required": true, "glob": "enrich-waterfalls/*-experiment-*-a.json" },
+        { "name": "config_b", "label": "Matching experiment config B", "type": "file", "required": true, "glob": "enrich-waterfalls/*-experiment-*-b.json" },
+        { "name": "leads", "label": "Bounded cohort size (same cap for both runs)", "type": "int", "required": true, "min": 1, "max": 2000, "default": 50 },
+        { "name": "ceiling", "label": "Approved maximum spend for A and B combined", "type": "number", "required": true, "min": 0 },
+        { "name": "allow_unknown", "label": "Acknowledge provider prices that are unknown", "type": "bool", "default": false }
+      ],
+      "timeout_min": 2,
+      "outputs": [],
+      "category": "source",
+      "source": "Local source CSV and local waterfall configs",
+      "cost": "Read-only local preflight; no network, provider charges, cloud AI, or files written.",
+      "outputs_summary": [
+        "Checks matching A/B experiment identity, field, provider pair, keys, and mappings",
+        "Fingerprints the exact bounded lead cohort without returning its row data",
+        "Combines conservative A and B known-price estimates against one approved ceiling",
+        "Reports unknown prices, missing keys, and whether the pair is ready to run"
+      ]
+    },
     "dse.enrich_waterfall_build_experiment": {
       "label": "Lead enrichment: draft a two-provider comparison",
       "group": "Grow",
