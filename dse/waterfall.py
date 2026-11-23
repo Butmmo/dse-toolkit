@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 import re
+from copy import deepcopy
 from typing import Callable
 
 from . import enrich_providers as ep
@@ -89,6 +90,80 @@ def build_local_config(name: str, email: str = "", phone: str = "", person_ident
             f"Provider order by field: " + "; ".join(f"{field}={', '.join(names) or '(none)'}" for field, names in orders.items()) + "\n"
             f"Declared price currencies: {', '.join(currencies) or '(none)'}; unknown-price providers: {', '.join(unknown) or '(none)'}.\n"
             f"Use the config with --waterfall-config {path.relative_to(ROOT).as_posix()} and preview it before a live run.")
+
+
+def build_order_experiment_configs(source_path: str, field_name: str, provider_a: str,
+                                   provider_b: str) -> str:
+    """Create two never-overwrite config copies that differ only by swapping two provider positions."""
+    if field_name not in {"email", *FIELD_TYPES}:
+        raise ValueError("Experiment field must be email, phone, person_identity, or firmographics.")
+    provider_a, provider_b = provider_a.strip().lower(), provider_b.strip().lower()
+    if not provider_a or not provider_b or provider_a == provider_b:
+        raise ValueError("Choose two different provider names.")
+    config = load_config(source_path)
+    email_adapters = provider_configs(config, dry_run=True) if config["providers"] else []
+    field_configs = load_field_waterfalls(source_path, dry_run=True)
+    if field_name == "email":
+        providers = config["providers"]
+    else:
+        field_config = field_configs.get(field_name)
+        if not field_config:
+            raise ValueError(f"The source config has no {field_name} waterfall.")
+        providers = field_config["providers"]
+    if provider_a not in providers or provider_b not in providers:
+        raise ValueError(f"Both providers must already be configured in the source {field_name} waterfall.")
+    source = Path(source_path)
+    if not source.is_absolute():
+        source = ROOT / source
+    try:
+        original = json.loads(source.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ValueError(f"Could not read source waterfall {source_path}: {type(error).__name__}.") from None
+    except ValueError:
+        raise ValueError(f"Source waterfall {source_path} is not valid JSON.") from None
+    provider_key = "providers" if field_name == "email" else "field_waterfalls"
+    target = original[provider_key] if field_name == "email" else original[provider_key][field_name]
+    order = list(target if field_name == "email" else target["providers"])
+    index_a, index_b = order.index(provider_a), order.index(provider_b)
+    variants = []
+    for label, first, second in (("a", index_a, index_b), ("b", index_b, index_a)):
+        variant = deepcopy(original)
+        variant_order = list(order)
+        variant_order[first], variant_order[second] = variant_order[second], variant_order[first]
+        if field_name == "email":
+            variant["providers"] = variant_order
+        else:
+            variant["field_waterfalls"][field_name]["providers"] = variant_order
+        variants.append((label, variant, variant_order))
+    output_dir = ROOT / "enrich-waterfalls"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_stem = re.sub(r"[^a-z0-9_-]+", "-", source.stem.lower()).strip("-_")[:36] or "waterfall"
+    safe_a = re.sub(r"[^a-z0-9_-]+", "-", provider_a)[:20]
+    safe_b = re.sub(r"[^a-z0-9_-]+", "-", provider_b)[:20]
+    paths = [output_dir / f"{safe_stem}-experiment-{field_name}-{safe_a}-vs-{safe_b}-{label}.json"
+             for label, _, _ in variants]
+    existing = [path.name for path in paths if path.exists()]
+    if existing:
+        raise ValueError("Experiment config already exists; existing files are never overwritten: " + ", ".join(existing))
+    created_paths = []
+    try:
+        for path, (_, variant, _) in zip(paths, variants):
+            with path.open("x", encoding="utf-8") as file:
+                created_paths.append(path)
+                json.dump(variant, file, ensure_ascii=False, indent=2)
+                file.write("\n")
+    except FileExistsError:
+        for created_path in created_paths:
+            created_path.unlink(missing_ok=True)
+        raise ValueError("An experiment config appeared during creation; existing files are never overwritten. Remove or rename the conflicting draft and retry.") from None
+    except OSError:
+        for created_path in created_paths:
+            created_path.unlink(missing_ok=True)
+        raise
+    return (f"Created two reviewed-draft configs for {field_name}:\n"
+            f"A ({' > '.join(variants[0][2])}): {paths[0].relative_to(ROOT).as_posix()}\n"
+            f"B ({' > '.join(variants[1][2])}): {paths[1].relative_to(ROOT).as_posix()}\n"
+            "Only the selected provider positions differ. Review both files, preview spend, and approve the same bounded lead sample before running either variant. No provider calls were made.")
 
 
 def load_config(path: str = "", provider: str = "", budget_override: int | None = None) -> dict:

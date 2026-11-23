@@ -237,6 +237,10 @@ def main():
     en.add_argument("--allow-unknown-provider-cost", action="store_true", help="acknowledge configured providers with unknown prices; unknown charges are outside the numeric ceiling")
     en.add_argument("--spend-preview", action="store_true", help="read-only estimate from provider prices and waterfall caps; does not read lead data or make requests")
     en.add_argument("--build-waterfall-config", action="store_true", help="validate providers and save a local ordered waterfall JSON (never overwrites)")
+    en.add_argument("--build-waterfall-experiment", action="store_true", help="create two local config drafts from one waterfall by swapping two provider positions")
+    en.add_argument("--experiment-field", choices=["email", "phone", "person_identity", "firmographics"], default="email")
+    en.add_argument("--experiment-provider-a", default="")
+    en.add_argument("--experiment-provider-b", default="")
     en.add_argument("--review-waterfall-config", action="store_true", help="read-only check local provider mappings, keys and spend readiness")
     en.add_argument("--waterfall-name", default="", help="name for the locally saved waterfall config")
     en.add_argument("--email-providers", default="", help="ordered provider names, comma separated")
@@ -346,6 +350,9 @@ def main():
                     a.person_identity_call_cap, a.firmographics_call_cap, a.stop_when, a.email_min_confidence,
                     a.phone_min_confidence, a.person_identity_min_confidence, a.firmographics_min_confidence,
                     a.person_identity_min_score))
+            elif a.build_waterfall_experiment:
+                print(enrich.wf.build_order_experiment_configs(a.waterfall_config, a.experiment_field,
+                    a.experiment_provider_a, a.experiment_provider_b))
             elif a.review_waterfall_config:
                 print(enrich.wf.review_local_config(a.waterfall_config, a.max, a.budget))
             elif a.spend_preview:
