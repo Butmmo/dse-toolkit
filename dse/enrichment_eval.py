@@ -302,20 +302,37 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
 
     comparisons = []
 
-    def priced_attempt_cost(row: dict[str, str]) -> dict[str, float]:
+    def priced_attempt_cost(row: dict[str, str]) -> tuple[dict[str, float], int, int]:
         payload = _json(row.get("provider_waterfall_cost"))
         providers = payload.get("providers") if isinstance(payload, dict) else None
         totals: dict[str, float] = defaultdict(float)
+        unknown_price_calls = 0
+        invalid_price_calls = 0
         if not isinstance(providers, dict):
-            return {}
+            return {}, 0, 0
         for attempt in providers.values():
             if not isinstance(attempt, dict):
                 continue
+            try:
+                calls = max(0, int(attempt.get("calls", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+            if not calls:
+                continue
             currency, amount = attempt.get("currency"), attempt.get("estimated_cost")
-            if (currency and isinstance(amount, (int, float))
-                    and math.isfinite(float(amount))):
-                totals[str(currency)] += float(amount)
-        return dict(totals)
+            if not currency or amount is None:
+                unknown_price_calls += calls
+                continue
+            try:
+                amount_value = float(amount)
+            except (TypeError, ValueError):
+                invalid_price_calls += calls
+                continue
+            if not math.isfinite(amount_value) or amount_value < 0:
+                invalid_price_calls += calls
+                continue
+            totals[str(currency)] += amount_value
+        return dict(totals), unknown_price_calls, invalid_price_calls
 
     for (field, cohort), sources in sorted(by_field_cohort_sources.items()):
         for source_a, source_b in itertools.combinations(sorted(sources), 2):
@@ -328,10 +345,14 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                                   "source_a_yes": 0, "source_b_yes": 0,
                                   "excluded_unknown_or_unlabeled": 0, "excluded_duplicate_result_sets": 0}
                       for dimension in REVIEW_FIELDS[:4]}
-            paired_costs: dict[str, dict[str, float | int]] = defaultdict(
+            paired_costs: dict[str, dict[str, Any]] = defaultdict(
                 lambda: {"source_a_total": 0.0, "source_b_total": 0.0, "matched_leads": 0,
-                         "source_a_correct": 0, "source_b_correct": 0, "lead_cost_differences": []}
+                         "source_a_correct": 0, "source_b_correct": 0, "lead_cost_differences": [],
+                         "source_a_unknown_price_calls": 0, "source_b_unknown_price_calls": 0,
+                         "source_a_invalid_price_calls": 0, "source_b_invalid_price_calls": 0}
             )
+            paired_cost_input_quality = {"source_a_unknown_price_calls": 0, "source_b_unknown_price_calls": 0,
+                                         "source_a_invalid_price_calls": 0, "source_b_invalid_price_calls": 0}
             paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
             for lead in shared:
                 a_rows = cases[(field, cohort, lead)][source_a]
@@ -343,7 +364,12 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                 a_value_label = _review_category(a_rows[0].get(label_columns["value_correct"], ""))
                 b_value_label = _review_category(b_rows[0].get(label_columns["value_correct"], ""))
                 if a_value_label in {"yes", "no"} and b_value_label in {"yes", "no"}:
-                    a_costs, b_costs = priced_attempt_cost(a_rows[0]), priced_attempt_cost(b_rows[0])
+                    a_costs, a_unknown, a_invalid = priced_attempt_cost(a_rows[0])
+                    b_costs, b_unknown, b_invalid = priced_attempt_cost(b_rows[0])
+                    paired_cost_input_quality["source_a_unknown_price_calls"] += a_unknown
+                    paired_cost_input_quality["source_b_unknown_price_calls"] += b_unknown
+                    paired_cost_input_quality["source_a_invalid_price_calls"] += a_invalid
+                    paired_cost_input_quality["source_b_invalid_price_calls"] += b_invalid
                     for currency in a_costs.keys() & b_costs.keys():
                         cost_pair = paired_costs[currency]
                         cost_pair["source_a_total"] += a_costs[currency]
@@ -432,6 +458,12 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "source_a_mean_estimated_cost_per_matched_lead": a_mean,
                     "source_b_mean_estimated_cost_per_matched_lead": b_mean,
                     "mean_cost_difference_a_minus_b": (a_mean - b_mean) if a_mean is not None and b_mean is not None else None,
+                    "excluded_unknown_or_invalid_price_calls": {
+                        "source_a_unknown_price_calls": paired_cost_input_quality["source_a_unknown_price_calls"],
+                        "source_b_unknown_price_calls": paired_cost_input_quality["source_b_unknown_price_calls"],
+                        "source_a_invalid_price_calls": paired_cost_input_quality["source_a_invalid_price_calls"],
+                        "source_b_invalid_price_calls": paired_cost_input_quality["source_b_invalid_price_calls"],
+                    },
                     "mean_cost_difference_cluster_bootstrap_95": {
                         "method": "percentile bootstrap; sample matched lead cost pairs with replacement",
                         "seed": bootstrap_seed,
@@ -498,6 +530,11 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "neither_rate": _ratio(len(neither), len(cohort_leads)),
                 },
                 "paired_provider_attempt_cost_by_currency": paired_cost_comparison,
+                "paired_cost_input_quality": {
+                    **paired_cost_input_quality,
+                    "scope": "matched leads with explicit yes/no value-correctness reviews from both sources",
+                    "rule": "only positive-call-count attempts with a finite, nonnegative estimate and a currency enter paired cost totals; missing prices are unknown, invalid amounts are excluded",
+                },
                 "decision_readout": {
                     "evidence_status": evidence_status,
                     "value_correctness_direction": quality_direction,
@@ -564,6 +601,11 @@ def _decision_brief(report: dict) -> str:
             lines.append(
                 f"- {currency} estimated cost per priced matched lead: A {_display_amount(a_cost)}; B {_display_amount(b_cost)}; A-minus-B cost interval {cost_interval_text}; {costs.get('descriptive_cost_quality_readout', 'No cost-quality readout.') }"
             )
+        cost_quality = item.get("paired_cost_input_quality", {})
+        if cost_quality:
+            unknown = int(cost_quality.get("source_a_unknown_price_calls", 0)) + int(cost_quality.get("source_b_unknown_price_calls", 0))
+            invalid = int(cost_quality.get("source_a_invalid_price_calls", 0)) + int(cost_quality.get("source_b_invalid_price_calls", 0))
+            lines.append(f"- Paired cost metadata excluded {unknown} unknown-price calls and {invalid} invalid-price calls across both sources.")
         lines.append("")
     lines.extend(["## How to read this", "",
                   "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
