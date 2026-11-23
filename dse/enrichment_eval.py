@@ -276,7 +276,8 @@ def _agreement(items: list[dict[str, str]], field: str) -> dict:
             "cohen_kappa": kappa, "confusion_matrix": confusion}
 
 
-def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int) -> list[dict]:
+def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int,
+                              bootstrap_reps: int = 500, bootstrap_seed: int = 42) -> list[dict]:
     if "source_row" not in headers:
         return []
     label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
@@ -330,6 +331,7 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
             paired_costs: dict[str, dict[str, float | int]] = defaultdict(
                 lambda: {"source_a_total": 0.0, "source_b_total": 0.0, "matched_leads": 0}
             )
+            paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
             for lead in shared:
                 a_rows = cases[(field, cohort, lead)][source_a]
                 b_rows = cases[(field, cohort, lead)][source_b]
@@ -354,6 +356,7 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                         continue
                     dimension_counts["source_a_yes"] += a_label == "yes"
                     dimension_counts["source_b_yes"] += b_label == "yes"
+                    paired_labels[dimension].append((int(a_label == "yes"), int(b_label == "yes")))
                     if a_label == b_label:
                         dimension_counts["ties"] += 1
                     elif a_label == "yes":
@@ -363,6 +366,18 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
             dimensions = {}
             for dimension, dimension_counts in counts.items():
                 matched = (dimension_counts["source_a_wins"] + dimension_counts["source_b_wins"] + dimension_counts["ties"])
+                label_pairs = paired_labels[dimension]
+                bootstrap_differences = []
+                if bootstrap_reps and label_pairs:
+                    rng = random.Random(
+                        f"{bootstrap_seed}:{field}:{cohort}:{source_a}:{source_b}:{dimension}"
+                    )
+                    for _ in range(bootstrap_reps):
+                        sample = [label_pairs[rng.randrange(len(label_pairs))] for _ in label_pairs]
+                        bootstrap_differences.append(
+                            sum(a_yes - b_yes for a_yes, b_yes in sample) / len(sample)
+                        )
+                    bootstrap_differences.sort()
                 dimensions[dimension] = {
                     "matched_adjudicated_leads": matched,
                     "source_a_wins": dimension_counts["source_a_wins"],
@@ -371,6 +386,14 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "source_a_yes_rate": _ratio(dimension_counts["source_a_yes"], matched),
                     "source_b_yes_rate": _ratio(dimension_counts["source_b_yes"], matched),
                     "paired_rate_difference_a_minus_b": _ratio(dimension_counts["source_a_yes"] - dimension_counts["source_b_yes"], matched),
+                    "paired_rate_difference_cluster_bootstrap_95": {
+                        "method": "percentile bootstrap; sample matched lead pairs with replacement",
+                        "seed": bootstrap_seed,
+                        "requested_replicates": bootstrap_reps,
+                        "valid_replicates": len(bootstrap_differences),
+                        "lower": bootstrap_differences[max(0, math.ceil(0.025 * len(bootstrap_differences)) - 1)] if bootstrap_differences else None,
+                        "upper": bootstrap_differences[max(0, math.ceil(0.975 * len(bootstrap_differences)) - 1)] if bootstrap_differences else None,
+                    },
                     "excluded_unknown_or_unlabeled": dimension_counts["excluded_unknown_or_unlabeled"],
                     "excluded_duplicate_result_sets": dimension_counts["excluded_duplicate_result_sets"],
                     "minimum_labeled_count": min_labeled,
@@ -420,12 +443,15 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
 
 
 def score(source: str, out: str = "", min_labeled: int = 20,
-          cost_bootstrap_reps: int = 500, cost_bootstrap_seed: int = 42) -> tuple[dict, Path]:
+          cost_bootstrap_reps: int = 500, cost_bootstrap_seed: int = 42,
+          paired_bootstrap_reps: int = 500, paired_bootstrap_seed: int = 42) -> tuple[dict, Path]:
     """Summarize reviewed quality, coverage, freshness and declared provider cost."""
     if min_labeled < 1:
         raise ValueError("--min-labeled must be at least 1.")
     if cost_bootstrap_reps < 0 or cost_bootstrap_reps > 5000:
         raise ValueError("--cost-bootstrap-reps must be between 0 and 5000.")
+    if paired_bootstrap_reps < 0 or paired_bootstrap_reps > 5000:
+        raise ValueError("--paired-bootstrap-reps must be between 0 and 5000.")
     headers, rows = _read(source)
     required = {"field", "status", *REVIEW_FIELDS[:4]}
     missing = sorted(required - set(headers))
@@ -604,7 +630,8 @@ def score(source: str, out: str = "", min_labeled: int = 20,
               "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
                                        **metrics(items)}
                                       for (field, source_type, source_name), items in sorted(by_field_source.items())],
-              "paired_source_comparisons": _paired_source_comparisons(rows, headers, min_labeled),
+              "paired_source_comparisons": _paired_source_comparisons(
+                  rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed),
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
@@ -929,6 +956,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--min-labeled", type=int, default=20, help="minimum yes/no labels before a cohort is flagged as reaching the caution threshold (default: 20)")
     s.add_argument("--cost-bootstrap-reps", type=int, default=500, help="lead-cluster bootstrap replicates for reviewed cost intervals (0 disables; default: 500)")
     s.add_argument("--cost-bootstrap-seed", type=int, default=42, help="seed for reproducible reviewed cost intervals (default: 42)")
+    s.add_argument("--paired-bootstrap-reps", type=int, default=500, help="lead-pair bootstrap replicates for paired source rate differences (0 disables; default: 500)")
+    s.add_argument("--paired-bootstrap-seed", type=int, default=42, help="seed for reproducible paired source intervals (default: 42)")
     sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
     sm.add_argument("source", help="prepared human-review CSV from `prepare`")
     sm.add_argument("--leads", type=int, default=40, help="maximum leads to sample (default: 40)")
@@ -947,7 +976,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "prepare":
             prepare(args.source, args.out)
         elif args.action == "score":
-            score(args.source, args.out, args.min_labeled, args.cost_bootstrap_reps, args.cost_bootstrap_seed)
+            score(args.source, args.out, args.min_labeled, args.cost_bootstrap_reps, args.cost_bootstrap_seed,
+                  args.paired_bootstrap_reps, args.paired_bootstrap_seed)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
         elif args.action == "pair-reviewers":
