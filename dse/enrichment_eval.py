@@ -378,10 +378,13 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
     return comparisons
 
 
-def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path]:
+def score(source: str, out: str = "", min_labeled: int = 20,
+          cost_bootstrap_reps: int = 500, cost_bootstrap_seed: int = 42) -> tuple[dict, Path]:
     """Summarize reviewed quality, coverage, freshness and declared provider cost."""
     if min_labeled < 1:
         raise ValueError("--min-labeled must be at least 1.")
+    if cost_bootstrap_reps < 0 or cost_bootstrap_reps > 5000:
+        raise ValueError("--cost-bootstrap-reps must be between 0 and 5000.")
     headers, rows = _read(source)
     required = {"field", "status", *REVIEW_FIELDS[:4]}
     missing = sorted(required - set(headers))
@@ -424,6 +427,10 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
         costs: dict[str, float] = defaultdict(float)
         provider_attempt_costs: dict[str, float] = defaultdict(float)
         provider_cost_review_denominator: dict[str, int] = defaultdict(int)
+        reviewed_provider_costs: dict[str, float] = defaultdict(float)
+        reviewed_cost_clusters: dict[str, dict[str, dict[str, float | int]]] = defaultdict(
+            lambda: defaultdict(lambda: {"cost": 0.0, "correct": 0})
+        )
         human_correct_with_provider_attempts = 0
         provider_cost_details: dict[str, dict] = defaultdict(lambda: {"calls": 0, "estimated_cost_by_currency": {}, "unknown_price_calls": 0})
         unknown_provider_attempts = 0
@@ -434,7 +441,7 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                 continue
             currency = (row.get("cost_currency") or "unknown").strip() or "unknown"
             costs[currency] += amount
-        for row in items:
+        for row_index, row in enumerate(items):
             waterfall_cost = _json(row.get("provider_waterfall_cost"))
             if not isinstance(waterfall_cost, dict):
                 continue
@@ -461,13 +468,67 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                     unknown_provider_attempts += attempt_count
                     detail["unknown_price_calls"] += attempt_count
             label_column = label_columns["value_correct"]
-            is_human_correct = (row.get(label_column) or "").strip().casefold() in YES
+            label = (row.get(label_column) or "").strip().casefold()
+            is_reviewed = label in YES | NO
+            is_human_correct = label in YES
+            cluster_id = (row.get("source_row") or row.get("evaluation_id") or f"row:{row_index}").strip()
+            if row_has_attempts and is_reviewed:
+                for currency in row_currencies:
+                    reviewed_cost_clusters[currency][cluster_id]["cost"] += sum(
+                        float(attempt.get("estimated_cost"))
+                        for attempt in provider_map.values()
+                        if isinstance(attempt, dict)
+                        and attempt.get("currency") == currency
+                        and isinstance(attempt.get("estimated_cost"), (int, float))
+                        and math.isfinite(float(attempt.get("estimated_cost")))
+                    )
+                for currency in row_currencies:
+                    row_cost = sum(
+                        float(attempt.get("estimated_cost"))
+                        for attempt in provider_map.values()
+                        if isinstance(attempt, dict)
+                        and attempt.get("currency") == currency
+                        and isinstance(attempt.get("estimated_cost"), (int, float))
+                        and math.isfinite(float(attempt.get("estimated_cost")))
+                    )
+                    reviewed_provider_costs[currency] += row_cost
+                    if is_human_correct:
+                        reviewed_cost_clusters[currency][cluster_id]["correct"] += 1
             if row_has_attempts and is_human_correct:
                 human_correct_with_provider_attempts += 1
                 for currency in row_currencies:
                     provider_cost_review_denominator[currency] += 1
         accepted = sum((r.get("status") or "").strip().casefold() == "accepted" for r in items)
         fresh_known = [r for r in items if (r.get("freshness_status") or "").strip() and (r.get("freshness_status") or "").casefold() != "unknown"]
+        cost_uncertainty = {}
+        for currency, clusters in reviewed_cost_clusters.items():
+            cluster_values = list(clusters.values())
+            point_denominator = sum(int(value["correct"]) for value in cluster_values)
+            ratios = []
+            if cost_bootstrap_reps and cluster_values:
+                rng = random.Random(f"{cost_bootstrap_seed}:{currency}:{'|'.join(sorted(clusters))}")
+                for _ in range(cost_bootstrap_reps):
+                    sampled = [cluster_values[rng.randrange(len(cluster_values))] for _ in cluster_values]
+                    denominator = sum(int(value["correct"]) for value in sampled)
+                    if denominator:
+                        numerator = sum(float(value["cost"]) for value in sampled)
+                        ratios.append(numerator / denominator)
+            ratios.sort()
+            cost_uncertainty[currency] = {
+                "reviewed_cost_estimate": reviewed_provider_costs[currency],
+                "human_reviewed_correct_denominator": point_denominator,
+                "point_estimate_per_human_reviewed_correct_result": _ratio(reviewed_provider_costs[currency], point_denominator),
+                "unique_leads_with_reviewed_provider_attempts": len(cluster_values),
+                "cluster_bootstrap_95": {
+                    "method": "percentile bootstrap; sample lead clusters with replacement",
+                    "seed": cost_bootstrap_seed,
+                    "requested_replicates": cost_bootstrap_reps,
+                    "valid_replicates": len(ratios),
+                    "replicates_without_correct_result": cost_bootstrap_reps - len(ratios),
+                    "lower": ratios[max(0, math.ceil(0.025 * len(ratios)) - 1)] if ratios else None,
+                    "upper": ratios[max(0, math.ceil(0.975 * len(ratios)) - 1)] if ratios else None,
+                },
+            }
         return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
                 "status_counts": {status: sum((r.get("status") or "").strip().casefold() == status for r in items)
                                   for status in ("accepted", "candidate", "not_found", "rejected", "error")},
@@ -491,10 +552,11 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                 "provider_attempt_estimate_per_accepted_result_by_currency": {currency: _ratio(amount, accepted) for currency, amount in provider_attempt_costs.items()},
                 "human_reviewed_correct_results_with_provider_attempts": human_correct_with_provider_attempts,
                 "provider_attempt_estimate_per_human_reviewed_correct_result_by_currency": {
-                    currency: _ratio(amount, provider_cost_review_denominator[currency]) for currency, amount in provider_attempt_costs.items()},
+                    currency: _ratio(reviewed_provider_costs[currency], provider_cost_review_denominator[currency]) for currency in reviewed_provider_costs},
                 "provider_attempt_cost_human_correct_denominator_by_currency": dict(provider_cost_review_denominator),
+                "provider_cost_per_reviewed_correct_uncertainty_by_currency": cost_uncertainty,
                 "provider_attempts_with_unknown_price": unknown_provider_attempts,
-                "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded. Cost per human-reviewed correct result uses only explicitly yes-labeled value_correct rows that had priced provider attempts in that currency; unknown-price attempts remain separately counted. Estimates use configured call prices, not invoices, and do not establish general accuracy or causal provider superiority."}
+                "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded. Cost per human-reviewed correct result uses priced provider costs only from rows explicitly labeled yes or no for value_correct, divided by explicitly yes-labeled rows with priced provider attempts. Unknown-price attempts remain separately counted. The lead-cluster percentile bootstrap is descriptive sampling uncertainty; it cannot correct sampling bias or establish population performance. Estimates use configured call prices, not invoices."}
 
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
@@ -505,7 +567,7 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
-              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. Paired source wins compare adjudicated value correctness for the same lead and field; they are descriptive and do not prove general provider superiority. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
+              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. Paired source wins compare adjudicated value correctness for the same lead and field; they are descriptive and do not prove general provider superiority. Cost bootstrap intervals resample lead clusters from explicitly reviewed rows and do not correct sampling bias. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -824,6 +886,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("source", help="review CSV with yes/no labels")
     s.add_argument("--out", default="", help="JSON report output path")
     s.add_argument("--min-labeled", type=int, default=20, help="minimum yes/no labels before a cohort is flagged as reaching the caution threshold (default: 20)")
+    s.add_argument("--cost-bootstrap-reps", type=int, default=500, help="lead-cluster bootstrap replicates for reviewed cost intervals (0 disables; default: 500)")
+    s.add_argument("--cost-bootstrap-seed", type=int, default=42, help="seed for reproducible reviewed cost intervals (default: 42)")
     sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
     sm.add_argument("source", help="prepared human-review CSV from `prepare`")
     sm.add_argument("--leads", type=int, default=40, help="maximum leads to sample (default: 40)")
@@ -842,7 +906,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "prepare":
             prepare(args.source, args.out)
         elif args.action == "score":
-            score(args.source, args.out, args.min_labeled)
+            score(args.source, args.out, args.min_labeled, args.cost_bootstrap_reps, args.cost_bootstrap_seed)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
         elif args.action == "pair-reviewers":
