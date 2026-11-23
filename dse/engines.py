@@ -297,6 +297,10 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
                 for field in ("waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
                               "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
                     lead_list_row[field] = r.get(field, "")
+            if r.get("waterfall_outreach_assignment_experiment_id"):
+                for field in ("waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant",
+                              "waterfall_outreach_assignment_seed"):
+                    lead_list_row[field] = r.get(field, "")
             rows.append(lead_list_row)
         if not rows:
             log(f"  {day}: no leads left with a usable channel")

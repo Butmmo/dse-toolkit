@@ -130,7 +130,9 @@ def normalize(path: Path) -> tuple[list[dict], dict]:
                       "presence_signals", "presence_sources", "presence_checked_at", "presence_status", "field_results",
                       "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
                       "waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
-                      "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
+                      "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                      "waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant",
+                      "waterfall_outreach_assignment_seed"):
             header = next((h for h in headers if squash(h) == squash(field)), None)
             if header:
                 rows[-1][field] = (r.get(header) or "").strip()

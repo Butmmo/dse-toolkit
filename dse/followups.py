@@ -177,6 +177,10 @@ def plan(slug: str, start: str | None = None, days: int = 1, write: bool = True,
                 for field in ("waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
                               "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
                     followup_row[field] = f.get(field, "")
+            if f.get("waterfall_outreach_assignment_experiment_id"):
+                for field in ("waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant",
+                              "waterfall_outreach_assignment_seed"):
+                    followup_row[field] = f.get(field, "")
             rows.append(followup_row)
             pool.remove(item)
         result[day.isoformat()] = rows

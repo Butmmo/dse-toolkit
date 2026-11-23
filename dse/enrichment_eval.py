@@ -271,6 +271,63 @@ def plan_waterfall_experiment(source: str, field: str, provider_a: str, provider
     return output
 
 
+def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", out: str = "") -> tuple[Path, dict]:
+    """Select exactly one A/B enriched row per lead using a stable hash assignment."""
+    headers, rows = _read(source)
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field", "waterfall_experiment_lead_id"}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Input CSV is missing required experiment columns: " + ", ".join(missing))
+    if not experiment_id.strip():
+        raise ValueError("Experiment ID cannot be blank.")
+    selected = [row for row in rows if (row.get("waterfall_experiment_id") or "").strip() == experiment_id]
+    if not selected:
+        raise ValueError(f"No rows for experiment {experiment_id!r} were found in {source}.")
+    fields = {(row.get("waterfall_experiment_field") or "").strip() for row in selected}
+    if len(fields) != 1 or not next(iter(fields)):
+        raise ValueError("Select rows from exactly one nonblank experiment field per outreach assignment.")
+
+    by_lead: dict[str, dict[str, dict[str, str]]] = defaultdict(dict)
+    for row_number, row in enumerate(selected, 2):
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        if not lead_id:
+            raise ValueError(f"Experiment row {row_number} has no stable lead ID.")
+        if variant not in {"A", "B"}:
+            raise ValueError(f"Experiment row {row_number} has invalid variant {variant!r}; expected A or B.")
+        if variant in by_lead[lead_id]:
+            raise ValueError(f"Lead {lead_id!r} has more than one {variant} row; resolve duplicates before assignment.")
+        by_lead[lead_id][variant] = row
+    unpaired = [lead for lead, variants in by_lead.items() if set(variants) != {"A", "B"}]
+    if unpaired:
+        sample = ", ".join(repr(x) for x in unpaired[:5])
+        raise ValueError(f"{len(unpaired)} lead(s) do not have exactly one A and one B enrichment row (for example {sample}); no assignment file was written.")
+
+    extra = ["waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant", "waterfall_outreach_assignment_seed"]
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-outreach-assigned.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    counts = {"A": 0, "B": 0}
+    with output.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(dict.fromkeys([*headers, *extra])), extrasaction="ignore")
+        writer.writeheader()
+        for lead_id in sorted(by_lead):
+            digest = hashlib.sha256(f"{experiment_id}\0{seed}\0{lead_id}".encode("utf-8")).digest()
+            variant = "A" if digest[0] % 2 == 0 else "B"
+            row = dict(by_lead[lead_id][variant])
+            row["waterfall_experiment_variant"] = variant
+            row["waterfall_outreach_assignment_experiment_id"] = experiment_id
+            row["waterfall_outreach_assignment_variant"] = variant
+            row["waterfall_outreach_assignment_seed"] = str(seed)
+            writer.writerow(row)
+            counts[variant] += 1
+    result = {"experiment_id": experiment_id, "experiment_field": next(iter(fields)), "seed": str(seed),
+              "lead_count": len(by_lead), "variant_counts": counts, "assignment": "stable SHA-256 parity of experiment ID, seed, and lead ID",
+              "one_variant_per_lead": True, "source_rows": len(selected), "output": str(output.resolve())}
+    print(f"Assigned {len(by_lead)} paired leads to one outreach variant each (A {counts['A']}, B {counts['B']}): {output}")
+    print("The same experiment ID, seed, and lead ID always produce the same assignment. Store this output as the only outreach input for these leads.")
+    return output, result
+
+
 def pair_reviewers(source: str, out: str = "") -> Path:
     """Create independent reviewer and adjudication columns for a prepared sample."""
     headers, rows = _read(source)
@@ -1889,6 +1946,11 @@ def main(argv: list[str] | None = None) -> int:
     wx.add_argument("--leads", type=int, default=50)
     wx.add_argument("--seed", type=int, default=42)
     wx.add_argument("--out", default="", help="manifest CSV output path")
+    ao = sub.add_parser("assign-outreach", help="assign each paired experiment lead to exactly one outreach variant")
+    ao.add_argument("source", help="combined A/B enriched CSV with stable experiment lead IDs")
+    ao.add_argument("--experiment-id", required=True)
+    ao.add_argument("--seed", default="42", help="sticky assignment seed (same seed preserves assignments)")
+    ao.add_argument("--out", default="", help="assigned CSV output path")
     so = sub.add_parser("score-send-outcomes", help="join experiment variants to explicit Send Desk outcomes for one engine")
     so.add_argument("engine", help="engine slug")
     so.add_argument("--experiment-id", default="", help="limit the report to one experiment ID")
@@ -1915,6 +1977,8 @@ def main(argv: list[str] | None = None) -> int:
             plan_waterfall_experiment(args.source, args.field, args.provider_a, args.provider_b,
                                       args.engine_path, args.enrichment_profile, args.research_lane,
                                       args.leads, args.seed, args.out)
+        elif args.action == "assign-outreach":
+            assign_outreach_variant(args.source, args.experiment_id, args.seed, args.out)
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
         elif args.action == "score-send-outcomes":
