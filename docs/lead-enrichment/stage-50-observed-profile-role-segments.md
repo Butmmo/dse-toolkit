@@ -4,7 +4,7 @@
 
 When a human fit review is saved, Citadel now snapshots the structured cues currently shown in the research bundle: business-profile assessments, role evidence, legal-form mentions, person-role candidate titles, and Presence signal categories. The local `score-ledger` command reports fit counts and rates by each observed cue within its research lane and shows coverage and the configured sample-size caution flag.
 
-These are captured as candidate research observations, not verified classifications. The snapshot stores labels and assessment/status only; it does not copy person names, source URLs, or snippets. Multiple cues from one row can appear in multiple segments, so the segment counts overlap and should not be summed as unique leads.
+These are captured as candidate research observations, not verified classifications. The snapshot stores labels and assessment/status only; it does not copy person names, source URLs, or snippets. Stage 51 adds descriptive comparison with the current Send Desk status. Multiple cues from one row can appear in multiple segments, so the segment counts overlap and should not be summed as unique leads.
 
 ## Use
 

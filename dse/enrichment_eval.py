@@ -6,6 +6,7 @@ import csv
 import hashlib
 import json
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -176,6 +177,10 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
     column = next((name for name in headers if name.strip().casefold() == "enrichment_review"), "")
     if not column:
         raise ValueError("Ledger CSV needs the enrichment_review column. Make it visible before exporting the grid.")
+    desk_status_column = next((name for name in headers
+                               if name.strip().casefold().replace(" ", "_") in {"desk_status", "c_desk_status"}), "")
+    desk_last_column = next((name for name in headers
+                             if name.strip().casefold().replace(" ", "_") in {"desk_last_update", "desk_last", "c_desk_last"}), "")
 
     latest: dict[tuple[int, str], dict[str, Any]] = {}
     row_results: dict[int, list[dict[str, Any]]] = {}
@@ -218,11 +223,36 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
                         observed_values.append(value.strip()[:120])
                 if observed_values:
                     observed_context[field] = list(dict.fromkeys(observed_values))
+            raw_desk_status = str(row.get(desk_status_column) or "").strip().casefold().replace("_", " ") if desk_status_column else "not_available"
+            if raw_desk_status in {"call booked", "booked call"}:
+                raw_desk_status = "booked"
+            if raw_desk_status == "to do":
+                raw_desk_status = "not_recorded"
+            elif not raw_desk_status:
+                raw_desk_status = "not_recorded"
+            elif raw_desk_status not in {"sent", "skipped", "replied", "booked", "won", "lost", "not_available"}:
+                raw_desk_status = "other"
+            desk_date = str(row.get(desk_last_column) or "").strip()[:10] if desk_last_column else ""
+            review_date = str(item.get("reviewed_at") or "")[:10]
+            try:
+                desk_day = date.fromisoformat(desk_date)
+                review_day = date.fromisoformat(review_date)
+            except ValueError:
+                desk_timing = "unknown"
+            else:
+                if desk_day > review_day:
+                    desk_timing = "after_review"
+                elif desk_day == review_day:
+                    desk_timing = "same_day_order_unknown"
+                else:
+                    desk_timing = "before_review"
             latest[(row_number, lane)] = {"judgment": item["judgment"], "lane": lane, "profile_key": profile,
                                           "reviewed_at": str(item.get("reviewed_at") or ""),
                                           "research_checked_at": str(item.get("research_checked_at") or ""),
                                           "target_context": target_context,
                                           "observed_context": observed_context,
+                                          "desk_status": raw_desk_status,
+                                          "desk_timing": desk_timing,
                                           "row_number": row_number}
             valid_history_entries += 1
 
@@ -315,6 +345,23 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
             **metrics, "decided_reviews": decided,
             "sample_status": "too_few_decided_reviews" if decided < min_decided else "descriptive_only"}
 
+    def outcome_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+        counts: dict[str, int] = defaultdict(int)
+        timing: dict[str, int] = defaultdict(int)
+        for item in items:
+            counts[item["desk_status"]] += 1
+            timing[item["desk_timing"]] += 1
+        return {"fit_reviews": len(items), "desk_status_column_found": bool(desk_status_column),
+                "desk_last_update_column_found": bool(desk_last_column),
+                "desk_status_counts": dict(sorted(counts.items())),
+                "desk_timing_relative_to_review_counts": dict(sorted(timing.items()))}
+
+    outcomes_by_judgment_lane_profile: dict[str, dict[str, Any]] = {}
+    outcome_keys = sorted({(item["judgment"], item["lane"], item["profile_key"]) for item in latest_items})
+    for judgment, lane, profile in outcome_keys:
+        group = [item for item in latest_items if (item["judgment"], item["lane"], item["profile_key"]) == (judgment, lane, profile)]
+        outcomes_by_judgment_lane_profile[f"{judgment}|{lane}|{profile}"] = outcome_summary(group)
+
     lane_aliases = {"website_enrichment": "website", "herald_research": "herald", "presence_research": "presence"}
     joined: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     matched_reviews = 0
@@ -378,6 +425,9 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
               "observed_context_segments": {"minimum_decided_reviews": min_decided,
                                              "review_coverage_by_dimension": observed_context_coverage,
                                              "by_lane_dimension_and_value": observed_segments},
+              "send_desk_outcomes": {"desk_status_column_found": bool(desk_status_column),
+                                     "desk_last_update_column_found": bool(desk_last_column),
+                                     "by_judgment_lane_and_profile": outcomes_by_judgment_lane_profile},
               "field_results_join": {"reviewed_rows_with_matching_lane_results": matched_reviews,
                                      "reviewed_rows_without_matching_lane_results": unmatched_reviews,
                                      "by_judgment_lane_and_profile": field_join},
