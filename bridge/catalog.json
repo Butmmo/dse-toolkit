@@ -1753,7 +1753,7 @@
     "dse.import_check": {
       "label": "My engine: check my file",
       "group": "My engines",
-      "help": "Go-to-Market and Authority engines build their lists from a file YOU make. Go-to-Market: a CSV exported from your own Clay, Apollo or HubSpot account, saved in engines/<engine>/imports/ on your PC. Authority: a CSV of experts you looked at and pasted by hand (name, profile_url, headline, connections, post_dates, post_1, post_2), saved in engines/<engine>/pasted/. This shows which columns were understood, how many rows, and the best prospects, so a wrong column shows up before you build a list. Nothing is scraped from LinkedIn or anywhere else.",
+      "help": "Go-to-Market and Authority engines build their lists from a file YOU make. Go-to-Market: a CSV exported from your own Clay, Apollo or HubSpot account, saved in engines/<engine>/imports/ on your PC. Authority: a CSV of experts you looked at and pasted by hand (name, profile_url, headline, connections, post_dates, post_1, post_2), saved in engines/<engine>/pasted/. This shows which columns were understood, how many rows, and the best prospects, so a wrong column shows up before you build a list. For waterfall experiment assignments, the local assignment audit, cohort record and file hash are checked before import. Nothing is scraped from LinkedIn or anywhere else.",
       "script": "dse.py",
       "args": [
         {
