@@ -191,8 +191,72 @@ def sample_ledger(source: str, leads: int = 40, seed: int = 42, stratify: str = 
     return output
 
 
+def pair_reviewers(source: str, out: str = "") -> Path:
+    """Create independent reviewer and adjudication columns for a prepared sample."""
+    headers, rows = _read(source)
+    required = set(REVIEW_FIELDS)
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Prepared review sheet is missing columns: " + ", ".join(missing) + ". Run `prepare` first.")
+    review_dimensions = REVIEW_FIELDS[:4]
+    added = [f"reviewer_{reviewer}_{field}" for reviewer in ("a", "b") for field in review_dimensions]
+    added += ["reviewer_a_note", "reviewer_b_note"]
+    added += [f"adjudicated_{field}" for field in review_dimensions] + ["adjudication_note"]
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-paired-review.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = list(dict.fromkeys([*headers, *added]))
+    with output.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            paired = dict(row)
+            paired.update({field: "" for field in REVIEW_FIELDS})
+            paired.update({field: "" for field in added})
+            writer.writerow(paired)
+    print(f"Prepared {len(rows)} paired review rows: {output}")
+    print("Review independently in reviewer_a_* and reviewer_b_*; record the resolved label in adjudicated_*.")
+    return output
+
+
 def _ratio(numerator: float, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
+
+
+def _review_category(value: str) -> str | None:
+    normalized = (value or "").strip().casefold()
+    if normalized in YES:
+        return "yes"
+    if normalized in NO:
+        return "no"
+    if normalized in UNKNOWN:
+        return "unknown"
+    return None
+
+
+def _agreement(items: list[dict[str, str]], field: str) -> dict:
+    a_key, b_key = f"reviewer_a_{field}", f"reviewer_b_{field}"
+    categories = ("yes", "no", "unknown")
+    confusion = {a: {b: 0 for b in categories} for a in categories}
+    excluded = 0
+    for row in items:
+        a, b = _review_category(row.get(a_key, "")), _review_category(row.get(b_key, ""))
+        if a is None or b is None:
+            excluded += 1
+            continue
+        confusion[a][b] += 1
+    comparable = sum(sum(row.values()) for row in confusion.values())
+    observed = _ratio(sum(confusion[label][label] for label in categories), comparable)
+    expected = None
+    kappa = None
+    if comparable:
+        a_totals = {label: sum(confusion[label].values()) for label in categories}
+        b_totals = {label: sum(confusion[a][label] for a in categories) for label in categories}
+        expected = sum(a_totals[label] * b_totals[label] for label in categories) / (comparable * comparable)
+        if expected < 1:
+            kappa = (observed - expected) / (1 - expected)
+    return {"comparable": comparable, "excluded_missing_or_invalid": excluded,
+            "observed_agreement": observed, "expected_agreement": expected,
+            "cohen_kappa": kappa, "confusion_matrix": confusion}
 
 
 def score(source: str, out: str = "") -> tuple[dict, Path]:
@@ -210,12 +274,15 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
         by_path_profile_lane[cohort].append(row)
 
     def metrics(items: list[dict[str, str]]) -> dict:
-        labeled = {field: [r for r in items if (r.get(field) or "").strip().casefold() in YES | NO] for field in REVIEW_FIELDS[:4]}
+        label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
+                         for field in REVIEW_FIELDS[:4]}
+        labeled = {field: [r for r in items if (r.get(label_columns[field]) or "").strip().casefold() in YES | NO]
+                   for field in REVIEW_FIELDS[:4]}
         responses = {}
         for field in REVIEW_FIELDS[:4]:
             counts = {"yes": 0, "no": 0, "unknown": 0, "blank": 0, "invalid": 0}
             for row in items:
-                value = (row.get(field) or "").strip().casefold()
+                value = (row.get(label_columns[field]) or "").strip().casefold()
                 if value in YES:
                     counts["yes"] += 1
                 elif value in NO:
@@ -227,7 +294,7 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
                 else:
                     counts["invalid"] += 1
             responses[field] = counts
-        correct_values = sum((r.get("value_correct") or "").strip().casefold() in YES for r in labeled["value_correct"])
+        correct_values = sum((r.get(label_columns["value_correct"]) or "").strip().casefold() in YES for r in labeled["value_correct"])
         costs: dict[str, float] = defaultdict(float)
         for row in items:
             try:
@@ -241,10 +308,13 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
         return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
                 "status_counts": {status: sum((r.get("status") or "").strip().casefold() == status for r in items)
                                   for status in ("accepted", "candidate", "not_found", "rejected", "error")},
-                "review_labels": {k: {"labeled": len(v), "yes": sum((r.get(k) or "").strip().casefold() in YES for r in v),
-                                      "rate": _ratio(sum((r.get(k) or "").strip().casefold() in YES for r in v), len(v))}
+                "review_labels": {k: {"label_column": label_columns[k], "labeled": len(v),
+                                      "yes": sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v),
+                                      "rate": _ratio(sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v), len(v))}
                                   for k, v in labeled.items()},
                 "review_responses": responses,
+                "reviewer_agreement": {field: _agreement(items, field) for field in REVIEW_FIELDS[:4]
+                                        if f"reviewer_a_{field}" in headers and f"reviewer_b_{field}" in headers},
                 "freshness_documented": len(fresh_known), "freshness_documented_rate": _ratio(len(fresh_known), len(items)),
                 "declared_cost_by_currency": dict(costs),
                 "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()}}
@@ -576,6 +646,9 @@ def main(argv: list[str] | None = None) -> int:
     sm.add_argument("--seed", type=int, default=42, help="random seed for reproducible sampling (default: 42)")
     sm.add_argument("--stratify", default="engine_path,enrichment_profile", help="comma-separated prepared CSV columns (default: engine_path,enrichment_profile)")
     sm.add_argument("--out", default="", help="sample CSV output path")
+    pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
+    pr.add_argument("source", help="prepared sample review CSV")
+    pr.add_argument("--out", default="", help="paired review CSV output path")
     l = sub.add_parser("score-ledger", help="score fit reviews exported from a Ledger grid")
     l.add_argument("source", help="Ledger grid CSV with an enrichment_review column")
     l.add_argument("--out", default="", help="JSON report output path")
@@ -588,6 +661,8 @@ def main(argv: list[str] | None = None) -> int:
             score(args.source, args.out)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
+        elif args.action == "pair-reviewers":
+            pair_reviewers(args.source, args.out)
         else:
             score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:

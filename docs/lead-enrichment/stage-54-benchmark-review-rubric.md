@@ -38,11 +38,9 @@ Use `yes`, `no`, or `unknown` for each review dimension. Use blank only when the
 
 ## Reviewer calibration and adjudication
 
-1. Two reviewers independently label an initial shared subset, without seeing each other’s labels.
-2. Compare disagreements by dimension and field. Record the evidence and the rule that resolves each disagreement.
-3. If evidence does not resolve a disagreement, retain `unknown`; do not force a yes/no.
-4. Add field-specific clarifications here before reviewing the remaining sample.
-5. Re-review changed labels after a rubric change, and preserve the sample seed and source export for reproducibility.
+Stage 56 adds a `pair-reviewers` command that creates separate reviewer columns and adjudication columns. Two reviewers should label independently without seeing each other’s labels. Compare disagreements by dimension and field, then record the resolved label in `adjudicated_*` and the reason in `adjudication_note`. If evidence does not resolve a disagreement, retain `unknown`; do not force a yes/no. The evaluation report includes raw agreement and Cohen’s kappa where paired labels exist. These statistics are descriptive, especially for small samples; they do not replace evidence review.
+
+Add field-specific clarifications here before reviewing the remaining sample. Re-review changed labels after a rubric change, and preserve the sample seed and source export for reproducibility.
 
 Treat the benchmark as directional while counts are small. Report the labeled denominator and unknown share alongside each rate. Do not infer provider superiority from a handful of fields or from cohorts with materially different lead mixes.
 
