@@ -1690,6 +1690,8 @@ def _send_outcome_brief(report: dict) -> str:
         lines.extend([f"## Experiment `{cohort['experiment_id']}` · field `{cohort['field'] or 'unspecified'}`", "",
                       "| Variant | Assigned | Sent | Send coverage | Skipped | Unmarked | Replies | Reply rate (95% interval) | Calls booked | Booked rate (95% interval) | Wins | Win rate (95% interval) | Sample note |",
                       "|---|---:|---:|---:|---:|---:|---:|---|---:|---|---:|---|---|"])
+        seeds = ", ".join(cohort["outreach_assignment_seeds"]) or "not recorded (legacy rows)"
+        lines.append(f"Outreach assignment mode: `{cohort['outreach_assignment_mode']}`; seed(s): {seeds}; metadata-eligible for comparison: {cohort['comparison_eligible']}.\n")
         for variant in ("A", "B"):
             m = cohort["variants"].get(variant)
             if not m:
@@ -1713,6 +1715,8 @@ def _send_outcome_brief(report: dict) -> str:
                 cats = ", ".join(f"{str(label).replace('|', '/')} ({count})" for label, count in sorted(mature_cats.items()))
                 lines.append(f"Reply categories inside the fixed window, mature leads only (categories can overlap): {cats}.\n")
         lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
+        if cohort.get("comparison_suppressed_reason"):
+            lines.append(f"A/B comparison suppressed: {cohort['comparison_suppressed_reason']}.\n")
         comparison = next((item for item in report["comparisons"]
                            if item["experiment_id"] == cohort["experiment_id"] and item["field"] == cohort["field"]), None)
         if comparison and comparison.get("mature_window_days"):
@@ -1737,6 +1741,10 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
     cohorts: dict[tuple[str, str, str], dict[str, dict[str, bool]]] = defaultdict(dict)
     provider_orders: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     config_hashes: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    assignment_modes: dict[tuple[str, str], set[str]] = defaultdict(set)
+    assignment_seeds: dict[tuple[str, str], set[str]] = defaultdict(set)
+    assignment_leads: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    missing_assignment_seed: set[tuple[str, str]] = set()
     provider_metadata_missing: set[tuple[str, str, str]] = set()
     config_metadata_missing: set[tuple[str, str, str]] = set()
     missing_ids = 0
@@ -1752,6 +1760,26 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             missing_ids += 1
             continue
         field = (row.get("waterfall_experiment_field") or "").strip()
+        assignment_experiment = (row.get("waterfall_outreach_assignment_experiment_id") or "").strip()
+        assignment_variant = (row.get("waterfall_outreach_assignment_variant") or "").strip().upper()
+        assignment_seed = (row.get("waterfall_outreach_assignment_seed") or "").strip()
+        assignment_key = (eid, field)
+        if assignment_experiment:
+            if assignment_experiment != eid:
+                raise ValueError(f"Lead {lead_id!r} has an outreach assignment for experiment {assignment_experiment!r}, but its row is tagged {eid!r}.")
+            if assignment_variant not in {"A", "B"} or assignment_variant != variant:
+                raise ValueError(f"Lead {lead_id!r} has an invalid or conflicting outreach assignment variant.")
+            mode = "single_variant_assigned"
+            if assignment_seed:
+                assignment_seeds[assignment_key].add(assignment_seed)
+            else:
+                missing_assignment_seed.add(assignment_key)
+        else:
+            if assignment_variant or assignment_seed:
+                raise ValueError(f"Lead {lead_id!r} has incomplete outreach assignment metadata.")
+            mode = "legacy_variant_tag_unassigned"
+        assignment_modes[assignment_key].add(mode)
+        assignment_leads[(eid, field, mode)].add(lead_id)
         cohort_key = (eid, field, variant)
         provider_raw = (row.get("waterfall_experiment_providers") or "").strip()
         if provider_raw:
@@ -1867,12 +1895,27 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         groups[(eid, field)]["variants"][variant] = metric
     comparisons = []
     for item in groups.values():
+        assignment_key = (item["experiment_id"], item["field"])
+        modes = assignment_modes[assignment_key]
+        item["outreach_assignment_mode"] = next(iter(modes)) if len(modes) == 1 else "mixed_assigned_and_legacy"
+        item["outreach_assignment_leads"] = {mode: len(assignment_leads[(item["experiment_id"], item["field"], mode)]) for mode in sorted(modes)}
+        item["outreach_assignment_seeds"] = sorted(assignment_seeds[assignment_key])
+        item["assignment_seed_missing"] = assignment_key in missing_assignment_seed
+        item["comparison_eligible"] = len(modes) == 1 and not item["assignment_seed_missing"] and (item["outreach_assignment_mode"] != "single_variant_assigned" or len(item["outreach_assignment_seeds"]) == 1)
+        if len(modes) > 1:
+            item["comparison_suppressed_reason"] = "assigned and legacy unassigned rows are mixed"
+        elif item["assignment_seed_missing"]:
+            item["comparison_suppressed_reason"] = "explicitly assigned rows are missing the assignment seed"
+        elif item["outreach_assignment_mode"] == "single_variant_assigned" and len(item["outreach_assignment_seeds"]) != 1:
+            item["comparison_suppressed_reason"] = "multiple assignment seeds are mixed"
+        else:
+            item["comparison_suppressed_reason"] = ""
         variants = item["variants"]
         ids_by_variant = {v: set(cohorts[(item["experiment_id"], item["field"], v)]) for v in ("A", "B")}
         overlap = ids_by_variant["A"] & ids_by_variant["B"]
         item["same_leads_in_both_variants"] = len(overlap)
         item["interpretation"] = "descriptive only; no causal winner is declared"
-        if "A" in variants and "B" in variants:
+        if "A" in variants and "B" in variants and item["comparison_eligible"]:
             mature_overlap = mature_id_sets[(item["experiment_id"], item["field"], "A")] & mature_id_sets[(item["experiment_id"], item["field"], "B")]
             mature_a = variants["A"]["mature_window"]
             mature_b = variants["B"]["mature_window"]
@@ -1901,7 +1944,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
-              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; their per-variant counts remain pooled and should be read with that warning. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
