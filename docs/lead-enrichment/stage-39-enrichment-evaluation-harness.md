@@ -9,7 +9,7 @@ Added a local CLI harness to turn an enriched CSV's `field_results` contract int
 - evidence adequacy;
 - freshness acceptability.
 
-The scorer reports accepted-result coverage, status counts, labeled yes rates and declared cost totals by currency, including cost per accepted field. It outputs JSON so later slices can compare path, profile, provider or run cohorts without changing the scoring core.
+The scorer reports accepted-result coverage, labeled yes rates with Wilson 95% intervals, review response counts, and declared costs. Prepared sheets retain Engine path, enrichment profile and research lane when available. Stages 53–60 add stratified sampling, review calibration, source breakdowns, uncertainty flags, and paired source comparisons across four quality dimensions.
 
 ## Use
 
@@ -19,7 +19,7 @@ From the toolkit folder:
 python dse.py eval-enrichment prepare my-lists\enriched.csv
 ```
 
-Review the generated `*-enrichment-review.csv`. For the four review columns, enter `yes` or `no`; leave a label empty if the reviewer cannot reasonably judge it. Add a short reason in `review_note` when useful. Keep the generated `evaluation_id` and `field` intact.
+Review the generated `*-enrichment-review.csv`. For the four review columns, enter `yes`, `no`, or `unknown`; reserve blank for not reviewed. Add a short reason in `review_note` when useful. Keep the generated `evaluation_id` and `field` intact. See [Stage 54](stage-54-benchmark-review-rubric.md) for definitions and adjudication guidance.
 
 Then score the reviewed sheet:
 

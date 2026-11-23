@@ -40,13 +40,23 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-VERSION = "1.2"
+VERSION = "1.3"
 HERE = Path(__file__).resolve().parent
 # The same file runs in two places: DFamocious-HQ/_tools/bridge/ (HQ) and dse-toolkit/bridge/ (every member's PC).
 ROOT = HERE.parent if (HERE.parent / "dse.py").exists() else HERE.parents[1]
 IS_TOOLKIT = ROOT == HERE.parent
 TASK = "DSE Toolkit runner" if IS_TOOLKIT else "DFamocious-HQ bridge runner"
 RUNNER_CMD = "bridge/runner.py" if IS_TOOLKIT else "_tools/bridge/runner.py"
+TOOLKIT_REVISION = None
+if IS_TOOLKIT:
+    try:
+        result = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"],
+                                capture_output=True, text=True, timeout=2, check=True)
+        candidate = result.stdout.strip().lower()
+        if re.fullmatch(r"[0-9a-f]{40}", candidate):
+            TOOLKIT_REVISION = candidate
+    except (OSError, subprocess.SubprocessError):
+        pass
 ENV_FILE = Path(os.environ.get("HQ_BRIDGE_ENV", HERE / ".env"))
 CATALOG_FILE = Path(os.environ.get("HQ_BRIDGE_CATALOG", HERE / "catalog.json"))
 LOG_DIR = HERE / "logs"
@@ -302,6 +312,7 @@ def public_catalog(cat: dict) -> dict:
     resolve_fields(cat)
     return {"version": cat.get("version", 1),
             "runner_kind": "dse-toolkit" if IS_TOOLKIT else "hq",
+            "toolkit_revision": TOOLKIT_REVISION,
             "capabilities": ["runner.restart.v1"] if cat["tools"].get("runner.restart", {}).get("builtin") == "restart" else [],
             "ollama": ollama_info(),
             "tools": {k: {**{f: t[f] for f in keep if f in t}, "timeout_min": tool_minutes(t),

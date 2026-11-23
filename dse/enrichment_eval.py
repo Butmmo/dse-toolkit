@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import itertools
 import json
+import random
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -14,6 +16,7 @@ from typing import Any
 REVIEW_FIELDS = ["value_correct", "identity_correct", "evidence_adequate", "freshness_acceptable", "review_note"]
 YES = {"y", "yes", "true", "1"}
 NO = {"n", "no", "false", "0"}
+UNKNOWN = {"unknown", "uncertain", "cannot_judge", "can't_judge", "not_enough_evidence"}
 FIT_JUDGMENTS = {"good_fit", "not_a_fit", "uncertain"}
 TARGET_CONTEXT_FIELDS = {
     "requested_business_profile": "business_profile",
@@ -72,7 +75,7 @@ def prepare(source: str, out: str = "") -> Path:
         raise ValueError("Input CSV needs a field_results JSON column (dbi.field-result.v1 records).")
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-enrichment-review.csv")
     source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker") if h in headers]
-    columns = ["evaluation_id", "source_row", "field", "value", "status", "source_type", "source_name", "source_url",
+    columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
                "cost_quantity", "cost_estimated", *source_fields, *REVIEW_FIELDS]
@@ -93,7 +96,13 @@ def prepare(source: str, out: str = "") -> Path:
                 identity = result.get("identity") if isinstance(result.get("identity"), dict) else {}
                 verification = result.get("verification") if isinstance(result.get("verification"), dict) else {}
                 cost = result.get("cost") if isinstance(result.get("cost"), dict) else {}
+                metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+                profile_payload = _json(row.get("enrichment_profile"))
+                profile_key = profile_payload.get("profile_key", "") if isinstance(profile_payload, dict) else ""
+                engine_path = row.get("engine_path") or row.get("path") or ""
                 output_row = {"evaluation_id": _stable_id(row, row_number), "source_row": row_number,
+                              "engine_path": engine_path, "enrichment_profile": profile_key or "unknown",
+                              "research_lane": str(metadata.get("lane") or "unknown"),
                               "field": result.get("field", ""), "value": json.dumps(result.get("value"), ensure_ascii=False) if isinstance(result.get("value"), (dict, list)) else result.get("value", ""),
                               "status": result.get("status", ""), "source_type": source_info.get("type", ""),
                               "source_name": source_info.get("name", ""), "source_url": source_info.get("url", ""),
@@ -111,7 +120,102 @@ def prepare(source: str, out: str = "") -> Path:
     if not count:
         raise ValueError("No dbi.field-result.v1 records were found in the input CSV.")
     print(f"Prepared {count} field reviews in {output}")
-    print("Label the four review columns with yes/no; leave a label blank when it cannot be judged.")
+    print("Label review columns yes/no/unknown; use unknown when evidence is insufficient and blank only when not reviewed.")
+    return output
+
+
+def sample_ledger(source: str, leads: int = 40, seed: int = 42, stratify: str = "engine_path,enrichment_profile", out: str = "") -> Path:
+    """Select whole lead rows from a prepared worksheet, stratified by cohort."""
+    if leads < 1:
+        raise ValueError("--leads must be at least 1.")
+    headers, rows = _read(source)
+    required = {"source_row", "field", "value_correct", "identity_correct", "evidence_adequate", "freshness_acceptable"}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Prepared review sheet is missing columns: " + ", ".join(missing) + ". Run `prepare` first.")
+    strata_fields = [field.strip() for field in stratify.split(",") if field.strip()]
+    missing_strata = [field for field in strata_fields if field not in headers]
+    if missing_strata:
+        raise ValueError("Cannot stratify by missing columns: " + ", ".join(missing_strata))
+
+    clusters: dict[str, list[dict[str, str]]] = defaultdict(list)
+    cluster_strata: dict[str, tuple[str, ...]] = {}
+    for row in rows:
+        lead_id = (row.get("source_row") or "").strip()
+        if not lead_id:
+            continue
+        clusters[lead_id].append(row)
+        cluster_strata[lead_id] = tuple((row.get(field) or "unknown").strip() or "unknown" for field in strata_fields)
+    if not clusters:
+        raise ValueError("No lead rows with field results are available to sample.")
+
+    rng = random.Random(seed)
+    grouped: dict[tuple[str, ...], list[str]] = defaultdict(list)
+    for lead_id, key in cluster_strata.items():
+        grouped[key].append(lead_id)
+    if len(grouped) > leads:
+        raise ValueError(f"The requested sample of {leads} leads is smaller than the {len(grouped)} strata. Increase --leads or choose fewer --stratify fields.")
+
+    allocation = {key: 1 for key in grouped}
+    remaining = min(leads, len(clusters)) - len(allocation)
+    while remaining > 0:
+        available = [key for key, members in grouped.items() if allocation[key] < len(members)]
+        if not available:
+            break
+        # Give the next lead to the most under-sampled proportional stratum.
+        key = max(available, key=lambda k: (len(grouped[k]) / (allocation[k] + 1), tuple(reversed(k))))
+        allocation[key] += 1
+        remaining -= 1
+
+    selected: list[tuple[str, ...]] = []
+    for key in sorted(grouped):
+        members = sorted(grouped[key])
+        rng.shuffle(members)
+        selected.extend((lead_id, key) for lead_id in members[:allocation[key]])
+    rng.shuffle(selected)
+    selected_ids = {lead_id for lead_id, _ in selected}
+    stratum_labels = {lead_id: "|".join(key) if key else "all" for lead_id, key in selected}
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-benchmark-sample.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=[*headers, "benchmark_stratum", "benchmark_seed"], extrasaction="ignore")
+        writer.writeheader()
+        for lead_id, _ in selected:
+            for row in clusters[lead_id]:
+                output_row = dict(row)
+                output_row.update({field: "" for field in REVIEW_FIELDS})
+                output_row["benchmark_stratum"] = stratum_labels[lead_id]
+                output_row["benchmark_seed"] = str(seed)
+                writer.writerow(output_row)
+    print(f"Selected {len(selected_ids)} leads ({sum(len(clusters[lead_id]) for lead_id in selected_ids)} field reviews) across {len(grouped)} strata: {output}")
+    print("The sample is deterministic for this seed and remains a manual audit, not a representative population estimate.")
+    return output
+
+
+def pair_reviewers(source: str, out: str = "") -> Path:
+    """Create independent reviewer and adjudication columns for a prepared sample."""
+    headers, rows = _read(source)
+    required = set(REVIEW_FIELDS)
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Prepared review sheet is missing columns: " + ", ".join(missing) + ". Run `prepare` first.")
+    review_dimensions = REVIEW_FIELDS[:4]
+    added = [f"reviewer_{reviewer}_{field}" for reviewer in ("a", "b") for field in review_dimensions]
+    added += ["reviewer_a_note", "reviewer_b_note"]
+    added += [f"adjudicated_{field}" for field in review_dimensions] + ["adjudication_note"]
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-paired-review.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = list(dict.fromkeys([*headers, *added]))
+    with output.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            paired = dict(row)
+            paired.update({field: "" for field in REVIEW_FIELDS})
+            paired.update({field: "" for field in added})
+            writer.writerow(paired)
+    print(f"Prepared {len(rows)} paired review rows: {output}")
+    print("Review independently in reviewer_a_* and reviewer_b_*; record the resolved label in adjudicated_*.")
     return output
 
 
@@ -119,20 +223,200 @@ def _ratio(numerator: float, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
 
-def score(source: str, out: str = "") -> tuple[dict, Path]:
+def _wilson(successes: int, total: int, z: float = 1.959963984540054) -> dict | None:
+    """Return a Wilson score interval for a binary proportion (95% by default)."""
+    if total <= 0:
+        return None
+    rate = successes / total
+    z2 = z * z
+    denominator = 1 + z2 / total
+    center = (rate + z2 / (2 * total)) / denominator
+    margin = z * ((rate * (1 - rate) / total + z2 / (4 * total * total)) ** 0.5) / denominator
+    return {"lower": max(0.0, center - margin), "upper": min(1.0, center + margin)}
+
+
+def _review_category(value: str) -> str | None:
+    normalized = (value or "").strip().casefold()
+    if normalized in YES:
+        return "yes"
+    if normalized in NO:
+        return "no"
+    if normalized in UNKNOWN:
+        return "unknown"
+    return None
+
+
+def _agreement(items: list[dict[str, str]], field: str) -> dict:
+    a_key, b_key = f"reviewer_a_{field}", f"reviewer_b_{field}"
+    categories = ("yes", "no", "unknown")
+    confusion = {a: {b: 0 for b in categories} for a in categories}
+    excluded = 0
+    for row in items:
+        a, b = _review_category(row.get(a_key, "")), _review_category(row.get(b_key, ""))
+        if a is None or b is None:
+            excluded += 1
+            continue
+        confusion[a][b] += 1
+    comparable = sum(sum(row.values()) for row in confusion.values())
+    observed = _ratio(sum(confusion[label][label] for label in categories), comparable)
+    expected = None
+    kappa = None
+    if comparable:
+        a_totals = {label: sum(confusion[label].values()) for label in categories}
+        b_totals = {label: sum(confusion[a][label] for a in categories) for label in categories}
+        expected = sum(a_totals[label] * b_totals[label] for label in categories) / (comparable * comparable)
+        if expected < 1:
+            kappa = (observed - expected) / (1 - expected)
+    return {"comparable": comparable, "excluded_missing_or_invalid": excluded,
+            "observed_agreement": observed, "expected_agreement": expected,
+            "cohen_kappa": kappa, "confusion_matrix": confusion}
+
+
+def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int) -> list[dict]:
+    if "source_row" not in headers:
+        return []
+    label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
+                     for field in REVIEW_FIELDS[:4]}
+    cases: dict[tuple[str, tuple[str, str, str], str], dict[tuple[str, str], list[dict[str, str]]]] = defaultdict(lambda: defaultdict(list))
+    leads_by_cohort: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    by_field_cohort_sources: dict[tuple[str, tuple[str, str, str]], set[tuple[str, str]]] = defaultdict(set)
+    for row in rows:
+        lead_id = (row.get("source_row") or "").strip()
+        field = (row.get("field") or "").strip()
+        if not lead_id:
+            continue
+        cohort = tuple((row.get(name) or "unknown").strip() or "unknown"
+                       for name in ("engine_path", "enrichment_profile", "research_lane"))
+        leads_by_cohort[cohort].add(lead_id)
+        if not field:
+            continue
+        source = ((row.get("source_type") or "unattributed").strip() or "unattributed",
+                  (row.get("source_name") or "unattributed").strip() or "unattributed")
+        by_field_cohort_sources[(field, cohort)].add(source)
+        cases[(field, cohort, lead_id)][source].append(row)
+
+    comparisons = []
+    for (field, cohort), sources in sorted(by_field_cohort_sources.items()):
+        for source_a, source_b in itertools.combinations(sorted(sources), 2):
+            a_present = {lead for (case_field, case_cohort, lead), result_map in cases.items()
+                         if case_field == field and case_cohort == cohort and source_a in result_map}
+            b_present = {lead for (case_field, case_cohort, lead), result_map in cases.items()
+                         if case_field == field and case_cohort == cohort and source_b in result_map}
+            shared = a_present & b_present
+            counts = {dimension: {"source_a_wins": 0, "source_b_wins": 0, "ties": 0,
+                                  "source_a_yes": 0, "source_b_yes": 0,
+                                  "excluded_unknown_or_unlabeled": 0, "excluded_duplicate_result_sets": 0}
+                      for dimension in REVIEW_FIELDS[:4]}
+            for lead in shared:
+                a_rows = cases[(field, cohort, lead)][source_a]
+                b_rows = cases[(field, cohort, lead)][source_b]
+                if len(a_rows) != 1 or len(b_rows) != 1:
+                    for dimension_counts in counts.values():
+                        dimension_counts["excluded_duplicate_result_sets"] += 1
+                    continue
+                for dimension, dimension_counts in counts.items():
+                    a_label = _review_category(a_rows[0].get(label_columns[dimension], ""))
+                    b_label = _review_category(b_rows[0].get(label_columns[dimension], ""))
+                    if a_label not in {"yes", "no"} or b_label not in {"yes", "no"}:
+                        dimension_counts["excluded_unknown_or_unlabeled"] += 1
+                        continue
+                    dimension_counts["source_a_yes"] += a_label == "yes"
+                    dimension_counts["source_b_yes"] += b_label == "yes"
+                    if a_label == b_label:
+                        dimension_counts["ties"] += 1
+                    elif a_label == "yes":
+                        dimension_counts["source_a_wins"] += 1
+                    else:
+                        dimension_counts["source_b_wins"] += 1
+            dimensions = {}
+            for dimension, dimension_counts in counts.items():
+                matched = (dimension_counts["source_a_wins"] + dimension_counts["source_b_wins"] + dimension_counts["ties"])
+                dimensions[dimension] = {
+                    "matched_adjudicated_leads": matched,
+                    "source_a_wins": dimension_counts["source_a_wins"],
+                    "source_b_wins": dimension_counts["source_b_wins"],
+                    "ties": dimension_counts["ties"],
+                    "source_a_yes_rate": _ratio(dimension_counts["source_a_yes"], matched),
+                    "source_b_yes_rate": _ratio(dimension_counts["source_b_yes"], matched),
+                    "paired_rate_difference_a_minus_b": _ratio(dimension_counts["source_a_yes"] - dimension_counts["source_b_yes"], matched),
+                    "excluded_unknown_or_unlabeled": dimension_counts["excluded_unknown_or_unlabeled"],
+                    "excluded_duplicate_result_sets": dimension_counts["excluded_duplicate_result_sets"],
+                    "minimum_labeled_count": min_labeled,
+                    "minimum_labeled_met": matched >= min_labeled,
+                }
+            value_result = dimensions["value_correct"]
+            comparisons.append({
+                "field": field,
+                "engine_path": cohort[0],
+                "enrichment_profile": cohort[1],
+                "research_lane": cohort[2],
+                "source_a": {"type": source_a[0], "name": source_a[1]},
+                "source_b": {"type": source_b[0], "name": source_b[1]},
+                "sample_leads": len(leads_by_cohort[cohort]),
+                "source_a_leads_with_result": len(a_present),
+                "source_a_result_coverage": _ratio(len(a_present), len(leads_by_cohort[cohort])),
+                "source_b_leads_with_result": len(b_present),
+                "source_b_result_coverage": _ratio(len(b_present), len(leads_by_cohort[cohort])),
+                "shared_leads_with_result": len(shared),
+                "dimensions": dimensions,
+                "matched_adjudicated_leads": value_result["matched_adjudicated_leads"],
+                "source_a_wins": value_result["source_a_wins"],
+                "source_b_wins": value_result["source_b_wins"],
+                "ties": value_result["ties"],
+                "source_a_value_correct_rate": value_result["source_a_yes_rate"],
+                "source_b_value_correct_rate": value_result["source_b_yes_rate"],
+                "paired_rate_difference_a_minus_b": value_result["paired_rate_difference_a_minus_b"],
+                "excluded_unknown_or_unlabeled": value_result["excluded_unknown_or_unlabeled"],
+                "excluded_duplicate_result_sets": value_result["excluded_duplicate_result_sets"],
+                "minimum_labeled_count": min_labeled,
+                "minimum_labeled_met": value_result["minimum_labeled_met"],
+            })
+    return comparisons
+
+
+def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path]:
     """Summarize reviewed quality, coverage, freshness and declared provider cost."""
+    if min_labeled < 1:
+        raise ValueError("--min-labeled must be at least 1.")
     headers, rows = _read(source)
     required = {"field", "status", *REVIEW_FIELDS[:4]}
     missing = sorted(required - set(headers))
     if missing:
         raise ValueError("Review CSV is missing columns: " + ", ".join(missing))
     by_field: dict[str, list[dict[str, str]]] = defaultdict(list)
+    by_path_profile_lane: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
+    by_field_source: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        by_field[(row.get("field") or "(blank field)").strip()].append(row)
+        field = (row.get("field") or "(blank field)").strip()
+        source_type = (row.get("source_type") or "unattributed").strip() or "unattributed"
+        source_name = (row.get("source_name") or "unattributed").strip() or "unattributed"
+        by_field[field].append(row)
+        by_field_source[(field, source_type, source_name)].append(row)
+        cohort = tuple((row.get(key) or "unknown").strip() or "unknown" for key in ("engine_path", "enrichment_profile", "research_lane"))
+        by_path_profile_lane[cohort].append(row)
 
     def metrics(items: list[dict[str, str]]) -> dict:
-        labeled = {field: [r for r in items if (r.get(field) or "").strip().casefold() in YES | NO] for field in REVIEW_FIELDS[:4]}
-        correct_values = sum((r.get("value_correct") or "").strip().casefold() in YES for r in labeled["value_correct"])
+        label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
+                         for field in REVIEW_FIELDS[:4]}
+        labeled = {field: [r for r in items if (r.get(label_columns[field]) or "").strip().casefold() in YES | NO]
+                   for field in REVIEW_FIELDS[:4]}
+        responses = {}
+        for field in REVIEW_FIELDS[:4]:
+            counts = {"yes": 0, "no": 0, "unknown": 0, "blank": 0, "invalid": 0}
+            for row in items:
+                value = (row.get(label_columns[field]) or "").strip().casefold()
+                if value in YES:
+                    counts["yes"] += 1
+                elif value in NO:
+                    counts["no"] += 1
+                elif value in UNKNOWN:
+                    counts["unknown"] += 1
+                elif not value:
+                    counts["blank"] += 1
+                else:
+                    counts["invalid"] += 1
+            responses[field] = counts
+        correct_values = sum((r.get(label_columns["value_correct"]) or "").strip().casefold() in YES for r in labeled["value_correct"])
         costs: dict[str, float] = defaultdict(float)
         for row in items:
             try:
@@ -146,17 +430,32 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
         return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
                 "status_counts": {status: sum((r.get("status") or "").strip().casefold() == status for r in items)
                                   for status in ("accepted", "candidate", "not_found", "rejected", "error")},
-                "review_labels": {k: {"labeled": len(v), "yes": sum((r.get(k) or "").strip().casefold() in YES for r in v),
-                                      "rate": _ratio(sum((r.get(k) or "").strip().casefold() in YES for r in v), len(v))}
-                                  for k, v in labeled.items()},
+                "review_labels": {k: {
+                    "label_column": label_columns[k],
+                    "labeled": len(v),
+                    "yes": sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v),
+                    "rate": _ratio(sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v), len(v)),
+                    "wilson_95": _wilson(sum((r.get(label_columns[k]) or "").strip().casefold() in YES for r in v), len(v)),
+                    "minimum_labeled_count": min_labeled,
+                    "minimum_labeled_met": len(v) >= min_labeled,
+                } for k, v in labeled.items()},
+                "review_responses": responses,
+                "reviewer_agreement": {field: _agreement(items, field) for field in REVIEW_FIELDS[:4]
+                                        if f"reviewer_a_{field}" in headers and f"reviewer_b_{field}" in headers},
                 "freshness_documented": len(fresh_known), "freshness_documented_rate": _ratio(len(fresh_known), len(items)),
                 "declared_cost_by_currency": dict(costs),
                 "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()}}
 
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
+              "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
+                                       **metrics(items)}
+                                      for (field, source_type, source_name), items in sorted(by_field_source.items())],
+              "paired_source_comparisons": _paired_source_comparisons(rows, headers, min_labeled),
+              "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
-              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Declared costs may be estimates, not provider invoices."}
+              "minimum_labeled_for_caution_flag": min_labeled,
+              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. Paired source wins compare adjudicated value correctness for the same lead and field; they are descriptive and do not prove general provider superiority. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -473,6 +772,16 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("score", help="score a completed human-review CSV")
     s.add_argument("source", help="review CSV with yes/no labels")
     s.add_argument("--out", default="", help="JSON report output path")
+    s.add_argument("--min-labeled", type=int, default=20, help="minimum yes/no labels before a cohort is flagged as reaching the caution threshold (default: 20)")
+    sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
+    sm.add_argument("source", help="prepared human-review CSV from `prepare`")
+    sm.add_argument("--leads", type=int, default=40, help="maximum leads to sample (default: 40)")
+    sm.add_argument("--seed", type=int, default=42, help="random seed for reproducible sampling (default: 42)")
+    sm.add_argument("--stratify", default="engine_path,enrichment_profile", help="comma-separated prepared CSV columns (default: engine_path,enrichment_profile)")
+    sm.add_argument("--out", default="", help="sample CSV output path")
+    pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
+    pr.add_argument("source", help="prepared sample review CSV")
+    pr.add_argument("--out", default="", help="paired review CSV output path")
     l = sub.add_parser("score-ledger", help="score fit reviews exported from a Ledger grid")
     l.add_argument("source", help="Ledger grid CSV with an enrichment_review column")
     l.add_argument("--out", default="", help="JSON report output path")
@@ -482,7 +791,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "prepare":
             prepare(args.source, args.out)
         elif args.action == "score":
-            score(args.source, args.out)
+            score(args.source, args.out, args.min_labeled)
+        elif args.action == "sample-ledger":
+            sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
+        elif args.action == "pair-reviewers":
+            pair_reviewers(args.source, args.out)
         else:
             score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:
