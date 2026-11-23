@@ -10061,7 +10061,7 @@
     "dse.enrich": {
       "label": "Lead enrichment: find emails, owners and phones",
       "group": "Grow",
-      "help": "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here.",
+      "help": "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here. For a waterfall experiment, run each A/B config against the exact same source CSV and lead cap. The toolkit records and checks the sample fingerprint, gives each variant a separate output, and blocks direct Engine imports until you assign one variant per lead. Review and approve the spend ceiling for each run separately.",
       "script": "dse.py",
       "args": [
         {
@@ -10196,7 +10196,8 @@
       "timeout_min": 180,
       "outputs": [
         "my-lists/*-enriched-*.csv",
-        "my-lists/*-enriched-*.md"
+        "my-lists/*-enriched-*.md",
+        "my-lists/waterfall-experiment-*-cohort.json"
       ],
       "category": "enrich",
       "source": "First-party company websites; optional configured providers",
@@ -10206,6 +10207,7 @@
         "Shared per-field provenance, identity, freshness and verification records",
         "Per-rung attempts, cache hits, accepted/rejected candidates and errors",
         "Enriched CSV and report",
+        "Separate, experiment-tagged result files and a local exact-sample record for A/B runs",
         "Conservative configured-provider spend estimate and runtime ceiling; unknown-priced providers require separate acknowledgment",
         "Enriched CSV and report"
       ]
