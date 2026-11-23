@@ -167,12 +167,17 @@ def plan(slug: str, start: str | None = None, days: int = 1, write: bool = True,
         for item in [p for p in pool if p["due"] <= day][:per_day]:
             ch, where, kind, tpl = item["plan"]
             f = item["first"]
-            rows.append({"row": len(rows) + 1, "business": f.get("business") or f.get("name", ""), "city": f.get("city", ""),
+            followup_row = {"row": len(rows) + 1, "business": f.get("business") or f.get("name", ""), "city": f.get("city", ""),
                          "channel": tpl.get("channel", ch), "where": where, "gap_used": f.get("gap_used", ""),
                          "variant": tpl["variant"], "opener": render(tpl["text"], f, cfg), "website": f.get("website", ""),
                          "email": f.get("email", ""), "phone": f.get("phone", ""), "instagram": f.get("instagram", ""),
                          "facebook": f.get("facebook", ""), "touch": item["n"], "thread": item["thread"], "first_sent": item["first_sent"],
-                         "notes": (tpl.get("note", "") + " " if tpl.get("note") else "") + (f"Overdue since {item['due']}." if item["due"] < day else f"Due {item['due']}.")})
+                         "notes": (tpl.get("note", "") + " " if tpl.get("note") else "") + (f"Overdue since {item['due']}." if item["due"] < day else f"Due {item['due']}.")}
+            if f.get("waterfall_experiment_id"):
+                for field in ("waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                              "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
+                    followup_row[field] = f.get(field, "")
+            rows.append(followup_row)
             pool.remove(item)
         result[day.isoformat()] = rows
         if write and rows:
