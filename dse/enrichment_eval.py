@@ -9,7 +9,7 @@ import json
 import math
 import random
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1643,18 +1643,23 @@ def _send_outcome_brief(report: dict) -> str:
                 return "not available" if ci is None else f"{ci['lower']:.1%}–{ci['upper']:.1%}"
             note = "Low sample (<30 sent)" if m["low_sample_caution"] else "30+ sent; still descriptive"
             lines.append(f"| {variant} | {m['assigned_unique_leads']} | {m['sent_unique_leads']} | {m['replied_unique_leads']} | {pct(m['reply_rate_per_sent_lead'])} ({interval('replied')}) | {m['booked_unique_leads']} | {pct(m['booked_rate_per_sent_lead'])} ({interval('booked')}) | {m['won_unique_leads']} | {pct(m['won_rate_per_sent_lead'])} ({interval('won')}) | {note} |")
+            mature = m["mature_window"]
+            lines.append(f"\n{variant} fixed-window outcomes ({mature['window_days']} days): {mature['mature_sent_leads']} mature sent leads; {mature['awaiting_window_leads']} still awaiting the full window; replies {pct(mature['reply_rate'])}, booked {pct(mature['booked_rate'])}, wins {pct(mature['won_rate'])}.\n")
         lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
     lines.extend(["## Interpretation", "", report["interpretation"], "",
                   "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
     return "\n".join(lines)
 
 
-def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", markdown_out: str = "") -> tuple[dict, Path]:
+def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", markdown_out: str = "", maturity_days: int = 14) -> tuple[dict, Path]:
     """Join experiment-tagged Send Desk rows to explicit taps and summarize unique-lead outcomes."""
     from . import desklog, outcomes
     from .engines import engine_dir, load
 
+    if not 1 <= maturity_days <= 365:
+        raise ValueError("Maturity window must be between 1 and 365 days.")
     load(engine)
+    as_of = date.today()
     hist = desklog.history(engine)
     cohorts: dict[tuple[str, str, str], dict[str, dict[str, bool]]] = defaultdict(dict)
     missing_ids = 0
@@ -1670,11 +1675,23 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             missing_ids += 1
             continue
         field = (row.get("waterfall_experiment_field") or "").strip()
-        flags = outcomes._flags(hist.get((row["_source"], row["_row_id"]), []))
+        events = hist.get((row["_source"], row["_row_id"]), [])
+        flags = outcomes._flags(events)
         lead = cohorts[(eid, field, variant)].setdefault(lead_id,
-                  {k: False for k in ("sent", "replied", "booked", "won", "lost", "skipped")})
-        for key in lead:
+                  {**{k: False for k in ("sent", "replied", "booked", "won", "lost", "skipped")},
+                   "_sent_dates": [], "_outcome_dates": {k: [] for k in ("replied", "booked", "won")}})
+        for key in ("sent", "replied", "booked", "won", "lost", "skipped"):
             lead[key] = lead[key] or bool(flags.get(key))
+        for event in events:
+            stamp = (event.get("logged_at") or "")[:10]
+            try:
+                day = date.fromisoformat(stamp)
+            except ValueError:
+                continue
+            if event.get("status") in outcomes.SENT_STATES or desklog.is_out_of_office(event):
+                lead["_sent_dates"].append(day)
+            if event.get("status") in ("replied", "booked", "won") and not desklog.is_out_of_office(event):
+                lead["_outcome_dates"][event["status"]].append(day)
 
     if not cohorts:
         raise ValueError("No tagged experiment rows with stable lead IDs were found for this engine" +
@@ -1686,12 +1703,35 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         sent = sum(bool(x["sent"]) for x in leads.values())
         groups[(eid, field)] = groups.get((eid, field), {"experiment_id": eid, "field": field, "variants": {}})
         counts = {key: sum(bool(x[key]) for x in leads.values()) for key in ("replied", "booked", "won", "lost")}
+        mature_leads = {}
+        missing_sent_date = 0
+        for lead_id, lead in leads.items():
+            if not lead["sent"]:
+                continue
+            first_sent = min(lead["_sent_dates"]) if lead["_sent_dates"] else None
+            if first_sent is None:
+                missing_sent_date += 1
+                continue
+            window_end = first_sent + timedelta(days=maturity_days)
+            if window_end > as_of:
+                continue
+            mature_leads[lead_id] = {key: any(first_sent <= day <= window_end for day in lead["_outcome_dates"][key])
+                                     for key in ("replied", "booked", "won")}
+        mature_counts = {key: sum(bool(x[key]) for x in mature_leads.values()) for key in ("replied", "booked", "won")}
         metric = {"assigned_unique_leads": len(leads), "sent_unique_leads": sent,
                   "replied_unique_leads": counts["replied"], "booked_unique_leads": counts["booked"],
                   "won_unique_leads": counts["won"], "lost_unique_leads": counts["lost"],
                   "low_sample_caution": sent < minimum_sent_caution,
                   "sample_caution_threshold_sent_leads": minimum_sent_caution,
-                  "outcome_rate_95_percent_wilson_intervals": {}}
+                  "outcome_rate_95_percent_wilson_intervals": {},
+                  "mature_window": {"window_days": maturity_days, "mature_sent_leads": len(mature_leads),
+                                    "awaiting_window_leads": max(0, sent - len(mature_leads) - missing_sent_date),
+                                    "sent_leads_missing_date": missing_sent_date,
+                                    "reply_count": mature_counts["replied"], "booked_count": mature_counts["booked"],
+                                    "won_count": mature_counts["won"],
+                                    "reply_rate": _ratio(mature_counts["replied"], len(mature_leads)),
+                                    "booked_rate": _ratio(mature_counts["booked"], len(mature_leads)),
+                                    "won_rate": _ratio(mature_counts["won"], len(mature_leads))}}
         for key in ("replied", "booked", "won"):
             rate = _ratio(counts[key], sent)
             metric[f"{key}_rate_per_sent_lead"] = rate
@@ -1719,7 +1759,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
-              "interpretation": "Counts deduplicate by stable experiment lead ID, combine all tagged touches, and include only explicit logged outcomes. Rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only and do not account for assignment, delivery, attribution windows, sample representativeness, repeated-provider effects, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1769,6 +1810,7 @@ def main(argv: list[str] | None = None) -> int:
     so.add_argument("--experiment-id", default="", help="limit the report to one experiment ID")
     so.add_argument("--out", default="", help="JSON report output path")
     so.add_argument("--markdown-out", default="", help="Markdown brief path (default: same path as JSON with .md extension)")
+    so.add_argument("--maturity-days", type=int, default=14, help="fixed outcome observation window after first confirmed send (default: 14 days)")
     pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
     pr.add_argument("source", help="prepared sample review CSV")
     pr.add_argument("--out", default="", help="paired review CSV output path")
@@ -1792,7 +1834,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
         elif args.action == "score-send-outcomes":
-            score_send_outcomes(args.engine, args.experiment_id, args.out, args.markdown_out)
+            score_send_outcomes(args.engine, args.experiment_id, args.out, args.markdown_out, args.maturity_days)
         else:
             score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:
