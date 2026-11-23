@@ -1124,7 +1124,8 @@ def import_ready(rows: list[dict], headers: list[str]) -> list[dict]:
                     "Employees": r.get(m.get("employees", ""), "") or "", "lead_score": r.get("lead_score", ""), "lead_why": r.get("lead_why", "")}
         if r.get("waterfall_experiment_id"):
             for field in ("waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
-                          "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
+                          "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                          "waterfall_experiment_approval_id"):
                 ready_row[field] = r.get(field, "")
         out.append(ready_row)
     return out
@@ -1237,6 +1238,8 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
                 or float(approval_receipt.get("approved_combined_maximum", -1)) < combined_estimate - 1e-9
                 or (current_projection["has_unknown_cost"] and not approval_receipt.get("unknown_price_acknowledged"))):
             raise ValueError("The receipt's spend limits no longer match the current waterfall pricing and caps. Run the paired preflight again.")
+        if sample_manifest_path.exists() and sample_manifest.get("approval_id") != approval_receipt["approval_id"]:
+            raise ValueError("This experiment cohort was started under a different or older approval. Preserve its outputs and start a new experiment before spending again.")
         if max_provider_spend is not None and abs(max_provider_spend - float(approval_receipt["variant_maximums"][experiment_context["variant"]])) > 1e-8:
             raise ValueError("For this experiment, the run ceiling is fixed by the paired approval receipt. Remove the separate spend ceiling.")
         max_provider_spend = float(approval_receipt["variant_maximums"][experiment_context["variant"]])
@@ -1275,6 +1278,7 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
             row["waterfall_experiment_field"] = str(experiment.get("field") or "")
             row["waterfall_experiment_providers"] = providers_json
             row["waterfall_config_sha256"] = config_digest
+            row["waterfall_experiment_approval_id"] = approval_receipt["approval_id"] if approval_receipt else ""
         stats["waterfall_experiment"] = experiment
         if approval_receipt:
             stats["waterfall_experiment_approval_id"] = approval_receipt["approval_id"]
@@ -1303,8 +1307,11 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
                                "cohort_sha256": experiment_context["cohort_sha256"],
                                "sample_limit": experiment_context["sample_limit"],
                                "sample_rows": experiment_context["sample_rows"], "variants": {}}
+        if approval_receipt:
+            sample_manifest["approval_id"] = approval_receipt["approval_id"]
         sample_manifest.setdefault("variants", {})[experiment_context["variant"]] = {
             "config_sha256": experiment_context["config_sha256"],
+            "approval_id": approval_receipt["approval_id"] if approval_receipt else "",
             "result_csv": out_csv.relative_to(ROOT).as_posix(),
             "result_sha256": hashlib.sha256(out_csv.read_bytes()).hexdigest(),
         }
