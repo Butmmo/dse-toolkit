@@ -709,6 +709,12 @@ def _decision_brief(report: dict) -> str:
             lines.append(
                 f"- `{item.get('experiment_id')}` / `{item.get('field')}` ({item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}): A-minus-B reviewed correctness {_display_rate(value.get('rate_difference_a_minus_b'))}; interval {interval_text}; matched leads {value.get('matched_reviewed_leads', 0)}; outputs A {availability.get('variant_a', 0)}, B {availability.get('variant_b', 0)}. Status: `{item.get('decision_status')}`."
             )
+            experiment_readout = item.get("experiment_readout", {})
+            lines.append(
+                f"  - Combined readout: `{experiment_readout.get('status', 'unavailable')}`; quality {experiment_readout.get('reviewed_correctness_direction', 'unknown')}; coverage {experiment_readout.get('accepted_coverage_direction', 'unknown')}; lower-cost variant by currency {experiment_readout.get('lower_estimated_cost_variant_by_currency', {})}."
+            )
+            for tradeoff in experiment_readout.get("tradeoffs", []):
+                lines.append(f"  - Trade-off: {tradeoff}.")
             operational = item.get("paired_operational_outcomes", {})
             accepted_interval = operational.get("accepted_coverage_lead_pair_bootstrap_95", {})
             accepted_low, accepted_high = accepted_interval.get("lower"), accepted_interval.get("upper")
@@ -1010,6 +1016,58 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
                     "upper": cost_differences[max(0, math.ceil(0.975 * len(cost_differences)) - 1)] if cost_differences else None,
                 },
             }
+        quality_interval = value.get("lead_pair_bootstrap_95", {})
+        if value.get("matched_reviewed_leads", 0) < min_labeled:
+            quality_direction = "insufficient_reviewed_evidence"
+        elif quality_interval.get("lower") is not None and quality_interval["lower"] > 0:
+            quality_direction = "variant_a_higher_reviewed_correctness"
+        elif quality_interval.get("upper") is not None and quality_interval["upper"] < 0:
+            quality_direction = "variant_b_higher_reviewed_correctness"
+        else:
+            quality_direction = "no_clear_interval_direction"
+        acceptance_interval = operational_outcomes["accepted_coverage_lead_pair_bootstrap_95"]
+        if acceptance_interval.get("lower") is not None and acceptance_interval["lower"] > 0:
+            coverage_direction = "variant_a_higher_accepted_coverage"
+        elif acceptance_interval.get("upper") is not None and acceptance_interval["upper"] < 0:
+            coverage_direction = "variant_b_higher_accepted_coverage"
+        else:
+            coverage_direction = "no_clear_interval_direction"
+        tradeoffs = []
+        if quality_direction.startswith("variant_a") and coverage_direction.startswith("variant_b"):
+            tradeoffs.append("reviewed correctness favors A while accepted coverage favors B")
+        elif quality_direction.startswith("variant_b") and coverage_direction.startswith("variant_a"):
+            tradeoffs.append("reviewed correctness favors B while accepted coverage favors A")
+        cost_directions = {}
+        for currency, costs in cost_comparisons.items():
+            interval = costs["mean_cost_difference_lead_pair_bootstrap_95"]
+            if interval.get("lower") is not None and interval["lower"] > 0:
+                lower_cost = "variant_b"
+            elif interval.get("upper") is not None and interval["upper"] < 0:
+                lower_cost = "variant_a"
+            else:
+                lower_cost = "no_clear_interval_direction"
+            cost_directions[currency] = lower_cost
+            if quality_direction.startswith("variant_a") and lower_cost == "variant_b":
+                tradeoffs.append(f"reviewed correctness favors A while {currency} cost favors B")
+            elif quality_direction.startswith("variant_b") and lower_cost == "variant_a":
+                tradeoffs.append(f"reviewed correctness favors B while {currency} cost favors A")
+        if value.get("matched_reviewed_leads", 0) < min_labeled:
+            readout_status = "below_minimum_labeled_caution_threshold"
+        elif tradeoffs:
+            readout_status = "evidence_tradeoffs_need_business_judgment"
+        elif quality_direction == "no_clear_interval_direction":
+            readout_status = "no_clear_reviewed_quality_direction"
+        else:
+            readout_status = "directional_quality_signal_for_this_cohort"
+        experiment_readout = {
+            "status": readout_status,
+            "reviewed_correctness_direction": quality_direction,
+            "accepted_coverage_direction": coverage_direction,
+            "lower_estimated_cost_variant_by_currency": cost_directions,
+            "tradeoffs": tradeoffs,
+            "automatic_variant_selection": False,
+            "note": "Interpret quality, coverage, and cost separately; results describe this reviewed cohort and do not prove general performance.",
+        }
         comparisons.append({
             "experiment_id": experiment_id,
             "field": field,
@@ -1028,6 +1086,7 @@ def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[
             "paired_cost_input_quality": {**cost_input_quality,
                                            "scope": "paired leads with explicit yes/no value-correctness reviews",
                                            "unknown_or_invalid_prices_excluded_not_treated_as_zero": True},
+            "experiment_readout": experiment_readout,
             "dimensions": dimensions,
             "decision_status": "below_minimum_labeled_caution_threshold" if value.get("matched_reviewed_leads", 0) < min_labeled else "descriptive_only",
             "automatic_provider_selection": False,
