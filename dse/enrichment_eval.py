@@ -268,8 +268,13 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
         raise ValueError("Review CSV is missing columns: " + ", ".join(missing))
     by_field: dict[str, list[dict[str, str]]] = defaultdict(list)
     by_path_profile_lane: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
+    by_field_source: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        by_field[(row.get("field") or "(blank field)").strip()].append(row)
+        field = (row.get("field") or "(blank field)").strip()
+        source_type = (row.get("source_type") or "unattributed").strip() or "unattributed"
+        source_name = (row.get("source_name") or "unattributed").strip() or "unattributed"
+        by_field[field].append(row)
+        by_field_source[(field, source_type, source_name)].append(row)
         cohort = tuple((row.get(key) or "unknown").strip() or "unknown" for key in ("engine_path", "enrichment_profile", "research_lane"))
         by_path_profile_lane[cohort].append(row)
 
@@ -321,9 +326,12 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
 
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
+              "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
+                                       **metrics(items)}
+                                      for (field, source_type, source_name), items in sorted(by_field_source.items())],
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
-              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Declared costs may be estimates, not provider invoices."}
+              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
