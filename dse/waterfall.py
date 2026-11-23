@@ -18,6 +18,79 @@ DEFAULT = {"schema": SCHEMA, "field": "email", "providers": [], "minimum_confide
 FIELD_TYPES = {"phone", "person_identity", "firmographics"}
 
 
+def build_local_config(name: str, email: str = "", phone: str = "", person_identity: str = "", firmographics: str = "",
+                       email_calls: int = 25, phone_calls: int = 25, person_identity_calls: int = 25, firmographics_calls: int = 25,
+                       stop_when: str = "personal_email_and_named_person", email_confidence: float = 0,
+                       phone_confidence: float = 0, person_identity_confidence: float = 0,
+                       firmographics_confidence: float = 0, person_identity_score: float = 0) -> str:
+    """Validate selected local adapters and create a never-overwrite waterfall JSON file."""
+    slug = re.sub(r"[^a-z0-9_-]+", "-", (name or "").strip().lower()).strip("-_")[:48]
+    if not slug:
+        raise ValueError("Give this waterfall a name using letters or numbers.")
+    if stop_when not in STOP_RULES:
+        raise ValueError("Choose a supported email stopping rule.")
+    try:
+        call_caps = {"email": int(email_calls), "phone": int(phone_calls), "person_identity": int(person_identity_calls), "firmographics": int(firmographics_calls)}
+        thresholds = {"email": float(email_confidence), "phone": float(phone_confidence), "person_identity": float(person_identity_confidence), "firmographics": float(firmographics_confidence), "person_identity_score": float(person_identity_score)}
+    except (TypeError, ValueError):
+        raise ValueError("Call caps and confidence thresholds must be valid numbers.") from None
+    if any(not 0 <= cap <= 5000 for cap in call_caps.values()):
+        raise ValueError("Every provider call cap must be between 0 and 5000.")
+    if any(not math.isfinite(value) or not 0 <= value <= 1 for value in thresholds.values()):
+        raise ValueError("Confidence and person identity thresholds must be finite numbers between 0 and 1.")
+
+    def ordered(value: str, label: str) -> list[str]:
+        names = [part.strip().lower() for part in (value or "").split(",") if part.strip()]
+        if len(names) > 12 or len(set(names)) != len(names) or any(not ep.NAME.fullmatch(provider) for provider in names):
+            raise ValueError(f"{label} must be up to 12 unique local provider names, comma separated, in priority order.")
+        return names
+
+    orders = {"email": ordered(email, "Email providers"), "phone": ordered(phone, "Phone providers"),
+              "person_identity": ordered(person_identity, "Person identity providers"),
+              "firmographics": ordered(firmographics, "Firmographic providers")}
+    if not any(orders.values()):
+        raise ValueError("Choose at least one configured provider for an enrichment field.")
+    adapters = {}
+    for field_name, names in orders.items():
+        for provider_name in names:
+            if provider_name not in adapters:
+                try:
+                    adapters[provider_name] = ep.load(provider_name, require_key=False)
+                except ep.ProviderError as error:
+                    raise ValueError(str(error)) from None
+            adapter = adapters[provider_name]
+            if field_name == "email" and not adapter.get("response", {}).get("email"):
+                raise ValueError(f"Provider '{provider_name}' has no email response mapping and cannot be used for email enrichment.")
+            if field_name != "email" and field_name not in adapter.get("response_fields", {}):
+                raise ValueError(f"Provider '{provider_name}' has no configured response mapping for {field_name}.")
+
+    config = {"schema": SCHEMA, "field": "email", "providers": orders["email"],
+              "minimum_confidence": thresholds["email"], "stop_when": stop_when,
+              "max_provider_calls": call_caps["email"], "field_waterfalls": {}}
+    for field_name in ("phone", "person_identity", "firmographics"):
+        confidence_key = "person_identity" if field_name == "person_identity" else field_name
+        config["field_waterfalls"][field_name] = {"providers": orders[field_name],
+            "max_provider_calls": call_caps[field_name], "minimum_confidence": thresholds[confidence_key],
+            "minimum_identity_score": thresholds["person_identity_score"] if field_name == "person_identity" else 0.0}
+    path = ROOT / "enrich-waterfalls" / f"{slug}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("x", encoding="utf-8") as file:
+            json.dump(config, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+    except FileExistsError:
+        raise ValueError(f"{path.name} already exists. Choose a different name; existing configs are never overwritten.") from None
+    currencies = sorted({str(adapters[provider_name].get("cost_currency", "")).upper()
+                         for names in orders.values() for provider_name in names
+                         if adapters[provider_name].get("cost_per_call") is not None})
+    unknown = sorted({provider_name for names in orders.values() for provider_name in names
+                      if adapters[provider_name].get("cost_per_call") is None})
+    return (f"Saved validated local waterfall: {path.relative_to(ROOT).as_posix()}\n"
+            f"Provider order by field: " + "; ".join(f"{field}={', '.join(names) or '(none)'}" for field, names in orders.items()) + "\n"
+            f"Declared price currencies: {', '.join(currencies) or '(none)'}; unknown-price providers: {', '.join(unknown) or '(none)'}.\n"
+            f"Use the config with --waterfall-config {path.relative_to(ROOT).as_posix()} and preview it before a live run.")
+
+
 def load_config(path: str = "", provider: str = "", budget_override: int | None = None) -> dict:
     """Load a local JSON provider order or build the backward-compatible one-provider config."""
     if path and provider:

@@ -107,6 +107,36 @@ T["dse.enrich_spend_preview"]["outputs"] = []
 T["dse.enrich_spend_preview"].update({"category": "source", "source": "Local waterfall provider price and call-cap configuration",
     "cost": "Read-only local estimate; no lead data or provider requests.",
     "outputs_summary": ["Maximum possible calls by field", "Conservative known-price estimate and currency", "Unknown-price providers and separate acknowledgment requirement", "Not a vendor invoice"]})
+T["dse.enrich_waterfall_builder"] = tool("Lead enrichment: build a provider waterfall", "Creates a validated local provider-waterfall configuration for email, phone, person identity and firmographics. Enter adapter names in priority order, comma separated. The tool checks each adapter's mappings, price metadata and field support, never stores API keys, and never overwrites a config. Preview the saved configuration before a live run.",
+    [{"lit": "enrich"}, {"flag": "--build-waterfall-config", "field": "go"}, {"opt": "--waterfall-name", "field": "name"},
+     {"opt": "--email-providers", "field": "email_providers"}, {"opt": "--phone-providers", "field": "phone_providers"},
+     {"opt": "--person-identity-providers", "field": "person_identity_providers"}, {"opt": "--firmographics-providers", "field": "firmographics_providers"},
+     {"opt": "--email-call-cap", "field": "email_calls"}, {"opt": "--phone-call-cap", "field": "phone_calls"},
+     {"opt": "--person-identity-call-cap", "field": "person_identity_calls"}, {"opt": "--firmographics-call-cap", "field": "firmographics_calls"},
+     {"opt": "--stop-when", "field": "stop_when"}, {"opt": "--email-min-confidence", "field": "email_confidence"},
+     {"opt": "--phone-min-confidence", "field": "phone_confidence"}, {"opt": "--person-identity-min-confidence", "field": "person_identity_confidence"},
+     {"opt": "--firmographics-min-confidence", "field": "firmographics_confidence"}, {"opt": "--person-identity-min-score", "field": "person_identity_score"}],
+    [{"name": "go", "label": "Build local config", "type": "bool", "default": True},
+     {"name": "name", "label": "Waterfall name (a unique name; existing files are never overwritten)", "type": "text", "required": True, "max": 48},
+     {"name": "email_providers", "label": "Email providers in priority order (comma separated; optional)", "type": "text", "required": False, "max": 400},
+     {"name": "phone_providers", "label": "Phone providers in priority order (comma separated; optional)", "type": "text", "required": False, "max": 400},
+     {"name": "person_identity_providers", "label": "Person identity providers in priority order (comma separated; optional)", "type": "text", "required": False, "max": 400},
+     {"name": "firmographics_providers", "label": "Firmographic providers in priority order (comma separated; optional)", "type": "text", "required": False, "max": 400},
+     {"name": "email_calls", "label": "Maximum email provider calls", "type": "int", "min": 0, "max": 5000, "default": 25},
+     {"name": "phone_calls", "label": "Maximum phone provider calls", "type": "int", "min": 0, "max": 5000, "default": 25},
+     {"name": "person_identity_calls", "label": "Maximum person identity provider calls", "type": "int", "min": 0, "max": 5000, "default": 25},
+     {"name": "firmographics_calls", "label": "Maximum firmographic provider calls", "type": "int", "min": 0, "max": 5000, "default": 25},
+     {"name": "stop_when", "label": "When the email waterfall can stop", "type": "choice", "required": True, "default": "personal_email_and_named_person", "choices": [
+        {"value": "personal_email_and_named_person", "label": "Personal email and named person found"}, {"value": "personal_email", "label": "Personal email found"}, {"value": "any_email", "label": "Any email found"}]},
+     {"name": "email_confidence", "label": "Minimum email confidence (0 to 1; 0 disables this check)", "type": "float", "min": 0, "max": 1, "default": 0},
+     {"name": "phone_confidence", "label": "Minimum phone confidence (0 to 1; 0 disables this check)", "type": "float", "min": 0, "max": 1, "default": 0},
+     {"name": "person_identity_confidence", "label": "Minimum person confidence (0 to 1; 0 disables this check)", "type": "float", "min": 0, "max": 1, "default": 0},
+     {"name": "firmographics_confidence", "label": "Minimum firmographic confidence (0 to 1; 0 disables this check)", "type": "float", "min": 0, "max": 1, "default": 0},
+     {"name": "person_identity_score", "label": "Minimum company/person identity score (0 to 1)", "type": "float", "min": 0, "max": 1, "default": 0}], 1)
+T["dse.enrich_waterfall_builder"]["outputs"] = []
+T["dse.enrich_waterfall_builder"].update({"category": "source", "source": "Local provider adapter configurations on this PC",
+    "cost": "Local config generation only; does not make paid requests or store API keys.",
+    "outputs_summary": ["Validated provider order for each configured field", "Per-field call caps and acceptance thresholds", "Saved local waterfall JSON path", "Existing waterfall files are never overwritten"]})
 if T.get("dse.presence_signals"):
     T["dse.presence_signals"].update({"category": "signal", "source": "Public professional/business social search",
                                       "cost": "PC-run public search; no paid data provider is selected by this tool.",
