@@ -2251,6 +2251,26 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
              "expected_lead_count": expected_total, "expected_variant_counts": expected,
              "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
              "assignment_seed_matches": seed_matches, "status": status})
+    audited_cohorts = {(check["experiment_id"], check["experiment_field"]) for check in assignment_audit_checks}
+    for eid, modes in assignment_modes.items():
+        if "single_variant_assigned" not in modes or (eid in audited_cohorts):
+            continue
+        field = eid[1]
+        observed = {variant: len(assignment_variant_leads[(eid[0], field, variant)]) for variant in ("A", "B")}
+        observed_total = sum(observed.values())
+        seeds = assignment_seeds[eid]
+        assignment_audit_checks.append({
+            "experiment_id": eid[0], "experiment_field": field,
+            "audit_file": None, "assigned_csv": None, "source_sha256": None, "assigned_csv_sha256": None,
+            "assigned_csv_exists": False, "assigned_csv_hash_matches": False,
+            "cohort_record_matches": False, "cohort_record_error": "Assignment audit sidecar is missing or unreadable.",
+            "send_list_exact_lead_roster_matches": False,
+            "send_list_roster_differences": {"A": {"missing": 0, "unexpected": observed["A"]},
+                                             "B": {"missing": 0, "unexpected": observed["B"]}},
+            "expected_lead_count": None, "expected_variant_counts": {"A": None, "B": None},
+            "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
+            "assignment_seed_matches": None if not observed_total else False,
+            "status": "assignment_audit_missing"})
     blocked_audit_keys = {(check["experiment_id"], check["experiment_field"]): check["status"]
                           for check in assignment_audit_checks if check["status"] != "verified_in_send_lists"}
     if blocked_audit_keys:
@@ -2269,7 +2289,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "assignment_audit_checks": assignment_audit_checks,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
-              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; when an assignment audit exists, comparisons are also withheld until the assigned CSV hash, local cohort record, source evidence, expected counts, seed, and complete Send Desk-list coverage reconcile. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; explicitly assigned cohorts also require a readable assignment audit and reconciliation of the assigned CSV hash, local cohort record, source evidence, exact lead roster, expected counts, seed, and complete Send Desk-list coverage. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

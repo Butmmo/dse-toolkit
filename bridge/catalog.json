@@ -12245,7 +12245,7 @@
         "Aggregate sent, skipped, unmarked, replied, booked and won counts by variant",
         "Reply categories and fixed-window maturity outcomes",
         "Provider order, config fingerprint and outreach assignment audit",
-        "Cohort-record, paired-source, exact lead-roster and deterministic-seed checks before comparisons",
+        "Readable assignment-audit presence, cohort-record, paired-source, exact lead-roster and deterministic-seed checks before comparisons",
         "Descriptive rate intervals and cautions; no automatic winner selection",
         "JSON data report and readable Markdown brief"
       ]
