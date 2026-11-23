@@ -77,7 +77,8 @@ def prepare(source: str, out: str = "") -> Path:
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-enrichment-review.csv")
     source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker",
                                  "waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
-                                 "waterfall_experiment_providers", "waterfall_config_sha256") if h in headers]
+                                 "waterfall_experiment_providers", "waterfall_experiment_lead_id",
+                                 "waterfall_config_sha256") if h in headers]
     columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
@@ -696,6 +697,53 @@ def _decision_brief(report: dict) -> str:
     lines.append("")
     lines.extend(["## How to read this", "",
                   "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
+    experiment_comparisons = report.get("waterfall_experiment_comparisons") or []
+    lines.extend(["## Completed waterfall experiment comparisons", ""])
+    if experiment_comparisons:
+        for item in experiment_comparisons:
+            value = (item.get("dimensions") or {}).get("value_correct", {})
+            interval = value.get("lead_pair_bootstrap_95", {})
+            low, high = interval.get("lower"), interval.get("upper")
+            interval_text = f"{low:+.1%} to {high:+.1%}" if isinstance(low, (int, float)) and isinstance(high, (int, float)) else "unavailable"
+            availability = item.get("lead_availability", {})
+            lines.append(
+                f"- `{item.get('experiment_id')}` / `{item.get('field')}` ({item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}): A-minus-B reviewed correctness {_display_rate(value.get('rate_difference_a_minus_b'))}; interval {interval_text}; matched leads {value.get('matched_reviewed_leads', 0)}; outputs A {availability.get('variant_a', 0)}, B {availability.get('variant_b', 0)}. Status: `{item.get('decision_status')}`."
+            )
+            experiment_readout = item.get("experiment_readout", {})
+            lines.append(
+                f"  - Combined readout: `{experiment_readout.get('status', 'unavailable')}`; quality {experiment_readout.get('reviewed_correctness_direction', 'unknown')}; coverage {experiment_readout.get('accepted_coverage_direction', 'unknown')}; lower-cost variant by currency {experiment_readout.get('lower_estimated_cost_variant_by_currency', {})}."
+            )
+            for tradeoff in experiment_readout.get("tradeoffs", []):
+                lines.append(f"  - Trade-off: {tradeoff}.")
+            operational = item.get("paired_operational_outcomes", {})
+            accepted_interval = operational.get("accepted_coverage_lead_pair_bootstrap_95", {})
+            accepted_low, accepted_high = accepted_interval.get("lower"), accepted_interval.get("upper")
+            accepted_interval_text = (f"{accepted_low:+.1%} to {accepted_high:+.1%}"
+                                      if isinstance(accepted_low, (int, float)) and isinstance(accepted_high, (int, float))
+                                      else "unavailable")
+            lines.append(
+                f"  - Accepted-result coverage on {operational.get('paired_unique_leads', 0)} paired leads: A {_display_rate(operational.get('variant_a_accepted_coverage'))}, B {_display_rate(operational.get('variant_b_accepted_coverage'))}; A-minus-B interval {accepted_interval_text}."
+            )
+            for currency, costs in (item.get("paired_provider_attempt_cost_by_currency") or {}).items():
+                cost_interval = costs.get("mean_cost_difference_lead_pair_bootstrap_95", {})
+                cost_low, cost_high = cost_interval.get("lower"), cost_interval.get("upper")
+                cost_interval_text = (f"{cost_low:+.4g} to {cost_high:+.4g} {currency}"
+                                      if isinstance(cost_low, (int, float)) and isinstance(cost_high, (int, float))
+                                      else "unavailable")
+                efficiency = costs.get("cost_per_reviewed_correct_result", {})
+                lines.append(
+                    f"  - {currency} paired estimated spend per lead A {_display_amount(costs.get('variant_a_mean_estimated_cost_per_lead'))}, B {_display_amount(costs.get('variant_b_mean_estimated_cost_per_lead') )}; A-minus-B interval {cost_interval_text}; cost per reviewed-correct result A {_display_amount(efficiency.get('variant_a'))}, B {_display_amount(efficiency.get('variant_b'))}."
+                )
+            price_quality = item.get("paired_cost_input_quality", {})
+            excluded_unknown = int(price_quality.get("variant_a_unknown_price_calls", 0)) + int(price_quality.get("variant_b_unknown_price_calls", 0))
+            excluded_invalid = int(price_quality.get("variant_a_invalid_price_calls", 0)) + int(price_quality.get("variant_b_invalid_price_calls", 0))
+            if excluded_unknown or excluded_invalid:
+                lines.append(f"  - Cost exclusions across variants: {excluded_unknown} unknown-price calls and {excluded_invalid} invalid-price calls.")
+    else:
+        lines.append("No completed A/B waterfall runs with preserved experiment lead IDs were found in this review file.")
+    lines.append("")
+    lines.extend(["## How to read this", "",
+                  "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
     return "\n".join(lines)
 
 
@@ -764,6 +812,286 @@ def _waterfall_experiment_plans(advisories: list[dict], min_labeled: int) -> lis
             "automatic_config_change": False,
         })
     return plans
+
+
+def _known_attempt_costs(row: dict[str, str]) -> tuple[dict[str, float], int, int]:
+    payload = _json(row.get("provider_waterfall_cost"))
+    providers = payload.get("providers") if isinstance(payload, dict) else None
+    totals: dict[str, float] = defaultdict(float)
+    unknown_calls = invalid_calls = 0
+    if not isinstance(providers, dict):
+        return {}, 0, 0
+    for attempt in providers.values():
+        if not isinstance(attempt, dict):
+            continue
+        try:
+            calls = max(0, int(attempt.get("calls", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        if not calls:
+            continue
+        currency, amount = attempt.get("currency"), attempt.get("estimated_cost")
+        if not currency or amount is None:
+            unknown_calls += calls
+            continue
+        try:
+            amount_value = float(amount)
+        except (TypeError, ValueError):
+            invalid_calls += calls
+            continue
+        if not math.isfinite(amount_value) or amount_value < 0:
+            invalid_calls += calls
+            continue
+        totals[str(currency)] += amount_value
+    return dict(totals), unknown_calls, invalid_calls
+
+
+def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int,
+                                     bootstrap_reps: int, bootstrap_seed: int) -> list[dict]:
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_lead_id"}
+    if not required.issubset(headers):
+        return []
+    label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
+                     for field in REVIEW_FIELDS[:4]}
+    groups: dict[tuple[str, str, str, str, str], dict[str, dict[str, list[dict[str, str]]]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(list)))
+    for row in rows:
+        experiment_id = (row.get("waterfall_experiment_id") or "").strip()
+        variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        field = (row.get("field") or "").strip()
+        if not experiment_id or variant not in {"A", "B"} or not lead_id or not field:
+            continue
+        cohort = tuple((row.get(key) or "unknown").strip() or "unknown"
+                       for key in ("engine_path", "enrichment_profile", "research_lane"))
+        groups[(experiment_id, field, *cohort)][lead_id][variant].append(row)
+    comparisons = []
+    for (experiment_id, field, engine_path, profile, lane), leads in sorted(groups.items()):
+        a_ids = {lead for lead, variants in leads.items() if variants.get("A")}
+        b_ids = {lead for lead, variants in leads.items() if variants.get("B")}
+        paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        paired_accepted: list[tuple[int, int]] = []
+        status_counts = {"A": defaultdict(int), "B": defaultdict(int)}
+        excluded_duplicate = 0
+        excluded_unlabeled = defaultdict(int)
+        paired_costs: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"a_total": 0.0, "b_total": 0.0, "a_correct": 0, "b_correct": 0,
+                     "differences": [], "matched_leads": 0}
+        )
+        cost_input_quality = {"variant_a_unknown_price_calls": 0, "variant_b_unknown_price_calls": 0,
+                              "variant_a_invalid_price_calls": 0, "variant_b_invalid_price_calls": 0}
+        a_hashes, b_hashes = set(), set()
+        for lead in a_ids | b_ids:
+            variants = leads[lead]
+            for variant, hashes in (("A", a_hashes), ("B", b_hashes)):
+                for row in variants.get(variant, []):
+                    digest = (row.get("waterfall_config_sha256") or "").strip()
+                    if digest:
+                        hashes.add(digest)
+            if len(variants.get("A", [])) != 1 or len(variants.get("B", [])) != 1:
+                if variants.get("A") and variants.get("B"):
+                    excluded_duplicate += 1
+                continue
+            a_value = _review_category(variants["A"][0].get(label_columns["value_correct"], ""))
+            b_value = _review_category(variants["B"][0].get(label_columns["value_correct"], ""))
+            a_status = (variants["A"][0].get("status") or "blank").strip().casefold() or "blank"
+            b_status = (variants["B"][0].get("status") or "blank").strip().casefold() or "blank"
+            status_counts["A"][a_status] += 1
+            status_counts["B"][b_status] += 1
+            paired_accepted.append((int(a_status == "accepted"), int(b_status == "accepted")))
+            if a_value in {"yes", "no"} and b_value in {"yes", "no"}:
+                a_costs, a_unknown, a_invalid = _known_attempt_costs(variants["A"][0])
+                b_costs, b_unknown, b_invalid = _known_attempt_costs(variants["B"][0])
+                cost_input_quality["variant_a_unknown_price_calls"] += a_unknown
+                cost_input_quality["variant_b_unknown_price_calls"] += b_unknown
+                cost_input_quality["variant_a_invalid_price_calls"] += a_invalid
+                cost_input_quality["variant_b_invalid_price_calls"] += b_invalid
+                for currency in a_costs.keys() & b_costs.keys():
+                    costs = paired_costs[currency]
+                    costs["a_total"] += a_costs[currency]
+                    costs["b_total"] += b_costs[currency]
+                    costs["a_correct"] += a_value == "yes"
+                    costs["b_correct"] += b_value == "yes"
+                    costs["differences"].append(a_costs[currency] - b_costs[currency])
+                    costs["matched_leads"] += 1
+            for dimension, column in label_columns.items():
+                a_label = _review_category(variants["A"][0].get(column, ""))
+                b_label = _review_category(variants["B"][0].get(column, ""))
+                if a_label not in {"yes", "no"} or b_label not in {"yes", "no"}:
+                    excluded_unlabeled[dimension] += 1
+                    continue
+                paired_labels[dimension].append((int(a_label == "yes"), int(b_label == "yes")))
+        dimensions = {}
+        for dimension in label_columns:
+            pairs = paired_labels[dimension]
+            a_yes = sum(pair[0] for pair in pairs)
+            b_yes = sum(pair[1] for pair in pairs)
+            differences = []
+            if bootstrap_reps and pairs:
+                rng = random.Random(f"{bootstrap_seed}:{experiment_id}:{field}:{engine_path}:{profile}:{lane}:{dimension}")
+                for _ in range(bootstrap_reps):
+                    sample = [pairs[rng.randrange(len(pairs))] for _ in pairs]
+                    differences.append(sum(a - b for a, b in sample) / len(sample))
+                differences.sort()
+            dimensions[dimension] = {
+                "matched_reviewed_leads": len(pairs),
+                "variant_a_yes": a_yes,
+                "variant_b_yes": b_yes,
+                "variant_a_wins": sum(a == 1 and b == 0 for a, b in pairs),
+                "variant_b_wins": sum(a == 0 and b == 1 for a, b in pairs),
+                "ties": sum(a == b for a, b in pairs),
+                "variant_a_yes_rate": _ratio(a_yes, len(pairs)),
+                "variant_b_yes_rate": _ratio(b_yes, len(pairs)),
+                "rate_difference_a_minus_b": _ratio(a_yes - b_yes, len(pairs)),
+                "lead_pair_bootstrap_95": {
+                    "method": "percentile bootstrap; resample matched leads with replacement",
+                    "seed": bootstrap_seed,
+                    "requested_replicates": bootstrap_reps,
+                    "valid_replicates": len(differences),
+                    "lower": differences[max(0, math.ceil(0.025 * len(differences)) - 1)] if differences else None,
+                    "upper": differences[max(0, math.ceil(0.975 * len(differences)) - 1)] if differences else None,
+                },
+                "excluded_unlabeled_or_unknown_pairs": excluded_unlabeled[dimension],
+                "minimum_labeled_count": min_labeled,
+                "minimum_labeled_met": len(pairs) >= min_labeled,
+            }
+        value = dimensions.get("value_correct", {})
+        accepted_a = sum(pair[0] for pair in paired_accepted)
+        accepted_b = sum(pair[1] for pair in paired_accepted)
+        acceptance_differences = []
+        if bootstrap_reps and paired_accepted:
+            rng = random.Random(f"{bootstrap_seed}:{experiment_id}:{field}:{engine_path}:{profile}:{lane}:acceptance")
+            for _ in range(bootstrap_reps):
+                sample = [paired_accepted[rng.randrange(len(paired_accepted))] for _ in paired_accepted]
+                acceptance_differences.append(sum(a - b for a, b in sample) / len(sample))
+            acceptance_differences.sort()
+        operational_outcomes = {
+            "paired_unique_leads": len(paired_accepted),
+            "variant_a_status_counts": dict(sorted(status_counts["A"].items())),
+            "variant_b_status_counts": dict(sorted(status_counts["B"].items())),
+            "variant_a_accepted_coverage": _ratio(accepted_a, len(paired_accepted)),
+            "variant_b_accepted_coverage": _ratio(accepted_b, len(paired_accepted)),
+            "accepted_coverage_difference_a_minus_b": _ratio(accepted_a - accepted_b, len(paired_accepted)),
+            "variant_a_acceptance_wins": sum(a == 1 and b == 0 for a, b in paired_accepted),
+            "variant_b_acceptance_wins": sum(a == 0 and b == 1 for a, b in paired_accepted),
+            "ties": sum(a == b for a, b in paired_accepted),
+            "accepted_coverage_lead_pair_bootstrap_95": {
+                "method": "percentile bootstrap; resample matched leads with replacement",
+                "seed": bootstrap_seed,
+                "requested_replicates": bootstrap_reps,
+                "valid_replicates": len(acceptance_differences),
+                "lower": acceptance_differences[max(0, math.ceil(0.025 * len(acceptance_differences)) - 1)] if acceptance_differences else None,
+                "upper": acceptance_differences[max(0, math.ceil(0.975 * len(acceptance_differences)) - 1)] if acceptance_differences else None,
+            },
+        }
+        cost_comparisons = {}
+        for currency, costs in paired_costs.items():
+            count = int(costs["matched_leads"])
+            a_mean, b_mean = _ratio(costs["a_total"], count), _ratio(costs["b_total"], count)
+            cost_differences = []
+            if bootstrap_reps and costs["differences"]:
+                rng = random.Random(f"{bootstrap_seed}:{experiment_id}:{field}:{engine_path}:{profile}:{lane}:{currency}:cost")
+                for _ in range(bootstrap_reps):
+                    sample = [costs["differences"][rng.randrange(len(costs["differences"]))]
+                              for _ in costs["differences"]]
+                    cost_differences.append(sum(sample) / len(sample))
+                cost_differences.sort()
+            cost_comparisons[currency] = {
+                "matched_reviewed_leads_with_known_prices_in_both_variants": count,
+                "variant_a_mean_estimated_cost_per_lead": a_mean,
+                "variant_b_mean_estimated_cost_per_lead": b_mean,
+                "mean_cost_difference_a_minus_b": a_mean - b_mean if a_mean is not None and b_mean is not None else None,
+                "cost_per_reviewed_correct_result": {
+                    "variant_a": _ratio(costs["a_total"], int(costs["a_correct"])),
+                    "variant_b": _ratio(costs["b_total"], int(costs["b_correct"])),
+                    "variant_a_reviewed_correct_denominator": int(costs["a_correct"]),
+                    "variant_b_reviewed_correct_denominator": int(costs["b_correct"]),
+                },
+                "mean_cost_difference_lead_pair_bootstrap_95": {
+                    "method": "percentile bootstrap; resample matched lead cost pairs with replacement",
+                    "seed": bootstrap_seed,
+                    "requested_replicates": bootstrap_reps,
+                    "valid_replicates": len(cost_differences),
+                    "lower": cost_differences[max(0, math.ceil(0.025 * len(cost_differences)) - 1)] if cost_differences else None,
+                    "upper": cost_differences[max(0, math.ceil(0.975 * len(cost_differences)) - 1)] if cost_differences else None,
+                },
+            }
+        quality_interval = value.get("lead_pair_bootstrap_95", {})
+        if value.get("matched_reviewed_leads", 0) < min_labeled:
+            quality_direction = "insufficient_reviewed_evidence"
+        elif quality_interval.get("lower") is not None and quality_interval["lower"] > 0:
+            quality_direction = "variant_a_higher_reviewed_correctness"
+        elif quality_interval.get("upper") is not None and quality_interval["upper"] < 0:
+            quality_direction = "variant_b_higher_reviewed_correctness"
+        else:
+            quality_direction = "no_clear_interval_direction"
+        acceptance_interval = operational_outcomes["accepted_coverage_lead_pair_bootstrap_95"]
+        if acceptance_interval.get("lower") is not None and acceptance_interval["lower"] > 0:
+            coverage_direction = "variant_a_higher_accepted_coverage"
+        elif acceptance_interval.get("upper") is not None and acceptance_interval["upper"] < 0:
+            coverage_direction = "variant_b_higher_accepted_coverage"
+        else:
+            coverage_direction = "no_clear_interval_direction"
+        tradeoffs = []
+        if quality_direction.startswith("variant_a") and coverage_direction.startswith("variant_b"):
+            tradeoffs.append("reviewed correctness favors A while accepted coverage favors B")
+        elif quality_direction.startswith("variant_b") and coverage_direction.startswith("variant_a"):
+            tradeoffs.append("reviewed correctness favors B while accepted coverage favors A")
+        cost_directions = {}
+        for currency, costs in cost_comparisons.items():
+            interval = costs["mean_cost_difference_lead_pair_bootstrap_95"]
+            if interval.get("lower") is not None and interval["lower"] > 0:
+                lower_cost = "variant_b"
+            elif interval.get("upper") is not None and interval["upper"] < 0:
+                lower_cost = "variant_a"
+            else:
+                lower_cost = "no_clear_interval_direction"
+            cost_directions[currency] = lower_cost
+            if quality_direction.startswith("variant_a") and lower_cost == "variant_b":
+                tradeoffs.append(f"reviewed correctness favors A while {currency} cost favors B")
+            elif quality_direction.startswith("variant_b") and lower_cost == "variant_a":
+                tradeoffs.append(f"reviewed correctness favors B while {currency} cost favors A")
+        if value.get("matched_reviewed_leads", 0) < min_labeled:
+            readout_status = "below_minimum_labeled_caution_threshold"
+        elif tradeoffs:
+            readout_status = "evidence_tradeoffs_need_business_judgment"
+        elif quality_direction == "no_clear_interval_direction":
+            readout_status = "no_clear_reviewed_quality_direction"
+        else:
+            readout_status = "directional_quality_signal_for_this_cohort"
+        experiment_readout = {
+            "status": readout_status,
+            "reviewed_correctness_direction": quality_direction,
+            "accepted_coverage_direction": coverage_direction,
+            "lower_estimated_cost_variant_by_currency": cost_directions,
+            "tradeoffs": tradeoffs,
+            "automatic_variant_selection": False,
+            "note": "Interpret quality, coverage, and cost separately; results describe this reviewed cohort and do not prove general performance.",
+        }
+        comparisons.append({
+            "experiment_id": experiment_id,
+            "field": field,
+            "engine_path": engine_path,
+            "enrichment_profile": profile,
+            "research_lane": lane,
+            "variant_a_config_sha256": sorted(a_hashes),
+            "variant_b_config_sha256": sorted(b_hashes),
+            "lead_availability": {"variant_a": len(a_ids), "variant_b": len(b_ids),
+                                  "both_variants": len(a_ids & b_ids),
+                                  "only_a": len(a_ids - b_ids), "only_b": len(b_ids - a_ids),
+                                  "unpaired_leads_excluded_from_quality_comparison": len(a_ids - b_ids) + len(b_ids - a_ids)},
+            "duplicate_result_leads_excluded": excluded_duplicate,
+            "paired_operational_outcomes": operational_outcomes,
+            "paired_provider_attempt_cost_by_currency": cost_comparisons,
+            "paired_cost_input_quality": {**cost_input_quality,
+                                           "scope": "paired leads with explicit yes/no value-correctness reviews",
+                                           "unknown_or_invalid_prices_excluded_not_treated_as_zero": True},
+            "experiment_readout": experiment_readout,
+            "dimensions": dimensions,
+            "decision_status": "below_minimum_labeled_caution_threshold" if value.get("matched_reviewed_leads", 0) < min_labeled else "descriptive_only",
+            "automatic_provider_selection": False,
+        })
+    return comparisons
 
 
 def score(source: str, out: str = "", min_labeled: int = 20,
@@ -954,6 +1282,8 @@ def score(source: str, out: str = "", min_labeled: int = 20,
     paired_comparisons = _paired_source_comparisons(
         rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed)
     waterfall_advisories = _waterfall_evidence_advisories(paired_comparisons)
+    experiment_comparisons = _waterfall_experiment_comparisons(
+        rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed)
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "scoring_provenance": {
                   "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -973,6 +1303,7 @@ def score(source: str, out: str = "", min_labeled: int = 20,
               "paired_source_comparisons": paired_comparisons,
               "waterfall_evidence_advisories": waterfall_advisories,
               "waterfall_experiment_plans": _waterfall_experiment_plans(waterfall_advisories, min_labeled),
+              "waterfall_experiment_comparisons": experiment_comparisons,
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
@@ -1290,6 +1621,85 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
     return report, output
 
 
+def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "") -> tuple[dict, Path]:
+    """Join experiment-tagged Send Desk rows to explicit taps and summarize unique-lead outcomes."""
+    from . import desklog, outcomes
+    from .engines import engine_dir, load
+
+    load(engine)
+    hist = desklog.history(engine)
+    cohorts: dict[tuple[str, str, str], dict[str, dict[str, bool]]] = defaultdict(dict)
+    missing_ids = 0
+    for row in desklog.load_lists(engine):
+        eid = (row.get("waterfall_experiment_id") or "").strip()
+        variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        if not eid or variant not in {"A", "B"}:
+            continue
+        if experiment_id and eid != experiment_id:
+            continue
+        if not lead_id:
+            missing_ids += 1
+            continue
+        field = (row.get("waterfall_experiment_field") or "").strip()
+        flags = outcomes._flags(hist.get((row["_source"], row["_row_id"]), []))
+        lead = cohorts[(eid, field, variant)].setdefault(lead_id,
+                  {k: False for k in ("sent", "replied", "booked", "won", "lost", "skipped")})
+        for key in lead:
+            lead[key] = lead[key] or bool(flags.get(key))
+
+    if not cohorts:
+        raise ValueError("No tagged experiment rows with stable lead IDs were found for this engine" +
+                         (f" and experiment {experiment_id!r}." if experiment_id else "."))
+
+    groups: dict[tuple[str, str], dict] = {}
+    minimum_sent_caution = 30
+    for (eid, field, variant), leads in sorted(cohorts.items()):
+        sent = sum(bool(x["sent"]) for x in leads.values())
+        groups[(eid, field)] = groups.get((eid, field), {"experiment_id": eid, "field": field, "variants": {}})
+        counts = {key: sum(bool(x[key]) for x in leads.values()) for key in ("replied", "booked", "won", "lost")}
+        metric = {"assigned_unique_leads": len(leads), "sent_unique_leads": sent,
+                  "replied_unique_leads": counts["replied"], "booked_unique_leads": counts["booked"],
+                  "won_unique_leads": counts["won"], "lost_unique_leads": counts["lost"],
+                  "low_sample_caution": sent < minimum_sent_caution,
+                  "sample_caution_threshold_sent_leads": minimum_sent_caution,
+                  "outcome_rate_95_percent_wilson_intervals": {}}
+        for key in ("replied", "booked", "won"):
+            rate = _ratio(counts[key], sent)
+            metric[f"{key}_rate_per_sent_lead"] = rate
+            metric["outcome_rate_95_percent_wilson_intervals"][key] = _wilson(counts[key], sent)
+        groups[(eid, field)]["variants"][variant] = metric
+    comparisons = []
+    for item in groups.values():
+        variants = item["variants"]
+        ids_by_variant = {v: set(cohorts[(item["experiment_id"], item["field"], v)]) for v in ("A", "B")}
+        overlap = ids_by_variant["A"] & ids_by_variant["B"]
+        item["same_leads_in_both_variants"] = len(overlap)
+        item["interpretation"] = "descriptive only; no causal winner is declared"
+        if "A" in variants and "B" in variants:
+            comparisons.append({"experiment_id": item["experiment_id"], "field": item["field"],
+                               "reply_rate_a_minus_b": (variants["A"]["reply_rate_per_sent_lead"] - variants["B"]["reply_rate_per_sent_lead"])
+                                   if variants["A"]["reply_rate_per_sent_lead"] is not None and variants["B"]["reply_rate_per_sent_lead"] is not None else None,
+                               "booked_rate_a_minus_b": (variants["A"]["booked_rate_per_sent_lead"] - variants["B"]["booked_rate_per_sent_lead"])
+                                   if variants["A"]["booked_rate_per_sent_lead"] is not None and variants["B"]["booked_rate_per_sent_lead"] is not None else None,
+                               "won_rate_a_minus_b": (variants["A"]["won_rate_per_sent_lead"] - variants["B"]["won_rate_per_sent_lead"])
+                                   if variants["A"]["won_rate_per_sent_lead"] is not None and variants["B"]["won_rate_per_sent_lead"] is not None else None,
+                               "same_leads_in_both_variants": len(overlap),
+                               "overlap_caution": "overlapping leads may have received both variants; compare as descriptive only" if overlap else ""})
+    report = {"schema": "dbi.waterfall-send-outcomes.v1", "engine": engine, "experiment_filter": experiment_id or None,
+              "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
+              "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
+              "sample_caution_threshold_sent_leads": minimum_sent_caution,
+              "interpretation": "Counts deduplicate by stable experiment lead ID, combine all tagged touches, and include only explicit logged outcomes. Rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only and do not account for assignment, delivery, attribution windows, sample representativeness, repeated-provider effects, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+    output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Scored {sum(v['assigned_unique_leads'] for g in groups.values() for v in g['variants'].values())} tagged lead-variant records across {len(groups)} experiment-field cohorts: {output}")
+    print("Rates are descriptive only; overlapping leads across A/B are flagged in the report.")
+    return report, output
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="dse.py eval-enrichment", description="Prepare and score a reviewed enrichment benchmark.")
     sub = parser.add_subparsers(dest="action", required=True)
@@ -1322,6 +1732,10 @@ def main(argv: list[str] | None = None) -> int:
     wx.add_argument("--leads", type=int, default=50)
     wx.add_argument("--seed", type=int, default=42)
     wx.add_argument("--out", default="", help="manifest CSV output path")
+    so = sub.add_parser("score-send-outcomes", help="join experiment variants to explicit Send Desk outcomes for one engine")
+    so.add_argument("engine", help="engine slug")
+    so.add_argument("--experiment-id", default="", help="limit the report to one experiment ID")
+    so.add_argument("--out", default="", help="JSON report output path")
     pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
     pr.add_argument("source", help="prepared sample review CSV")
     pr.add_argument("--out", default="", help="paired review CSV output path")
@@ -1344,6 +1758,8 @@ def main(argv: list[str] | None = None) -> int:
                                       args.leads, args.seed, args.out)
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
+        elif args.action == "score-send-outcomes":
+            score_send_outcomes(args.engine, args.experiment_id, args.out)
         else:
             score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:

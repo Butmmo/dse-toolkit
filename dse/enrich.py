@@ -1118,10 +1118,15 @@ def import_ready(rows: list[dict], headers: list[str]) -> list[dict]:
     m = find_columns(headers)
     out = []
     for r in rows:
-        out.append({"Company": r.get(m.get("business", ""), "") or "", "Website": r.get(m["website"], ""), "Full Name": r.get("decision_maker") or r.get(m.get("contact_name", ""), "") or "",
+        ready_row = {"Company": r.get(m.get("business", ""), "") or "", "Website": r.get(m["website"], ""), "Full Name": r.get("decision_maker") or r.get(m.get("contact_name", ""), "") or "",
                     "Title": r.get("decision_maker_title") or r.get(m.get("contact_title", ""), "") or "", "Email": r.get("best_email", ""), "Phone": r.get("phone_found") or r.get(m.get("phone", ""), "") or "",
                     "City": r.get(m.get("city", ""), "") or "", "LinkedIn URL": r.get("linkedin_found") or r.get(m.get("linkedin", ""), "") or "", "Industry": r.get(m.get("industry", ""), "") or "",
-                    "Employees": r.get(m.get("employees", ""), "") or "", "lead_score": r.get("lead_score", ""), "lead_why": r.get("lead_why", "")})
+                    "Employees": r.get(m.get("employees", ""), "") or "", "lead_score": r.get("lead_score", ""), "lead_why": r.get("lead_why", "")}
+        if r.get("waterfall_experiment_id"):
+            for field in ("waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                          "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
+                ready_row[field] = r.get(field, "")
+        out.append(ready_row)
     return out
 
 
@@ -1165,7 +1170,10 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
             config_path = ROOT / config_path
         config_digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
         providers_json = json.dumps(experiment.get("providers", []), ensure_ascii=False, separators=(",", ":"))
-        for row in out_rows:
+        for row_number, row in enumerate(out_rows, 2):
+            lead_id = (row.get("waterfall_experiment_lead_id") or row.get("source_row")
+                       or row.get("lead_id") or row.get("id") or f"input-row:{row_number}")
+            row["waterfall_experiment_lead_id"] = str(lead_id).strip()
             row["waterfall_experiment_id"] = str(experiment.get("id") or "")
             row["waterfall_experiment_variant"] = str(experiment.get("variant") or "")
             row["waterfall_experiment_field"] = str(experiment.get("field") or "")
