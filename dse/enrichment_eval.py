@@ -2025,6 +2025,17 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
              "expected_lead_count": expected_total, "expected_variant_counts": expected,
              "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
              "assignment_seed_matches": seed_matches, "status": status})
+    blocked_audit_keys = {(check["experiment_id"], check["experiment_field"]): check["status"]
+                          for check in assignment_audit_checks if check["status"] != "verified_in_send_lists"}
+    if blocked_audit_keys:
+        comparisons = [comparison for comparison in comparisons
+                       if (comparison["experiment_id"], comparison["field"]) not in blocked_audit_keys]
+        for key, status in blocked_audit_keys.items():
+            cohort = groups.get(key)
+            if cohort:
+                cohort["comparison_eligible"] = False
+                cohort["comparison_suppressed_reason"] = f"assignment audit status is {status}"
+                cohort["interpretation"] = "A/B comparison withheld until the staged assignment is reconciled with Send Desk lists"
     report = {"schema": "dbi.waterfall-send-outcomes.v1", "engine": engine, "experiment_filter": experiment_id or None,
               "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
@@ -2032,7 +2043,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "assignment_audit_checks": assignment_audit_checks,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
-              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; their per-variant counts remain pooled and should be read with that warning. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; when an assignment audit exists, comparisons are also withheld until the assigned CSV hash, expected counts, seed, and complete Send Desk-list coverage reconcile. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
