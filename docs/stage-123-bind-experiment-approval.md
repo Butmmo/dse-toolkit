@@ -7,3 +7,5 @@ Live enrichment using an A/B experiment config now requires that receipt. Before
 HQ Tools exposes the receipt picker on the existing enrichment tool and keeps the receipt local. The preflight tool reports the receipt path and exposes it as a local output for selection in the next run.
 
 Validation performed: Python compilation of `dse.py`, `dse/enrich.py`, and `dse/waterfall.py`; CLI help; catalog JSON parsing; and `git diff --check`. No live provider requests or paid runs were made.
+
+The implementation was pushed to codex/hq-runner-id-routing and installed in the active PC runner checkout. The runner restarted and reported 182 tools online. The existing local packs/automation.json change was preserved.
