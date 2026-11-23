@@ -1156,6 +1156,66 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
         raise ValueError("A dry run needs an ordered provider config or --provider.")
     if max_provider_spend is not None and (not math.isfinite(max_provider_spend) or not 0 <= max_provider_spend <= 10000000):
         raise ValueError("--max-provider-spend must be between 0 and 10000000.")
+    experiment = config.get("waterfall_experiment") if isinstance(config.get("waterfall_experiment"), dict) else None
+    experiment_context = None
+    if experiment:
+        experiment_id = str(experiment.get("id") or "").strip()
+        variant = str(experiment.get("variant") or "").strip().upper()
+        experiment_field = str(experiment.get("field") or "").strip()
+        experiment_providers = experiment.get("providers")
+        if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", experiment_id)
+                or variant not in {"A", "B"}
+                or experiment_field not in {"email", *wf.FIELD_TYPES}
+                or not isinstance(experiment_providers, list) or len(experiment_providers) != 2
+                or any(not isinstance(name, str) or not name.strip() for name in experiment_providers)):
+            raise ValueError("This waterfall experiment config has incomplete or invalid identity metadata. Rebuild the A/B configs before running it.")
+        if engine:
+            raise ValueError("Keep experiment variant runs outside the Engine. Run both variants on the same source list, then assign the paired results to one variant per lead before importing into an Engine.")
+        config_path = Path(waterfall_config_path)
+        if not config_path.is_absolute():
+            config_path = ROOT / config_path
+        config_digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
+        sample_rows = rows[:max_rows]
+        lead_ids = [str(row.get("waterfall_experiment_lead_id") or row.get("source_row")
+                         or row.get("lead_id") or row.get("id") or f"input-row:{row_number}").strip()
+                    for row_number, row in enumerate(sample_rows, 2)]
+        if len(set(lead_ids)) != len(lead_ids):
+            raise ValueError("The bounded experiment sample contains duplicate stable lead IDs. Deduplicate the source list before spending on either variant.")
+        source_digest = hashlib.sha256(p.read_bytes()).hexdigest()
+        cohort_digest = hashlib.sha256(json.dumps(lead_ids, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+        experiment_context = {"id": experiment_id, "variant": variant, "field": experiment_field,
+                              "providers": [name.strip() for name in experiment_providers],
+                              "config_sha256": config_digest, "source_sha256": source_digest,
+                              "cohort_sha256": cohort_digest, "sample_limit": max_rows,
+                              "sample_rows": len(sample_rows)}
+        sample_manifest_path = LISTS / f"waterfall-experiment-{experiment_id}-cohort.json"
+        if sample_manifest_path.exists():
+            try:
+                sample_manifest = json.loads(sample_manifest_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                raise ValueError(f"Experiment cohort record {sample_manifest_path.name} cannot be read. Preserve it and inspect it before running either variant again.") from None
+            expected = {key: experiment_context[key] for key in
+                        ("id", "field", "providers", "source_sha256", "cohort_sha256", "sample_limit", "sample_rows")}
+            recorded = {key: sample_manifest.get(key) for key in expected}
+            if (sample_manifest.get("schema") != "dbi.waterfall-experiment-cohort.v1" or recorded != expected
+                    or not isinstance(sample_manifest.get("variants"), dict)):
+                raise ValueError("This experiment already has a different source list or sample cap recorded. Use the exact same CSV and --max for both variants; no provider calls were made.")
+            if not dry_run and experiment_context["variant"] in sample_manifest.get("variants", {}):
+                raise ValueError(f"Variant {variant} already has an output recorded for this experiment. Preserve that result; use a new experiment config for another run.")
+    LISTS.mkdir(exist_ok=True)
+    stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
+    experiment_suffix = (f"-wfexp-{experiment_context['id']}-{experiment_context['variant'].lower()}"
+                         f"{'-dry-run' if dry_run else ''}" if experiment_context else "")
+    out_csv = LISTS / f"{(today or dt.date.today()).isoformat()}-enriched-{stem}{experiment_suffix}.csv"
+    engine_dest = None
+    if engine:
+        from .engines import load, engine_dir
+        load(engine)
+        engine_dest = engine_dir(engine) / "imports" / f"enriched-{stem}{experiment_suffix}.csv"
+    if experiment_context:
+        collisions = [path.name for path in (out_csv, out_csv.with_suffix(".md"), engine_dest) if path and path.exists()]
+        if collisions:
+            raise ValueError("This experiment output already exists; it was left unchanged and no new enrichment was run: " + ", ".join(collisions))
     projection, approval = _provider_spend(provs, config["max_provider_calls"], field_configs,
         min(len(rows), max_rows), max_provider_spend, allow_unknown_provider_cost, dry_run)
     if bud:
@@ -1163,12 +1223,7 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
     for field_config in field_configs.values():
         field_config["spend_approval"] = approval
     out_rows, stats = enrich_rows(rows, headers, terms, render, max_rows, today, pause, None, bud, provs, config, dry_run, field_configs)
-    experiment = config.get("waterfall_experiment") if isinstance(config.get("waterfall_experiment"), dict) else None
     if experiment:
-        config_path = Path(waterfall_config_path)
-        if not config_path.is_absolute():
-            config_path = ROOT / config_path
-        config_digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
         providers_json = json.dumps(experiment.get("providers", []), ensure_ascii=False, separators=(",", ":"))
         for row_number, row in enumerate(out_rows, 2):
             lead_id = (row.get("waterfall_experiment_lead_id") or row.get("source_row")
@@ -1180,26 +1235,40 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
             row["waterfall_experiment_providers"] = providers_json
             row["waterfall_config_sha256"] = config_digest
         stats["waterfall_experiment"] = experiment
-    LISTS.mkdir(exist_ok=True)
-    stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
-    out_csv = LISTS / f"{(today or dt.date.today()).isoformat()}-enriched-{stem}.csv"
     write_csv(out_csv, out_rows, first=list(headers))
     provider_names = ", ".join(config["providers"])
     text = summary(stats, out_rows, p.name, bud, provider_names, dry_run, provs)
     if experiment:
         text += (f"\nWaterfall experiment: {experiment.get('id', '')} / variant {experiment.get('variant', '')}; "
                  f"field {experiment.get('field', '')}; providers {', '.join(experiment.get('providers', []))}. "
-                 f"Run config SHA-256: {config_digest}.")
+                 f"Run config SHA-256: {experiment_context['config_sha256']}. "
+                 f"Sample SHA-256: {experiment_context['cohort_sha256']} across {experiment_context['sample_rows']} rows; "
+                 f"reuse the exact source CSV and --max for the other variant.")
     out_csv.with_suffix(".md").write_text(text, encoding="utf-8")
     extra = ""
     if engine:
-        from .engines import load, engine_dir
-        load(engine)
-        imp = engine_dir(engine) / "imports"
-        imp.mkdir(parents=True, exist_ok=True)
-        dest = imp / f"enriched-{stem}.csv"
-        write_csv(dest, import_ready(out_rows, headers))
-        extra = f"\nImport-ready copy for your engine: {dest.relative_to(ROOT).as_posix()} (check it with: python dse.py import {engine})"
+        engine_dest.parent.mkdir(parents=True, exist_ok=True)
+        write_csv(engine_dest, import_ready(out_rows, headers))
+        extra = f"\nImport-ready copy for your engine: {engine_dest.relative_to(ROOT).as_posix()} (check it with: python dse.py import {engine})"
+    if experiment_context and not dry_run:
+        if sample_manifest_path.exists():
+            sample_manifest = json.loads(sample_manifest_path.read_text(encoding="utf-8"))
+        else:
+            sample_manifest = {"schema": "dbi.waterfall-experiment-cohort.v1", "id": experiment_context["id"],
+                               "field": experiment_context["field"], "providers": experiment_context["providers"],
+                               "source_sha256": experiment_context["source_sha256"],
+                               "cohort_sha256": experiment_context["cohort_sha256"],
+                               "sample_limit": experiment_context["sample_limit"],
+                               "sample_rows": experiment_context["sample_rows"], "variants": {}}
+        sample_manifest.setdefault("variants", {})[experiment_context["variant"]] = {
+            "config_sha256": experiment_context["config_sha256"],
+            "result_csv": out_csv.relative_to(ROOT).as_posix(),
+            "result_sha256": hashlib.sha256(out_csv.read_bytes()).hexdigest(),
+        }
+        temp_manifest = sample_manifest_path.with_suffix(".json.tmp")
+        temp_manifest.write_text(json.dumps(sample_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temp_manifest.replace(sample_manifest_path)
+        extra += f"\nMatched experiment sample record: {sample_manifest_path.relative_to(ROOT).as_posix()}"
     if projection["possible_calls"]:
         qualifier = "; includes unknown-priced providers" if projection["has_unknown_cost"] else ""
         text += f"\nConfigured-provider spend estimate: up to {projection['estimate']:.4f} {projection['currency'] or 'known-price currency'} across {projection['possible_calls']} calls{qualifier}. This is an estimate from your local configuration, not a provider invoice."

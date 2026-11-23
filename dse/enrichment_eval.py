@@ -272,21 +272,166 @@ def plan_waterfall_experiment(source: str, field: str, provider_a: str, provider
     return output
 
 
+def pair_experiment_variants(variant_a_path: str, variant_b_path: str) -> tuple[Path, dict]:
+    """Combine verified A/B enrichment outputs only when their recorded source cohort matches exactly."""
+    root = Path(__file__).resolve().parents[1]
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"}
+
+    def load_variant(path_value: str, expected_variant: str):
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = root / path
+        path = path.resolve()
+        try:
+            relative = path.relative_to(root.resolve()).as_posix()
+        except ValueError:
+            raise ValueError("Choose both variant CSVs from this toolkit's local my-lists folder.") from None
+        headers, rows = _read(path)
+        missing = sorted(required - set(headers))
+        if missing:
+            raise ValueError(f"Variant {expected_variant} is missing experiment metadata columns: " + ", ".join(missing))
+        if len(headers) != len(set(headers)):
+            raise ValueError(f"Variant {expected_variant} has duplicate CSV headers; preserve the source and correct the duplicate columns before pairing.")
+        if not rows:
+            raise ValueError(f"Variant {expected_variant} has no lead rows.")
+        ids = []
+        experiment_ids = set()
+        fields = set()
+        provider_pairs = set()
+        config_hashes = set()
+        variants = set()
+        for row_number, row in enumerate(rows, 2):
+            lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+            variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+            experiment_id = (row.get("waterfall_experiment_id") or "").strip()
+            field = (row.get("waterfall_experiment_field") or "").strip()
+            try:
+                providers = json.loads(row.get("waterfall_experiment_providers") or "")
+            except (TypeError, ValueError):
+                providers = None
+            if not lead_id or not experiment_id or variant != expected_variant or not field:
+                raise ValueError(f"Variant {expected_variant} has incomplete or conflicting experiment metadata at row {row_number}.")
+            if not isinstance(providers, list) or len(providers) != 2 or any(not isinstance(name, str) for name in providers):
+                raise ValueError(f"Variant {expected_variant} has invalid provider metadata at row {row_number}.")
+            ids.append(lead_id)
+            experiment_ids.add(experiment_id)
+            fields.add(field)
+            provider_pairs.add(tuple(providers))
+            config_hashes.add((row.get("waterfall_config_sha256") or "").strip().lower())
+            variants.add(variant)
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"Variant {expected_variant} contains duplicate lead IDs; no paired file was written.")
+        if len(experiment_ids) != 1 or len(fields) != 1 or len(provider_pairs) != 1 or len(config_hashes) != 1 or "" in config_hashes:
+            raise ValueError(f"Variant {expected_variant} mixes experiment IDs, fields, provider pairs, or config fingerprints.")
+        return path, relative, headers, rows, ids, next(iter(experiment_ids)), next(iter(fields)), next(iter(provider_pairs)), next(iter(config_hashes))
+
+    path_a, rel_a, headers_a, rows_a, ids_a, experiment_id, field, providers_a, config_hash_a = load_variant(variant_a_path, "A")
+    path_b, rel_b, headers_b, rows_b, ids_b, experiment_b, field_b, providers_b, config_hash_b = load_variant(variant_b_path, "B")
+    if experiment_b != experiment_id or field_b != field or providers_b != providers_a:
+        raise ValueError("The selected files are not the A and B variants of the same experiment field and provider pair.")
+    if ids_a != ids_b:
+        raise ValueError("The selected variants do not contain the same leads in the same order; no paired CSV was written.")
+    manifest_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-cohort.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("The local experiment cohort record is missing or unreadable. Preserve both CSVs and inspect the matching waterfall-experiment cohort file.") from None
+    expected_cohort = hashlib.sha256(json.dumps(ids_a, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    if (manifest.get("schema") != "dbi.waterfall-experiment-cohort.v1"
+            or manifest.get("id") != experiment_id
+            or manifest.get("field") != field
+            or manifest.get("providers") != list(providers_a)
+            or manifest.get("sample_rows") != len(ids_a)
+            or manifest.get("cohort_sha256") != expected_cohort):
+        raise ValueError("The selected CSV rows do not match the experiment's recorded cohort; no paired file was written.")
+    records = manifest.get("variants")
+    record_a = records.get("A") if isinstance(records, dict) else None
+    record_b = records.get("B") if isinstance(records, dict) else None
+    if not isinstance(record_a, dict) or not isinstance(record_b, dict):
+        raise ValueError("Both variants must complete and be recorded before they can be paired.")
+    if (record_a.get("result_csv") != rel_a or record_b.get("result_csv") != rel_b
+            or record_a.get("config_sha256") != config_hash_a or record_b.get("config_sha256") != config_hash_b
+            or record_a.get("result_sha256") != hashlib.sha256(path_a.read_bytes()).hexdigest()
+            or record_b.get("result_sha256") != hashlib.sha256(path_b.read_bytes()).hexdigest()):
+        raise ValueError("One selected result no longer matches the locally recorded experiment output. Preserve it and rerun only through the original workflow.")
+    headers = list(dict.fromkeys([*headers_a, *headers_b]))
+    output = root / "my-lists" / f"waterfall-experiment-{experiment_id}-paired.csv"
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows([*rows_a, *rows_b])
+    output_bytes = ("\ufeff" + buffer.getvalue()).encode("utf-8")
+    if output.exists():
+        if output.read_bytes() != output_bytes:
+            raise ValueError(f"A different paired output already exists; it was left untouched: {output.relative_to(root).as_posix()}")
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with output.open("xb") as file:
+                file.write(output_bytes)
+        except FileExistsError:
+            if output.read_bytes() != output_bytes:
+                raise ValueError(f"A different paired output appeared during creation and was left untouched: {output.relative_to(root).as_posix()}") from None
+    manifest["paired_csv"] = {"path": output.relative_to(root).as_posix(),
+                              "sha256": hashlib.sha256(output_bytes).hexdigest(), "rows": len(rows_a) + len(rows_b)}
+    temp_path = manifest_path.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(manifest_path)
+    result = {"experiment_id": experiment_id, "field": field, "lead_count": len(ids_a),
+              "rows": len(rows_a) + len(rows_b), "variants": {"A": len(rows_a), "B": len(rows_b)},
+              "output": output.relative_to(root).as_posix(), "outreach_assigned": False}
+    print(f"Paired {len(ids_a)} leads across A and B ({len(rows_a) + len(rows_b)} rows): {result['output']}")
+    print("The verified paired file is ready for the assign-outreach step; no variant was selected and no Engine was changed.")
+    return output, result
+
+
 def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", out: str = "", engine: str = "") -> tuple[Path, dict]:
     """Select exactly one A/B enriched row per lead using a stable hash assignment."""
-    headers, rows = _read(source)
-    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field", "waterfall_experiment_lead_id"}
+    root = Path(__file__).resolve().parents[1]
+    source_path = Path(source)
+    if not source_path.is_absolute():
+        source_path = root / source_path
+    source_path = source_path.resolve()
+    try:
+        source_relative = source_path.relative_to(root.resolve()).as_posix()
+    except ValueError:
+        raise ValueError("Choose a paired experiment CSV from this toolkit's local my-lists folder.") from None
+    headers, rows = _read(source_path)
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"}
     missing = sorted(required - set(headers))
     if missing:
         raise ValueError("Input CSV is missing required experiment columns: " + ", ".join(missing))
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", experiment_id or ""):
         raise ValueError("Experiment ID must be 1-80 letters, numbers, dots, underscores, or hyphens, starting with a letter or number.")
+    source_digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    cohort_manifest_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-cohort.json"
+    try:
+        cohort_manifest = json.loads(cohort_manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("The verified local cohort record is missing or unreadable. Pair the A and B results again before assignment.") from None
+    paired_record = cohort_manifest.get("paired_csv")
+    if (cohort_manifest.get("schema") != "dbi.waterfall-experiment-cohort.v1"
+            or cohort_manifest.get("id") != experiment_id
+            or not isinstance(paired_record, dict)
+            or paired_record.get("path") != source_relative
+            or paired_record.get("sha256") != source_digest
+            or paired_record.get("rows") != len(rows)):
+        raise ValueError("This CSV does not match the locally verified paired output for that experiment. Pair the original A and B files again; no assignment was made.")
     selected = [row for row in rows if (row.get("waterfall_experiment_id") or "").strip() == experiment_id]
     if not selected:
         raise ValueError(f"No rows for experiment {experiment_id!r} were found in {source}.")
+    if len(selected) != len(rows):
+        raise ValueError("The paired CSV contains rows from more than one experiment; no assignment was made.")
     fields = {(row.get("waterfall_experiment_field") or "").strip() for row in selected}
     if len(fields) != 1 or not next(iter(fields)):
         raise ValueError("Select rows from exactly one nonblank experiment field per outreach assignment.")
+    if fields != {cohort_manifest.get("field")}:
+        raise ValueError("The paired CSV field does not match its local cohort record; no assignment was made.")
+    provider_pairs = set()
+    variant_ids: dict[str, list[str]] = {"A": [], "B": []}
+    variant_configs: dict[str, set[str]] = {"A": set(), "B": set()}
 
     by_lead: dict[str, dict[str, dict[str, str]]] = defaultdict(dict)
     for row_number, row in enumerate(selected, 2):
@@ -298,11 +443,29 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
             raise ValueError(f"Experiment row {row_number} has invalid variant {variant!r}; expected A or B.")
         if variant in by_lead[lead_id]:
             raise ValueError(f"Lead {lead_id!r} has more than one {variant} row; resolve duplicates before assignment.")
+        try:
+            providers = json.loads(row.get("waterfall_experiment_providers") or "")
+        except (TypeError, ValueError):
+            providers = None
+        if not isinstance(providers, list) or providers != cohort_manifest.get("providers"):
+            raise ValueError(f"Experiment row {row_number} has provider metadata that does not match its cohort record.")
+        provider_pairs.add(tuple(providers))
+        variant_ids[variant].append(lead_id)
+        variant_configs[variant].add((row.get("waterfall_config_sha256") or "").strip().lower())
         by_lead[lead_id][variant] = row
+    if len(provider_pairs) != 1:
+        raise ValueError("The paired CSV mixes configured provider pairs; no assignment was made.")
     unpaired = [lead for lead, variants in by_lead.items() if set(variants) != {"A", "B"}]
     if unpaired:
         sample = ", ".join(repr(x) for x in unpaired[:5])
         raise ValueError(f"{len(unpaired)} lead(s) do not have exactly one A and one B enrichment row (for example {sample}); no assignment file was written.")
+    expected_cohort = hashlib.sha256(json.dumps(variant_ids["A"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    variant_records = cohort_manifest.get("variants") if isinstance(cohort_manifest.get("variants"), dict) else {}
+    if (variant_ids["A"] != variant_ids["B"]
+            or len(variant_ids["A"]) != cohort_manifest.get("sample_rows")
+            or cohort_manifest.get("cohort_sha256") != expected_cohort
+            or any(len(variant_configs[v]) != 1 or next(iter(variant_configs[v])) != (variant_records.get(v) or {}).get("config_sha256") for v in ("A", "B"))):
+        raise ValueError("The paired lead cohort or variant config fingerprints do not match the local record; no assignment was made.")
 
     extra = ["waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant", "waterfall_outreach_assignment_seed"]
     assigned_rows = []
@@ -323,9 +486,20 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
         from .engines import engine_dir, load, validate_waterfall_outreach_rows
         cfg = load(engine)
         validate_waterfall_outreach_rows(engine, assigned_rows)
-        output = engine_dir(engine) / "imports" / (Path(source).stem + f"-{experiment_id}-outreach-assigned.csv")
+        output = engine_dir(engine) / "imports" / (source_path.stem + f"-{experiment_id}-outreach-assigned.csv")
+        engine_slug = cfg.get("slug")
     else:
-        output = Path(out) if out else Path(source).with_name(Path(source).stem + f"-{experiment_id}-outreach-assigned.csv")
+        output = Path(out) if out else source_path.with_name(source_path.stem + f"-{experiment_id}-outreach-assigned.csv")
+        engine_slug = None
+    try:
+        assignment_output_path = output.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        assignment_output_path = str(output.resolve())
+    previous_assignment = cohort_manifest.get("assignment")
+    if isinstance(previous_assignment, dict) and (previous_assignment.get("seed") != str(seed)
+            or previous_assignment.get("engine") != engine_slug
+            or previous_assignment.get("assigned_csv") != assignment_output_path):
+        raise ValueError("This experiment already has an outreach assignment with a different seed, Engine, or output name. Keep the original cohort assignment consistent.")
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=list(dict.fromkeys([*headers, *extra])), extrasaction="ignore")
     writer.writeheader()
@@ -339,10 +513,11 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
                 "experiment_field": next(iter(fields)), "seed": str(seed),
                 "assignment_algorithm": "sha256_parity_experiment_id_seed_stable_lead_id",
                 "lead_count": len(by_lead), "source_rows": len(selected), "variant_counts": counts,
-                "one_variant_per_lead": True, "source_file_name": Path(source).name,
-                "source_sha256": hashlib.sha256(Path(source).read_bytes()).hexdigest(),
+        "one_variant_per_lead": True, "source_file_name": source_path.name,
+                "source_path": source_relative, "source_sha256": source_digest,
+                "cohort_sha256": cohort_manifest.get("cohort_sha256"),
                 "assigned_csv_name": output.name, "assigned_csv_sha256": hashlib.sha256(output_bytes).hexdigest(),
-                "engine": cfg.get("slug") if engine else None}
+                "engine": engine_slug}
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
         raise ValueError(f"Assignment audit already exists with different contents; it was left untouched: {manifest_path}")
@@ -350,6 +525,14 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
         output.write_bytes(output_bytes)
     if not manifest_path.exists():
         manifest_path.write_bytes(manifest_bytes)
+    cohort_manifest["assignment"] = {"seed": str(seed), "engine": engine_slug,
+                                      "assigned_csv": assignment_output_path,
+                                      "assigned_csv_sha256": hashlib.sha256(output_bytes).hexdigest(),
+                                      "assignment_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+                                      "paired_source_sha256": source_digest}
+    cohort_temp = cohort_manifest_path.with_suffix(".json.tmp")
+    cohort_temp.write_text(json.dumps(cohort_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    cohort_temp.replace(cohort_manifest_path)
     result = {"experiment_id": experiment_id, "experiment_field": next(iter(fields)), "seed": str(seed),
               "lead_count": len(by_lead), "variant_counts": counts, "assignment": "stable SHA-256 parity of experiment ID, seed, and lead ID",
               "one_variant_per_lead": True, "source_rows": len(selected), "engine": cfg.get("slug") if engine else None,
@@ -1760,13 +1943,20 @@ def _send_outcome_brief(report: dict) -> str:
                   "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
     audits = report.get("assignment_audit_checks", [])
     if audits:
-        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches |",
-                      "|---|---|---|---|---:|---:|---:|---:|---|"])
+        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Cohort record | Exact lead roster | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches | Integrity detail |",
+                      "|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|"])
         for audit in audits:
             expected, seen = audit["expected_variant_counts"], audit["send_list_variant_counts"]
             hash_status = "matches" if audit["assigned_csv_hash_matches"] else "missing or mismatch"
+            cohort_status = "matches" if audit.get("cohort_record_matches") else "missing or mismatch"
+            roster_status = "matches" if audit.get("send_list_exact_lead_roster_matches") else "missing or differs"
             seed_status = "yes" if audit["assignment_seed_matches"] is True else "pending" if audit["assignment_seed_matches"] is None else "no"
-            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} |")
+            diffs = audit.get("send_list_roster_differences", {})
+            roster_detail = "; ".join(f"{variant}: {diffs.get(variant, {}).get('missing', 0)} missing, {diffs.get(variant, {}).get('unexpected', 0)} unexpected" for variant in ("A", "B"))
+            integrity_detail = str(audit.get("cohort_record_error") or "").strip()
+            detail = "; ".join(x for x in (integrity_detail, roster_detail) if x) or "—"
+            detail = detail.replace("|", "/").replace("\r", " ").replace("\n", " ")
+            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {cohort_status} | {roster_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} | {detail} |")
         lines.append("")
     return "\n".join(lines)
 
@@ -1986,6 +2176,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                                "mature_won_rate_a_minus_b": _ratio(mature_a["won_count"], mature_a["mature_sent_leads"]) - _ratio(mature_b["won_count"], mature_b["mature_sent_leads"])
                                    if mature_a["won_rate"] is not None and mature_b["won_rate"] is not None else None})
     imports_dir = engine_dir(engine) / "imports"
+    from . import importer
     audit_candidates = sorted(imports_dir.glob(f"*-{experiment_id}-outreach-assigned-assignment.json")) if experiment_id else sorted(imports_dir.glob("*-outreach-assigned-assignment.json"))
     assignment_audit_checks = []
     for audit_path in audit_candidates:
@@ -2001,6 +2192,35 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         csv_path = (audit_path.parent / assigned_name).resolve() if assigned_name and Path(assigned_name).name == assigned_name else None
         csv_exists = bool(csv_path and csv_path.is_file() and imports_dir.resolve() in csv_path.parents)
         csv_hash_matches = bool(csv_exists and hashlib.sha256(csv_path.read_bytes()).hexdigest() == audit.get("assigned_csv_sha256"))
+        cohort_record_matches = False
+        cohort_record_error = ""
+        if csv_hash_matches and csv_path is not None:
+            try:
+                importer._verify_waterfall_assignment_file(engine, csv_path)
+                cohort_record_matches = True
+            except (OSError, ValueError) as error:
+                cohort_record_error = str(error)[:300]
+        expected_ids_by_variant: dict[str, set[str]] = {"A": set(), "B": set()}
+        if csv_hash_matches and cohort_record_matches and csv_path is not None:
+            try:
+                _assigned_headers, assigned_rows = importer.read_rows(csv_path)
+                for row in assigned_rows:
+                    variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+                    lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+                    if variant in expected_ids_by_variant and lead_id:
+                        expected_ids_by_variant[variant].add(lead_id)
+            except (OSError, ValueError) as error:
+                cohort_record_matches = False
+                cohort_record_error = (str(error) or "Could not read assigned lead roster.")[:300]
+        observed_ids_by_variant = {variant: set(assignment_variant_leads[(eid, field, variant)])
+                                   for variant in ("A", "B")}
+        roster_diffs = {
+            variant: {"missing": len(expected_ids_by_variant[variant] - observed_ids_by_variant[variant]),
+                      "unexpected": len(observed_ids_by_variant[variant] - expected_ids_by_variant[variant])}
+            for variant in ("A", "B")
+        }
+        exact_roster_matches = bool(cohort_record_matches and all(
+            expected_ids_by_variant[variant] == observed_ids_by_variant[variant] for variant in ("A", "B")))
         observed = {variant: len(assignment_variant_leads[(eid, field, variant)]) for variant in ("A", "B")}
         expected_raw = audit.get("variant_counts") if isinstance(audit.get("variant_counts"), dict) else {}
         expected = {variant: int(expected_raw.get(variant, 0) or 0) for variant in ("A", "B")}
@@ -2012,9 +2232,12 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             status = "assigned_csv_missing"
         elif not csv_hash_matches:
             status = "assigned_csv_hash_mismatch"
-        elif observed_total < expected_total:
+        elif not cohort_record_matches:
+            status = "cohort_record_mismatch"
+        elif observed_total < expected_total and not any(item["unexpected"] for item in roster_diffs.values()):
             status = "send_lists_incomplete"
-        elif observed_total > expected_total or observed != expected or seed_matches is False:
+        elif (not exact_roster_matches or observed_total > expected_total or observed != expected
+              or seed_matches is False):
             status = "send_list_assignment_mismatch"
         else:
             status = "verified_in_send_lists"
@@ -2022,9 +2245,32 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
              "audit_file": audit_path.name, "assigned_csv": assigned_name,
              "source_sha256": audit.get("source_sha256"), "assigned_csv_sha256": audit.get("assigned_csv_sha256"),
              "assigned_csv_exists": csv_exists, "assigned_csv_hash_matches": csv_hash_matches,
+             "cohort_record_matches": cohort_record_matches, "cohort_record_error": cohort_record_error or None,
+             "send_list_exact_lead_roster_matches": exact_roster_matches,
+             "send_list_roster_differences": roster_diffs,
              "expected_lead_count": expected_total, "expected_variant_counts": expected,
              "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
              "assignment_seed_matches": seed_matches, "status": status})
+    audited_cohorts = {(check["experiment_id"], check["experiment_field"]) for check in assignment_audit_checks}
+    for eid, modes in assignment_modes.items():
+        if "single_variant_assigned" not in modes or (eid in audited_cohorts):
+            continue
+        field = eid[1]
+        observed = {variant: len(assignment_variant_leads[(eid[0], field, variant)]) for variant in ("A", "B")}
+        observed_total = sum(observed.values())
+        seeds = assignment_seeds[eid]
+        assignment_audit_checks.append({
+            "experiment_id": eid[0], "experiment_field": field,
+            "audit_file": None, "assigned_csv": None, "source_sha256": None, "assigned_csv_sha256": None,
+            "assigned_csv_exists": False, "assigned_csv_hash_matches": False,
+            "cohort_record_matches": False, "cohort_record_error": "Assignment audit sidecar is missing or unreadable.",
+            "send_list_exact_lead_roster_matches": False,
+            "send_list_roster_differences": {"A": {"missing": 0, "unexpected": observed["A"]},
+                                             "B": {"missing": 0, "unexpected": observed["B"]}},
+            "expected_lead_count": None, "expected_variant_counts": {"A": None, "B": None},
+            "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
+            "assignment_seed_matches": None if not observed_total else False,
+            "status": "assignment_audit_missing"})
     blocked_audit_keys = {(check["experiment_id"], check["experiment_field"]): check["status"]
                           for check in assignment_audit_checks if check["status"] != "verified_in_send_lists"}
     if blocked_audit_keys:
@@ -2043,7 +2289,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "assignment_audit_checks": assignment_audit_checks,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
-              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; when an assignment audit exists, comparisons are also withheld until the assigned CSV hash, expected counts, seed, and complete Send Desk-list coverage reconcile. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; explicitly assigned cohorts also require a readable assignment audit and reconciliation of the assigned CSV hash, local cohort record, source evidence, exact lead roster, expected counts, seed, and complete Send Desk-list coverage. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -2088,8 +2334,11 @@ def main(argv: list[str] | None = None) -> int:
     wx.add_argument("--leads", type=int, default=50)
     wx.add_argument("--seed", type=int, default=42)
     wx.add_argument("--out", default="", help="manifest CSV output path")
+    pv = sub.add_parser("pair-variants", help="verify and combine the recorded A/B waterfall result files")
+    pv.add_argument("variant_a", help="completed A result CSV from my-lists")
+    pv.add_argument("variant_b", help="completed B result CSV from my-lists")
     ao = sub.add_parser("assign-outreach", help="assign each paired experiment lead to exactly one outreach variant")
-    ao.add_argument("source", help="combined A/B enriched CSV with stable experiment lead IDs")
+    ao.add_argument("source", help="verified paired A/B enrichment CSV with stable experiment lead IDs")
     ao.add_argument("--experiment-id", required=True)
     ao.add_argument("--seed", default="42", help="sticky assignment seed (same seed preserves assignments)")
     ao.add_argument("--engine", default="", help="optional Engine: validate existing exposures and save directly to its imports folder")
@@ -2120,6 +2369,8 @@ def main(argv: list[str] | None = None) -> int:
             plan_waterfall_experiment(args.source, args.field, args.provider_a, args.provider_b,
                                       args.engine_path, args.enrichment_profile, args.research_lane,
                                       args.leads, args.seed, args.out)
+        elif args.action == "pair-variants":
+            pair_experiment_variants(args.variant_a, args.variant_b)
         elif args.action == "assign-outreach":
             assign_outreach_variant(args.source, args.experiment_id, args.seed, args.out, args.engine)
         elif args.action == "pair-reviewers":

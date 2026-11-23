@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -165,9 +167,108 @@ def files(slug: str, folder: str = "imports") -> list[Path]:
     return sorted(d.glob("*.csv")) if d.exists() else []
 
 
+def _verify_waterfall_assignment_file(slug: str, path: Path) -> None:
+    """Reject edited or detached assigned experiment CSVs before Engine import or list generation."""
+    sidecar_path = path.with_name(path.stem + "-assignment.json")
+    try:
+        audit = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError(f"Assigned experiment file {path.name} has no readable assignment audit. Preserve it; do not use it for Engine outreach.") from None
+    experiment_id = str(audit.get("experiment_id") or "")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", experiment_id):
+        raise ValueError(f"Assigned experiment file {path.name} has an invalid experiment ID in its audit.")
+    lead_count = audit.get("lead_count")
+    headers, rows = read_rows(path)
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                "waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant",
+                "waterfall_outreach_assignment_seed"}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError(f"Assigned experiment file {path.name} is missing audited columns: " + ", ".join(missing))
+    if (audit.get("schema") != "dbi.waterfall-outreach-assignment.v1"
+            or audit.get("assigned_csv_name") != path.name
+            or audit.get("engine") != slug
+            or not audit.get("one_variant_per_lead")
+            or not isinstance(lead_count, int) or isinstance(lead_count, bool) or lead_count < 1
+            or audit.get("source_rows") != lead_count * 2
+            or len(rows) != lead_count
+            or audit.get("assigned_csv_sha256") != hashlib.sha256(path.read_bytes()).hexdigest()):
+        raise ValueError(f"Assigned experiment file {path.name} does not match its saved audit or target Engine. Restore the original file before continuing.")
+    try:
+        source_path = path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        raise ValueError(f"Assigned experiment file {path.name} is outside this toolkit's local data folder.") from None
+    cohort_path = ROOT / "my-lists" / f"waterfall-experiment-{experiment_id}-cohort.json"
+    try:
+        cohort = json.loads(cohort_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError(f"Assigned experiment file {path.name} has no readable matching cohort record.") from None
+    assignment = cohort.get("assignment") if isinstance(cohort.get("assignment"), dict) else {}
+    paired = cohort.get("paired_csv") if isinstance(cohort.get("paired_csv"), dict) else {}
+    audit_digest = hashlib.sha256(sidecar_path.read_bytes()).hexdigest()
+    paired_path = ROOT / str(paired.get("path") or "")
+    try:
+        paired_relative = paired_path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        raise ValueError(f"Assigned experiment file {path.name} has an unsafe paired-source path in its cohort record.") from None
+    if (not paired_path.is_file()
+            or paired_relative != paired.get("path")
+            or hashlib.sha256(paired_path.read_bytes()).hexdigest() != paired.get("sha256")):
+        raise ValueError(f"Assigned experiment file {path.name} no longer has its original paired source. Restore the verified pair before continuing.")
+    if (cohort.get("schema") != "dbi.waterfall-experiment-cohort.v1"
+            or cohort.get("id") != experiment_id
+            or audit.get("experiment_field") != cohort.get("field")
+            or audit.get("assignment_algorithm") != "sha256_parity_experiment_id_seed_stable_lead_id"
+            or assignment.get("assigned_csv") != source_path
+            or assignment.get("assigned_csv_sha256") != audit.get("assigned_csv_sha256")
+            or assignment.get("assignment_manifest_sha256") != audit_digest
+            or assignment.get("paired_source_sha256") != paired.get("sha256")
+            or audit.get("source_path") != paired.get("path")
+            or audit.get("source_sha256") != paired.get("sha256")
+            or audit.get("cohort_sha256") != cohort.get("cohort_sha256")
+            or assignment.get("seed") != audit.get("seed")
+            or assignment.get("engine") != slug):
+        raise ValueError(f"Assigned experiment file {path.name} is detached from its verified cohort record. Restore the original assignment output.")
+    variants = cohort.get("variants") if isinstance(cohort.get("variants"), dict) else {}
+    counts = {"A": 0, "B": 0}
+    seen: set[str] = set()
+    for row_number, row in enumerate(rows, 2):
+        row_experiment = (row.get("waterfall_experiment_id") or "").strip()
+        row_variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        assigned_experiment = (row.get("waterfall_outreach_assignment_experiment_id") or "").strip()
+        assigned_variant = (row.get("waterfall_outreach_assignment_variant") or "").strip().upper()
+        row_seed = (row.get("waterfall_outreach_assignment_seed") or "").strip()
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        if (row_experiment != experiment_id or assigned_experiment != experiment_id
+                or row_variant not in {"A", "B"} or assigned_variant != row_variant
+                or row_seed != str(audit.get("seed")) or not lead_id
+                or lead_id in seen
+                or (row.get("waterfall_experiment_field") or "").strip() != cohort.get("field")):
+            raise ValueError(f"Assigned experiment file {path.name} has inconsistent assignment rows (first issue at row {row_number}).")
+        try:
+            providers = json.loads(row.get("waterfall_experiment_providers") or "")
+        except (TypeError, ValueError):
+            providers = None
+        expected_variant_config = (variants.get(row_variant) or {}).get("config_sha256")
+        if (providers != cohort.get("providers")
+                or (row.get("waterfall_config_sha256") or "").strip().lower() != expected_variant_config):
+            raise ValueError(f"Assigned experiment file {path.name} has provider or config metadata outside its cohort record.")
+        expected_digest = hashlib.sha256(f"{experiment_id}\0{audit.get('seed')}\0{lead_id}".encode("utf-8")).digest()
+        expected_variant = "A" if expected_digest[0] % 2 == 0 else "B"
+        if row_variant != expected_variant:
+            raise ValueError(f"Assigned experiment file {path.name} no longer matches its stable assignment seed.")
+        seen.add(lead_id)
+        counts[row_variant] += 1
+    if len(seen) != cohort.get("sample_rows") or counts != audit.get("variant_counts"):
+        raise ValueError(f"Assigned experiment file {path.name} has row or variant counts that disagree with its audit.")
+
+
 def load_all(slug: str) -> tuple[list[dict], list[dict]]:
     rows, reports = [], []
     for f in files(slug):
+        if f.name.endswith("-outreach-assigned.csv"):
+            _verify_waterfall_assignment_file(slug, f)
         r, rep = normalize(f)
         rows += r
         reports.append(rep)

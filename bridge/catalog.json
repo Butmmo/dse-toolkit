@@ -1753,7 +1753,7 @@
     "dse.import_check": {
       "label": "My engine: check my file",
       "group": "My engines",
-      "help": "Go-to-Market and Authority engines build their lists from a file YOU make. Go-to-Market: a CSV exported from your own Clay, Apollo or HubSpot account, saved in engines/<engine>/imports/ on your PC. Authority: a CSV of experts you looked at and pasted by hand (name, profile_url, headline, connections, post_dates, post_1, post_2), saved in engines/<engine>/pasted/. This shows which columns were understood, how many rows, and the best prospects, so a wrong column shows up before you build a list. Nothing is scraped from LinkedIn or anywhere else.",
+      "help": "Go-to-Market and Authority engines build their lists from a file YOU make. Go-to-Market: a CSV exported from your own Clay, Apollo or HubSpot account, saved in engines/<engine>/imports/ on your PC. Authority: a CSV of experts you looked at and pasted by hand (name, profile_url, headline, connections, post_dates, post_1, post_2), saved in engines/<engine>/pasted/. This shows which columns were understood, how many rows, and the best prospects, so a wrong column shows up before you build a list. For waterfall experiment assignments, the local assignment audit, cohort record and file hash are checked before import. Nothing is scraped from LinkedIn or anywhere else.",
       "script": "dse.py",
       "args": [
         {
@@ -10061,7 +10061,7 @@
     "dse.enrich": {
       "label": "Lead enrichment: find emails, owners and phones",
       "group": "Grow",
-      "help": "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here.",
+      "help": "Takes a list of companies (a CSV with a website or domain column, like a Clay, Apollo or HubSpot export) and reads each company's own public website, politely, for emails, the owner's name, phone, contact form, booking tool, socials and what it is built with. Every finding names the page it came from. It scores each lead from rules you can read and keeps every column you gave it. Free: no paid service is used unless you pick a provider with your own key. The key is set on your PC, never here. For a waterfall experiment, run each A/B config against the exact same source CSV and lead cap. The toolkit records and checks the sample fingerprint, gives each variant a separate output, and blocks direct Engine imports until you assign one variant per lead. Review and approve the spend ceiling for each run separately.",
       "script": "dse.py",
       "args": [
         {
@@ -10196,7 +10196,8 @@
       "timeout_min": 180,
       "outputs": [
         "my-lists/*-enriched-*.csv",
-        "my-lists/*-enriched-*.md"
+        "my-lists/*-enriched-*.md",
+        "my-lists/waterfall-experiment-*-cohort.json"
       ],
       "category": "enrich",
       "source": "First-party company websites; optional configured providers",
@@ -10206,6 +10207,7 @@
         "Shared per-field provenance, identity, freshness and verification records",
         "Per-rung attempts, cache hits, accepted/rejected candidates and errors",
         "Enriched CSV and report",
+        "Separate, experiment-tagged result files and a local exact-sample record for A/B runs",
         "Conservative configured-provider spend estimate and runtime ceiling; unknown-priced providers require separate acknowledgment",
         "Enriched CSV and report"
       ]
@@ -11918,10 +11920,111 @@
         "Spend estimate and required approvals"
       ]
     },
+    "dse.enrich_waterfall_build_experiment": {
+      "label": "Lead enrichment: draft a two-provider comparison",
+      "group": "Grow",
+      "help": "Creates two local waterfall drafts from one saved config. The drafts differ only by swapping the two selected provider positions in the chosen field; they share a stable experiment ID and record the source config hash. This prepares a comparison but does not read leads, call providers, or choose a winner. Review and preview the spend for both drafts, then use the same bounded lead cohort for both variants.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--build-waterfall-experiment",
+          "field": "go"
+        },
+        {
+          "opt": "--waterfall-config",
+          "field": "waterfall_config"
+        },
+        {
+          "opt": "--experiment-field",
+          "field": "experiment_field"
+        },
+        {
+          "opt": "--experiment-provider-a",
+          "field": "provider_a"
+        },
+        {
+          "opt": "--experiment-provider-b",
+          "field": "provider_b"
+        }
+      ],
+      "fields": [
+        {
+          "name": "go",
+          "label": "Create local comparison drafts",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "waterfall_config",
+          "label": "Saved source waterfall JSON",
+          "type": "file",
+          "required": true,
+          "glob": "enrich-waterfalls/*.json",
+          "exclude": "-experiment-"
+        },
+        {
+          "name": "experiment_field",
+          "label": "Field to compare",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "email",
+              "label": "Email"
+            },
+            {
+              "value": "phone",
+              "label": "Phone"
+            },
+            {
+              "value": "person_identity",
+              "label": "Person identity"
+            },
+            {
+              "value": "firmographics",
+              "label": "Firmographics"
+            }
+          ],
+          "default": "email"
+        },
+        {
+          "name": "provider_a",
+          "label": "First configured provider",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        },
+        {
+          "name": "provider_b",
+          "label": "Second configured provider",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "enrich-waterfalls/*-experiment-*.json"
+      ],
+      "category": "source",
+      "source": "Saved local waterfall config",
+      "cost": "Local-only config creation; no lead data, provider calls, internet searches, paid services, or cloud AI.",
+      "outputs_summary": [
+        "Two never-overwrite config drafts with the selected provider positions swapped",
+        "One stable experiment ID and source config fingerprint shared by both variants",
+        "Original waterfall is unchanged",
+        "Both drafts can be reviewed and spend-previewed before any live enrichment"
+      ]
+    },
     "dse.waterfall_assign_outreach": {
       "label": "Waterfall experiments: assign outreach variants",
       "group": "Waterfall experiments",
-      "help": "Takes a combined CSV containing both enriched variants for the same leads, assigns each stable lead ID to exactly one outreach variant using the experiment ID and seed, checks the selected Engine's prior exposure history, and saves the assigned CSV directly into that Engine's imports. It does not send anything or upload lead rows. Keep the paired source CSV outside the Engine imports folder.",
+      "help": "Takes a verified paired-results CSV created by the Pair verified A/B results tool. It checks the local cohort manifest and paired-file hash, then assigns each stable lead ID to exactly one outreach variant using the experiment ID and seed. It checks the selected Engine's prior exposure history and saves the assigned CSV to that PC's local Engine imports folder. The CSV stays local; this tool does not attach lead rows to its job result, upload them, or send outreach. Continue with the PC Engine workflow and inspect the import before outreach.",
       "script": "dse.py",
       "args": [
         {
@@ -11952,8 +12055,7 @@
           "label": "Combined paired A/B enrichment CSV",
           "type": "file",
           "required": true,
-          "glob": "my-lists/*.csv",
-          "exclude": "outreach-assigned"
+          "glob": "my-lists/waterfall-experiment-*-paired.csv"
         },
         {
           "name": "experiment_id",
@@ -11982,14 +12084,35 @@
       ],
       "timeout_min": 5,
       "outputs": [
-        "my-lists/*-outreach-assigned.csv",
-        "my-lists/*-outreach-assigned-assignment.json",
-        "engines/*/imports/*-outreach-assigned.csv",
-        "engines/*/imports/*-outreach-assigned-assignment.json"
+        {
+          "glob": "my-lists/*-outreach-assigned.csv",
+          "upload": false,
+          "label": "Assigned lead CSV kept on this PC"
+        },
+        {
+          "glob": "my-lists/*-outreach-assigned-assignment.json",
+          "upload": false,
+          "label": "Data-minimized assignment audit"
+        },
+        {
+          "glob": "engines/*/imports/*-outreach-assigned.csv",
+          "upload": false,
+          "label": "Engine import for normal Engine sync"
+        },
+        {
+          "glob": "engines/*/imports/*-outreach-assigned-assignment.json",
+          "upload": false,
+          "label": "Engine assignment audit"
+        },
+        {
+          "glob": "my-lists/waterfall-experiment-*-cohort.json",
+          "upload": false,
+          "label": "Local experiment cohort record"
+        }
       ],
       "category": "enrich",
       "source": "Paired enrichment CSV selected from this PC",
-      "cost": "No provider calls, internet searches, paid services, or cloud AI. Assignment is computed locally from the experiment ID, seed, and stable lead ID.",
+      "cost": "No provider calls, internet searches, paid services, cloud AI, or lead-row uploads by the runner. Assignment is computed locally from the experiment ID, seed, and stable lead ID. The assigned CSV is saved to this PC's Engine imports folder and is not attached to the HQ Tool result.",
       "outputs_summary": [
         "One assigned A or B row per paired stable lead ID",
         "Repeatable assignment for the same experiment, seed, and lead ID",
@@ -11999,10 +12122,70 @@
         "The original paired enrichment CSV is not modified"
       ]
     },
+    "dse.waterfall_pair_variants": {
+      "label": "Waterfall experiments: pair verified A/B results",
+      "group": "Waterfall experiments",
+      "help": "Choose the completed A and B result CSVs from the same experiment. This local tool checks the shared cohort record, source-sample fingerprint, exact lead order, experiment metadata, and file hashes before combining the two rows per lead. It never selects a variant, imports into an Engine, sends outreach, or uploads the paired lead CSV. Next, use Assign outreach variants to choose one result per lead.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "eval-enrichment"
+        },
+        {
+          "lit": "pair-variants"
+        },
+        {
+          "field": "variant_a"
+        },
+        {
+          "field": "variant_b"
+        }
+      ],
+      "fields": [
+        {
+          "name": "variant_a",
+          "label": "Completed A variant CSV",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*-wfexp-*-a.csv",
+          "exclude": "dry-run"
+        },
+        {
+          "name": "variant_b",
+          "label": "Completed B variant CSV",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*-wfexp-*-b.csv",
+          "exclude": "dry-run"
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": [
+        {
+          "glob": "my-lists/waterfall-experiment-*-paired.csv",
+          "upload": false,
+          "label": "Paired A/B CSV kept on this PC"
+        },
+        {
+          "glob": "my-lists/waterfall-experiment-*-cohort.json",
+          "upload": false,
+          "label": "Local experiment cohort record"
+        }
+      ],
+      "category": "enrich",
+      "source": "Two local result CSVs and their local cohort record",
+      "cost": "No network, paid provider, cloud AI, Engine update, or upload of paired lead rows. The output stays on this PC.",
+      "outputs_summary": [
+        "Validates both variants belong to the same experiment and configured provider pair",
+        "Checks exact source cohort, lead order, variant tags, and recorded file hashes",
+        "Creates one paired CSV with exactly one A and one B row per lead",
+        "Paired CSV and cohort record stay on this PC for the next assignment step"
+      ]
+    },
     "dse.waterfall_score_outcomes": {
       "label": "Waterfall experiments: score Send Desk outcomes",
       "group": "Waterfall experiments",
-      "help": "Reads this Engine's local send-list and explicit Send Desk log records, then creates aggregate A/B outcome JSON and Markdown reports. It reports assignment mode, provider setup, send coverage, reply categories, maturity-window outcomes, and uncertainty. It does not read message bodies, make provider calls, send messages, or choose a winning variant.",
+      "help": "Reads this Engine's local send-list and explicit Send Desk log records, then creates aggregate A/B outcome JSON and Markdown reports. It reports assignment mode, provider setup, send coverage, reply categories, maturity-window outcomes, and uncertainty. It rechecks the assignment CSV against the local cohort record and paired source before allowing A/B comparisons; failures remain visible with a suppression reason. It does not read message bodies, make provider calls, send messages, or choose a winning variant.",
       "script": "dse.py",
       "args": [
         {
@@ -12062,6 +12245,7 @@
         "Aggregate sent, skipped, unmarked, replied, booked and won counts by variant",
         "Reply categories and fixed-window maturity outcomes",
         "Provider order, config fingerprint and outreach assignment audit",
+        "Readable assignment-audit presence, cohort-record, paired-source, exact lead-roster and deterministic-seed checks before comparisons",
         "Descriptive rate intervals and cautions; no automatic winner selection",
         "JSON data report and readable Markdown brief"
       ]
