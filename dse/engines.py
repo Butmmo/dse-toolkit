@@ -253,7 +253,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
             ai_body = (r.get("outreach_body") or "").strip() if ch == "email" else ""
             ai_subject = (r.get("outreach_subject") or "").strip() if ai_body else ""
             drafted_opener = (f"Subject: {ai_subject}\n\n{ai_body}" if ai_subject else ai_body) or fill(opener_tpl, r, cfg)
-            rows.append({"row": len(rows) + 1, "business": r.get("business", ""), "city": r.get("city", ""),
+            lead_list_row = {"row": len(rows) + 1, "business": r.get("business", ""), "city": r.get("city", ""),
                          "channel": ch, "where": where, "gap_used": r.get("gap_line") or r.get("gap_used", ""),
                          "variant": cfg.get("variant") or f"{cfg.get('path')}-opener-v1",
                          "opener": drafted_opener, "website": r.get("website", ""),
@@ -292,7 +292,12 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
                          "instagram": r.get("instagram", ""), "facebook": r.get("facebook", ""),
                          "category": r.get("category", ""), "host": r.get("host", ""),
                          "linkedin": r.get("linkedin", ""), "contact_name": r.get("contact_name", ""), "contact_title": r.get("contact_title", ""),
-                         "notes": "; ".join(x for x in (r.get("check_notes", ""), r.get("source", "")) if x)})
+                         "notes": "; ".join(x for x in (r.get("check_notes", ""), r.get("source", "")) if x)}
+            if r.get("waterfall_experiment_id"):
+                for field in ("waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                              "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"):
+                    lead_list_row[field] = r.get(field, "")
+            rows.append(lead_list_row)
         if not rows:
             log(f"  {day}: no leads left with a usable channel")
             continue
