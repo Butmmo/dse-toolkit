@@ -133,6 +133,7 @@ def normalize(path: Path) -> tuple[list[dict], dict]:
                       "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
                       "waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
                       "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                      "waterfall_experiment_approval_id",
                       "waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant",
                       "waterfall_outreach_assignment_seed"):
             header = next((h for h in headers if squash(h) == squash(field)), None)
@@ -181,6 +182,7 @@ def _verify_waterfall_assignment_file(slug: str, path: Path) -> None:
     headers, rows = read_rows(path)
     required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
                 "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                "waterfall_experiment_approval_id",
                 "waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant",
                 "waterfall_outreach_assignment_seed"}
     missing = sorted(required - set(headers))
@@ -206,6 +208,18 @@ def _verify_waterfall_assignment_file(slug: str, path: Path) -> None:
         raise ValueError(f"Assigned experiment file {path.name} has no readable matching cohort record.") from None
     assignment = cohort.get("assignment") if isinstance(cohort.get("assignment"), dict) else {}
     paired = cohort.get("paired_csv") if isinstance(cohort.get("paired_csv"), dict) else {}
+    approval_id = str(cohort.get("approval_id") or "")
+    approval_path = ROOT / "my-lists" / f"waterfall-experiment-{experiment_id}-approval-{approval_id}.json"
+    try:
+        approval_receipt = json.loads(approval_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError(f"Assigned experiment file {path.name} has no readable original approval receipt.") from None
+    approval_body = {key: value for key, value in approval_receipt.items() if key != "approval_id"}
+    approval_digest = hashlib.sha256(json.dumps(approval_body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+    if (not approval_id or approval_digest != approval_id or approval_receipt.get("schema") != "dbi.waterfall-experiment-approval.v1"
+            or audit.get("approval_id") != approval_id or assignment.get("approval_id") != approval_id
+            or paired.get("approval_id") != approval_id):
+        raise ValueError(f"Assigned experiment file {path.name} is detached from its original approval receipt.")
     audit_digest = hashlib.sha256(sidecar_path.read_bytes()).hexdigest()
     paired_path = ROOT / str(paired.get("path") or "")
     try:
@@ -227,6 +241,9 @@ def _verify_waterfall_assignment_file(slug: str, path: Path) -> None:
             or audit.get("source_path") != paired.get("path")
             or audit.get("source_sha256") != paired.get("sha256")
             or audit.get("cohort_sha256") != cohort.get("cohort_sha256")
+            or approval_receipt.get("cohort_sha256") != cohort.get("cohort_sha256")
+            or approval_receipt.get("source_sha256") != cohort.get("source_sha256")
+            or approval_receipt.get("config_sha256") != {v: (cohort.get("variants", {}).get(v) or {}).get("config_sha256") for v in ("A", "B")}
             or assignment.get("seed") != audit.get("seed")
             or assignment.get("engine") != slug):
         raise ValueError(f"Assigned experiment file {path.name} is detached from its verified cohort record. Restore the original assignment output.")
@@ -239,10 +256,12 @@ def _verify_waterfall_assignment_file(slug: str, path: Path) -> None:
         assigned_experiment = (row.get("waterfall_outreach_assignment_experiment_id") or "").strip()
         assigned_variant = (row.get("waterfall_outreach_assignment_variant") or "").strip().upper()
         row_seed = (row.get("waterfall_outreach_assignment_seed") or "").strip()
+        row_approval = (row.get("waterfall_experiment_approval_id") or "").strip()
         lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
         if (row_experiment != experiment_id or assigned_experiment != experiment_id
                 or row_variant not in {"A", "B"} or assigned_variant != row_variant
                 or row_seed != str(audit.get("seed")) or not lead_id
+                or row_approval != approval_id
                 or lead_id in seen
                 or (row.get("waterfall_experiment_field") or "").strip() != cohort.get("field")):
             raise ValueError(f"Assigned experiment file {path.name} has inconsistent assignment rows (first issue at row {row_number}).")

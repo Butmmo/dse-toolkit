@@ -439,7 +439,8 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
         raise ValueError("Choose a paired experiment CSV from this toolkit's local my-lists folder.") from None
     headers, rows = _read(source_path)
     required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
-                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256"}
+                "waterfall_experiment_providers", "waterfall_experiment_lead_id", "waterfall_config_sha256",
+                "waterfall_experiment_approval_id"}
     missing = sorted(required - set(headers))
     if missing:
         raise ValueError("Input CSV is missing required experiment columns: " + ", ".join(missing))
@@ -457,8 +458,27 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
             or not isinstance(paired_record, dict)
             or paired_record.get("path") != source_relative
             or paired_record.get("sha256") != source_digest
-            or paired_record.get("rows") != len(rows)):
+            or paired_record.get("rows") != len(rows)
+            or not paired_record.get("approval_id")
+            or paired_record.get("approval_id") != cohort_manifest.get("approval_id")):
         raise ValueError("This CSV does not match the locally verified paired output for that experiment. Pair the original A and B files again; no assignment was made.")
+    approval_id = str(paired_record["approval_id"])
+    approval_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-approval-{approval_id}.json"
+    try:
+        approval_receipt = json.loads(approval_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("The paired experiment's approval receipt is missing or unreadable; no assignment was made.") from None
+    approval_body = {key: value for key, value in approval_receipt.items() if key != "approval_id"}
+    if (hashlib.sha256(json.dumps(approval_body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16] != approval_id
+            or approval_receipt.get("schema") != "dbi.waterfall-experiment-approval.v1"
+            or approval_receipt.get("experiment_id") != experiment_id
+            or approval_receipt.get("field") != cohort_manifest.get("field")
+            or approval_receipt.get("providers") != cohort_manifest.get("providers")
+            or approval_receipt.get("source_sha256") != cohort_manifest.get("source_sha256")
+            or approval_receipt.get("cohort_sha256") != cohort_manifest.get("cohort_sha256")
+            or approval_receipt.get("lead_count") != cohort_manifest.get("sample_rows")
+            or approval_receipt.get("lead_cap") != cohort_manifest.get("sample_limit")):
+        raise ValueError("The paired experiment approval receipt no longer matches its cohort; no assignment was made.")
     selected = [row for row in rows if (row.get("waterfall_experiment_id") or "").strip() == experiment_id]
     if not selected:
         raise ValueError(f"No rows for experiment {experiment_id!r} were found in {source}.")
@@ -472,6 +492,7 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
     provider_pairs = set()
     variant_ids: dict[str, list[str]] = {"A": [], "B": []}
     variant_configs: dict[str, set[str]] = {"A": set(), "B": set()}
+    variant_approvals: dict[str, set[str]] = {"A": set(), "B": set()}
 
     by_lead: dict[str, dict[str, dict[str, str]]] = defaultdict(dict)
     for row_number, row in enumerate(selected, 2):
@@ -492,6 +513,7 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
         provider_pairs.add(tuple(providers))
         variant_ids[variant].append(lead_id)
         variant_configs[variant].add((row.get("waterfall_config_sha256") or "").strip().lower())
+        variant_approvals[variant].add((row.get("waterfall_experiment_approval_id") or "").strip())
         by_lead[lead_id][variant] = row
     if len(provider_pairs) != 1:
         raise ValueError("The paired CSV mixes configured provider pairs; no assignment was made.")
@@ -504,7 +526,9 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
     if (variant_ids["A"] != variant_ids["B"]
             or len(variant_ids["A"]) != cohort_manifest.get("sample_rows")
             or cohort_manifest.get("cohort_sha256") != expected_cohort
-            or any(len(variant_configs[v]) != 1 or next(iter(variant_configs[v])) != (variant_records.get(v) or {}).get("config_sha256") for v in ("A", "B"))):
+            or any(len(variant_configs[v]) != 1 or next(iter(variant_configs[v])) != (variant_records.get(v) or {}).get("config_sha256") for v in ("A", "B"))
+            or any(variant_approvals[v] != {approval_id} or (variant_records.get(v) or {}).get("approval_id") != approval_id for v in ("A", "B"))
+            or approval_receipt.get("config_sha256") != {v: (variant_records.get(v) or {}).get("config_sha256") for v in ("A", "B")}):
         raise ValueError("The paired lead cohort or variant config fingerprints do not match the local record; no assignment was made.")
 
     extra = ["waterfall_outreach_assignment_experiment_id", "waterfall_outreach_assignment_variant", "waterfall_outreach_assignment_seed"]
@@ -555,6 +579,7 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
                 "lead_count": len(by_lead), "source_rows": len(selected), "variant_counts": counts,
         "one_variant_per_lead": True, "source_file_name": source_path.name,
                 "source_path": source_relative, "source_sha256": source_digest,
+                "approval_id": approval_id,
                 "cohort_sha256": cohort_manifest.get("cohort_sha256"),
                 "assigned_csv_name": output.name, "assigned_csv_sha256": hashlib.sha256(output_bytes).hexdigest(),
                 "engine": engine_slug}
@@ -569,13 +594,15 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
                                       "assigned_csv": assignment_output_path,
                                       "assigned_csv_sha256": hashlib.sha256(output_bytes).hexdigest(),
                                       "assignment_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-                                      "paired_source_sha256": source_digest}
+                                      "paired_source_sha256": source_digest,
+                                      "approval_id": approval_id}
     cohort_temp = cohort_manifest_path.with_suffix(".json.tmp")
     cohort_temp.write_text(json.dumps(cohort_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     cohort_temp.replace(cohort_manifest_path)
     result = {"experiment_id": experiment_id, "experiment_field": next(iter(fields)), "seed": str(seed),
               "lead_count": len(by_lead), "variant_counts": counts, "assignment": "stable SHA-256 parity of experiment ID, seed, and lead ID",
               "one_variant_per_lead": True, "source_rows": len(selected), "engine": cfg.get("slug") if engine else None,
+              "approval_id": approval_id,
               "output": str(output.resolve()), "assignment_manifest": str(manifest_path.resolve()),
               "source_sha256": manifest["source_sha256"], "assigned_csv_sha256": manifest["assigned_csv_sha256"]}
     print(f"Assigned {len(by_lead)} paired leads to one outreach variant each (A {counts['A']}, B {counts['B']}): {output}")
