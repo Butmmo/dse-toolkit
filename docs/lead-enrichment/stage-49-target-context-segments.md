@@ -4,7 +4,7 @@
 
 When a Ledger review is saved, Citadel snapshots any available requested targeting inputs from that row: business profile, decision-maker target, role, legal form, path and search strategy. The local `score-ledger` command reports human fit counts and rates by research lane and each available target dimension, including coverage and the existing minimum-review caution flag. This supports questions such as which requested roles or business types tend to receive good-fit judgements within Herald, Website or Presence research.
 
-The values are stored under the review's optional `target_context` object in `dbi.enrichment-human-review.v1`. Older review entries without the object remain valid and are omitted from segment groups; coverage counts make missing context visible. Context values are truncated to 160 characters when captured.
+The values are stored under the review's optional `target_context` object in `dbi.enrichment-human-review.v1`. Stage 50 adds a separate snapshot of returned research cues so requested intent can be compared with observed candidate evidence. Older review entries without the object remain valid and are omitted from segment groups; coverage counts make missing context visible. Context values are truncated to 160 characters when captured.
 
 ## Use
 

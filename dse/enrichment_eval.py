@@ -22,6 +22,13 @@ TARGET_CONTEXT_FIELDS = {
     "requested_path": "path",
     "requested_search_strategy": "search_strategy",
 }
+OBSERVED_CONTEXT_FIELDS = {
+    "business_profiles": ("business_profile", "key"),
+    "roles": ("role_evidence", "label"),
+    "legal_forms": ("legal_form_mention", "key"),
+    "person_role_candidates": ("person_role_candidate", "title"),
+    "presence_signal_categories": ("presence_signal_category", ""),
+}
 
 
 def _json(value: Any) -> Any:
@@ -198,10 +205,24 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
                 value = raw_context.get(field)
                 if isinstance(value, (str, int, float)) and str(value).strip():
                     target_context[field] = str(value).strip()[:160]
+            raw_observed = item.get("observed_context") if isinstance(item.get("observed_context"), dict) else {}
+            observed_context: dict[str, list[str]] = {}
+            for field, (_, item_key) in OBSERVED_CONTEXT_FIELDS.items():
+                raw_values = raw_observed.get(field)
+                if not isinstance(raw_values, list):
+                    continue
+                observed_values = []
+                for raw_value in raw_values[:12]:
+                    value = raw_value if not item_key and isinstance(raw_value, str) else raw_value.get(item_key) if item_key and isinstance(raw_value, dict) else ""
+                    if isinstance(value, str) and value.strip():
+                        observed_values.append(value.strip()[:120])
+                if observed_values:
+                    observed_context[field] = list(dict.fromkeys(observed_values))
             latest[(row_number, lane)] = {"judgment": item["judgment"], "lane": lane, "profile_key": profile,
                                           "reviewed_at": str(item.get("reviewed_at") or ""),
                                           "research_checked_at": str(item.get("research_checked_at") or ""),
                                           "target_context": target_context,
+                                          "observed_context": observed_context,
                                           "row_number": row_number}
             valid_history_entries += 1
 
@@ -271,6 +292,29 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
             **metrics, "decided_reviews": decided,
             "sample_status": "too_few_decided_reviews" if decided < min_decided else "descriptive_only"}
 
+    observed_segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    observed_segment_labels: dict[tuple[str, str, str], str] = {}
+    observed_context_coverage = {dimension: 0 for dimension, _ in OBSERVED_CONTEXT_FIELDS.values()}
+    for review in latest_items:
+        context = review["observed_context"]
+        for field, (dimension, _) in OBSERVED_CONTEXT_FIELDS.items():
+            values = context.get(field, [])
+            if not values:
+                continue
+            observed_context_coverage[dimension] += 1
+            for value in values:
+                key = (review["lane"], dimension, value.casefold())
+                observed_segment_groups[key].append(review)
+                observed_segment_labels.setdefault(key, value)
+    observed_segments: dict[str, dict[str, Any]] = {}
+    for key, group in sorted(observed_segment_groups.items()):
+        lane, dimension, _ = key
+        metrics = summarize(group)
+        decided = metrics["judgment_counts"]["good_fit"] + metrics["judgment_counts"]["not_a_fit"]
+        observed_segments[f"{lane}|{dimension}|{observed_segment_labels[key]}"] = {
+            **metrics, "decided_reviews": decided,
+            "sample_status": "too_few_decided_reviews" if decided < min_decided else "descriptive_only"}
+
     lane_aliases = {"website_enrichment": "website", "herald_research": "herald", "presence_research": "presence"}
     joined: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     matched_reviews = 0
@@ -331,6 +375,9 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
               "target_context_segments": {"minimum_decided_reviews": min_decided,
                                           "review_coverage_by_dimension": target_context_coverage,
                                           "by_lane_dimension_and_value": target_segments},
+              "observed_context_segments": {"minimum_decided_reviews": min_decided,
+                                             "review_coverage_by_dimension": observed_context_coverage,
+                                             "by_lane_dimension_and_value": observed_segments},
               "field_results_join": {"reviewed_rows_with_matching_lane_results": matched_reviews,
                                      "reviewed_rows_without_matching_lane_results": unmatched_reviews,
                                      "by_judgment_lane_and_profile": field_join},
