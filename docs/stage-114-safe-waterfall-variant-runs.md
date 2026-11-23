@@ -19,4 +19,5 @@ The two experiment configs could be selected in the existing enrichment tool, bu
 
 - Checked the changed Python and catalog structure for syntax consistency.
 - Confirmed the output preflight and cohort-match checks run before enrichment provider calls.
+- Pushed the change to `codex/hq-runner-id-routing` and restarted the PC runner; its startup log reports 180 tools.
 - No provider requests or Engine imports were made during this change.
