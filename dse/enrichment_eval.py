@@ -279,8 +279,8 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
     missing = sorted(required - set(headers))
     if missing:
         raise ValueError("Input CSV is missing required experiment columns: " + ", ".join(missing))
-    if not experiment_id.strip():
-        raise ValueError("Experiment ID cannot be blank.")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", experiment_id or ""):
+        raise ValueError("Experiment ID must be 1-80 letters, numbers, dots, underscores, or hyphens, starting with a letter or number.")
     selected = [row for row in rows if (row.get("waterfall_experiment_id") or "").strip() == experiment_id]
     if not selected:
         raise ValueError(f"No rows for experiment {experiment_id!r} were found in {source}.")
@@ -323,9 +323,9 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
         from .engines import engine_dir, load, validate_waterfall_outreach_rows
         cfg = load(engine)
         validate_waterfall_outreach_rows(engine, assigned_rows)
-        output = engine_dir(engine) / "imports" / (Path(source).stem + "-outreach-assigned.csv")
+        output = engine_dir(engine) / "imports" / (Path(source).stem + f"-{experiment_id}-outreach-assigned.csv")
     else:
-        output = Path(out) if out else Path(source).with_name(Path(source).stem + "-outreach-assigned.csv")
+        output = Path(out) if out else Path(source).with_name(Path(source).stem + f"-{experiment_id}-outreach-assigned.csv")
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=list(dict.fromkeys([*headers, *extra])), extrasaction="ignore")
     writer.writeheader()
