@@ -20,7 +20,7 @@ python dse.py eval-enrichment sample-ledger my-lists\ledger-export-enrichment-re
 
 The command defaults to stratifying by `engine_path,enrichment_profile`; `--stratify` accepts other prepared-sheet columns. If the requested size is smaller than the number of strata, the command stops and asks for a larger sample or fewer strata. Use the same seed and same input to reproduce selection.
 
-Review the four yes/no fields (`value_correct`, `identity_correct`, `evidence_adequate`, `freshness_acceptable`); leave any judgement blank when it cannot be decided from available evidence. “No” means there is enough evidence to judge it failed; it does not mean “unknown.” For freshness, judge against the field's expected update rhythm, not one universal age threshold. Use `review_note` for a concise reason and keep `evaluation_id`, `source_row`, and `field` intact. Then score:
+Review the four fields (`value_correct`, `identity_correct`, `evidence_adequate`, `freshness_acceptable`) with `yes`, `no`, or `unknown`. “Unknown” means the evidence is insufficient to judge; “no” means evidence supports a failed claim. Leave blank only when the reviewer has not reviewed the row. For freshness, judge against the field's expected update rhythm, not one universal age threshold. Use `review_note` for a concise reason and keep `evaluation_id`, `source_row`, and `field` intact. The scorer excludes unknown from yes/no rates and reports unknown, blank, and invalid labels separately. Then score:
 
 ```powershell
 python dse.py eval-enrichment score my-lists\ledger-export-enrichment-review-benchmark-sample.csv
@@ -36,3 +36,4 @@ No automated tests were added or run.
 
 - `dse/enrichment_eval.py`: cohort-aware worksheet metadata, lead-level sampling and cohort score summaries.
 - `dse.py eval-enrichment`: CLI entry point.
+- `docs/lead-enrichment/stage-54-benchmark-review-rubric.md`: shared label definitions and adjudication guidance.

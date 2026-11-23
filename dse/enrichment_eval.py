@@ -15,6 +15,7 @@ from typing import Any
 REVIEW_FIELDS = ["value_correct", "identity_correct", "evidence_adequate", "freshness_acceptable", "review_note"]
 YES = {"y", "yes", "true", "1"}
 NO = {"n", "no", "false", "0"}
+UNKNOWN = {"unknown", "uncertain", "cannot_judge", "can't_judge", "not_enough_evidence"}
 FIT_JUDGMENTS = {"good_fit", "not_a_fit", "uncertain"}
 TARGET_CONTEXT_FIELDS = {
     "requested_business_profile": "business_profile",
@@ -118,7 +119,7 @@ def prepare(source: str, out: str = "") -> Path:
     if not count:
         raise ValueError("No dbi.field-result.v1 records were found in the input CSV.")
     print(f"Prepared {count} field reviews in {output}")
-    print("Label the four review columns with yes/no; leave a label blank when it cannot be judged.")
+    print("Label review columns yes/no/unknown; use unknown when evidence is insufficient and blank only when not reviewed.")
     return output
 
 
@@ -210,6 +211,22 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
 
     def metrics(items: list[dict[str, str]]) -> dict:
         labeled = {field: [r for r in items if (r.get(field) or "").strip().casefold() in YES | NO] for field in REVIEW_FIELDS[:4]}
+        responses = {}
+        for field in REVIEW_FIELDS[:4]:
+            counts = {"yes": 0, "no": 0, "unknown": 0, "blank": 0, "invalid": 0}
+            for row in items:
+                value = (row.get(field) or "").strip().casefold()
+                if value in YES:
+                    counts["yes"] += 1
+                elif value in NO:
+                    counts["no"] += 1
+                elif value in UNKNOWN:
+                    counts["unknown"] += 1
+                elif not value:
+                    counts["blank"] += 1
+                else:
+                    counts["invalid"] += 1
+            responses[field] = counts
         correct_values = sum((r.get("value_correct") or "").strip().casefold() in YES for r in labeled["value_correct"])
         costs: dict[str, float] = defaultdict(float)
         for row in items:
@@ -227,6 +244,7 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
                 "review_labels": {k: {"labeled": len(v), "yes": sum((r.get(k) or "").strip().casefold() in YES for r in v),
                                       "rate": _ratio(sum((r.get(k) or "").strip().casefold() in YES for r in v), len(v))}
                                   for k, v in labeled.items()},
+                "review_responses": responses,
                 "freshness_documented": len(fresh_known), "freshness_documented_rate": _ratio(len(fresh_known), len(items)),
                 "declared_cost_by_currency": dict(costs),
                 "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()}}
