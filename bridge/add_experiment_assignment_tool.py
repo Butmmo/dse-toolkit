@@ -25,7 +25,8 @@ catalog["tools"]["dse.waterfall_assign_outreach"] = {
          "choices_from": "engines", "choices": []},
     ],
     "timeout_min": 5,
-    "outputs": ["my-lists/*-outreach-assigned.csv", "engines/*/imports/*-outreach-assigned.csv"],
+    "outputs": ["my-lists/*-outreach-assigned.csv", "my-lists/*-outreach-assigned-assignment.json",
+                "engines/*/imports/*-outreach-assigned.csv", "engines/*/imports/*-outreach-assigned-assignment.json"],
     "category": "enrich",
     "source": "Paired enrichment CSV selected from this PC",
     "cost": "No provider calls, internet searches, paid services, or cloud AI. Assignment is computed locally from the experiment ID, seed, and stable lead ID.",
@@ -34,6 +35,7 @@ catalog["tools"]["dse.waterfall_assign_outreach"] = {
         "Repeatable assignment for the same experiment, seed, and lead ID",
         "Assignment experiment, variant, and seed columns for Engine and Send Desk audit",
         "Destination Engine exposure history is checked before the import file is written",
+        "Data-minimized assignment audit records source and output hashes, seed, counts, and destination Engine",
         "The original paired enrichment CSV is not modified",
     ],
 }

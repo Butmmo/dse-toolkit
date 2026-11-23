@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import itertools
 import json
 import math
@@ -325,16 +326,37 @@ def assign_outreach_variant(source: str, experiment_id: str, seed: str = "42", o
         output = engine_dir(engine) / "imports" / (Path(source).stem + "-outreach-assigned.csv")
     else:
         output = Path(out) if out else Path(source).with_name(Path(source).stem + "-outreach-assigned.csv")
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=list(dict.fromkeys([*headers, *extra])), extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(assigned_rows)
+    output_bytes = ("\ufeff" + buffer.getvalue()).encode("utf-8")
+    if output.exists() and output.read_bytes() != output_bytes:
+        raise ValueError(f"Assignment output already exists with different contents; it was left untouched: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(dict.fromkeys([*headers, *extra])), extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(assigned_rows)
+    manifest_path = output.with_name(output.stem + "-assignment.json")
+    manifest = {"schema": "dbi.waterfall-outreach-assignment.v1", "experiment_id": experiment_id,
+                "experiment_field": next(iter(fields)), "seed": str(seed),
+                "assignment_algorithm": "sha256_parity_experiment_id_seed_stable_lead_id",
+                "lead_count": len(by_lead), "source_rows": len(selected), "variant_counts": counts,
+                "one_variant_per_lead": True, "source_file_name": Path(source).name,
+                "source_sha256": hashlib.sha256(Path(source).read_bytes()).hexdigest(),
+                "assigned_csv_name": output.name, "assigned_csv_sha256": hashlib.sha256(output_bytes).hexdigest(),
+                "engine": cfg.get("slug") if engine else None}
+    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
+        raise ValueError(f"Assignment audit already exists with different contents; it was left untouched: {manifest_path}")
+    if not output.exists():
+        output.write_bytes(output_bytes)
+    if not manifest_path.exists():
+        manifest_path.write_bytes(manifest_bytes)
     result = {"experiment_id": experiment_id, "experiment_field": next(iter(fields)), "seed": str(seed),
               "lead_count": len(by_lead), "variant_counts": counts, "assignment": "stable SHA-256 parity of experiment ID, seed, and lead ID",
               "one_variant_per_lead": True, "source_rows": len(selected), "engine": cfg.get("slug") if engine else None,
-              "output": str(output.resolve())}
+              "output": str(output.resolve()), "assignment_manifest": str(manifest_path.resolve()),
+              "source_sha256": manifest["source_sha256"], "assigned_csv_sha256": manifest["assigned_csv_sha256"]}
     print(f"Assigned {len(by_lead)} paired leads to one outreach variant each (A {counts['A']}, B {counts['B']}): {output}")
+    print(f"Wrote data-minimized assignment audit: {manifest_path}")
     print("The same experiment ID, seed, and lead ID always produce the same assignment. Store this output as the only outreach input for these leads.")
     return output, result
 
