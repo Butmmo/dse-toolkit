@@ -13,6 +13,7 @@ from typing import Any
 REVIEW_FIELDS = ["value_correct", "identity_correct", "evidence_adequate", "freshness_acceptable", "review_note"]
 YES = {"y", "yes", "true", "1"}
 NO = {"n", "no", "false", "0"}
+FIT_JUDGMENTS = {"good_fit", "not_a_fit", "uncertain"}
 
 
 def _json(value: Any) -> Any:
@@ -152,6 +153,68 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
     return report, output
 
 
+def score_ledger(source: str, out: str = "") -> tuple[dict, Path]:
+    """Measure latest Ledger fit judgements by research lane and enrichment profile."""
+    headers, rows = _read(source)
+    column = next((name for name in headers if name.strip().casefold() == "enrichment_review"), "")
+    if not column:
+        raise ValueError("Ledger CSV needs the enrichment_review column. Make it visible before exporting the grid.")
+
+    latest: dict[tuple[int, str], dict[str, str]] = {}
+    malformed = 0
+    valid_history_entries = 0
+    for row_number, row in enumerate(rows, 2):
+        payload = _json(row.get(column))
+        if not isinstance(payload, dict) or payload.get("schema") != "dbi.enrichment-human-review.v1":
+            if row.get(column, "").strip():
+                malformed += 1
+            continue
+        history = payload.get("history")
+        if not isinstance(history, list):
+            malformed += 1
+            continue
+        for item in history:
+            if not isinstance(item, dict) or item.get("judgment") not in FIT_JUDGMENTS:
+                malformed += 1
+                continue
+            lane = str(item.get("lane") or "unknown").strip().casefold()
+            if lane not in {"herald", "website", "presence"}:
+                lane = "unknown"
+            profile = str(item.get("profile_key") or "unknown").strip() or "unknown"
+            latest[(row_number, lane)] = {"judgment": item["judgment"], "lane": lane, "profile_key": profile,
+                                          "reviewed_at": str(item.get("reviewed_at") or ""),
+                                          "research_checked_at": str(item.get("research_checked_at") or "")}
+            valid_history_entries += 1
+
+    def summarize(items: list[dict[str, str]]) -> dict[str, Any]:
+        counts = {label: sum(item["judgment"] == label for item in items) for label in ("good_fit", "not_a_fit", "uncertain")}
+        decided = counts["good_fit"] + counts["not_a_fit"]
+        return {"latest_row_lane_reviews": len(items), "judgment_counts": counts,
+                "good_fit_rate_among_decided": _ratio(counts["good_fit"], decided),
+                "uncertain_rate": _ratio(counts["uncertain"], len(items)),
+                "review_time_documented": sum(bool(item["reviewed_at"]) for item in items),
+                "research_check_time_documented": sum(bool(item["research_checked_at"]) for item in items)}
+
+    latest_items = list(latest.values())
+    by_lane_profile: dict[str, dict[str, Any]] = {}
+    keys = sorted({(item["lane"], item["profile_key"]) for item in latest_items})
+    for lane, profile in keys:
+        group = [item for item in latest_items if item["lane"] == lane and item["profile_key"] == profile]
+        by_lane_profile[f"{lane}|{profile}"] = summarize(group)
+
+    report = {"schema": "dbi.ledger-fit-evaluation.v1", "source_file": str(Path(source).resolve()),
+              "source_rows": len(rows), "valid_history_entries": valid_history_entries,
+              "latest_by_row_and_lane": summarize(latest_items), "by_lane_and_profile": by_lane_profile,
+              "malformed_or_unsupported_entries": malformed,
+              "interpretation": "Fit rates summarize human decisions, not factual accuracy, conversion, ability to pay, or population-wide lead quality. Each grid row contributes its latest review per lane; repeated reviews are retained in the source history but do not get extra weight here. Profile groups with small samples should be treated as descriptive only."}
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-ledger-fit-evaluation.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Scored {len(latest_items)} latest Ledger fit reviews across {len(by_lane_profile)} lane/profile groups: {output}")
+    print("Fit rates are descriptive human decisions, not verified accuracy or business outcomes.")
+    return report, output
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="dse.py eval-enrichment", description="Prepare and score a reviewed enrichment benchmark.")
     sub = parser.add_subparsers(dest="action", required=True)
@@ -161,12 +224,17 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("score", help="score a completed human-review CSV")
     s.add_argument("source", help="review CSV with yes/no labels")
     s.add_argument("--out", default="", help="JSON report output path")
+    l = sub.add_parser("score-ledger", help="score fit reviews exported from a Ledger grid")
+    l.add_argument("source", help="Ledger grid CSV with an enrichment_review column")
+    l.add_argument("--out", default="", help="JSON report output path")
     args = parser.parse_args(argv)
     try:
         if args.action == "prepare":
             prepare(args.source, args.out)
-        else:
+        elif args.action == "score":
             score(args.source, args.out)
+        else:
+            score_ledger(args.source, args.out)
     except (OSError, ValueError) as exc:
         parser.exit(2, f"Error: {exc}\n")
     return 0
