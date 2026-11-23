@@ -12185,7 +12185,7 @@
     "dse.waterfall_score_outcomes": {
       "label": "Waterfall experiments: score Send Desk outcomes",
       "group": "Waterfall experiments",
-      "help": "Reads this Engine's local send-list and explicit Send Desk log records, then creates aggregate A/B outcome JSON and Markdown reports. It reports assignment mode, provider setup, send coverage, reply categories, maturity-window outcomes, and uncertainty. It does not read message bodies, make provider calls, send messages, or choose a winning variant.",
+      "help": "Reads this Engine's local send-list and explicit Send Desk log records, then creates aggregate A/B outcome JSON and Markdown reports. It reports assignment mode, provider setup, send coverage, reply categories, maturity-window outcomes, and uncertainty. It rechecks the assignment CSV against the local cohort record and paired source before allowing A/B comparisons; failures remain visible with a suppression reason. It does not read message bodies, make provider calls, send messages, or choose a winning variant.",
       "script": "dse.py",
       "args": [
         {
@@ -12245,6 +12245,7 @@
         "Aggregate sent, skipped, unmarked, replied, booked and won counts by variant",
         "Reply categories and fixed-window maturity outcomes",
         "Provider order, config fingerprint and outreach assignment audit",
+        "Cohort-record, paired-source and deterministic-seed integrity checks before comparisons",
         "Descriptive rate intervals and cautions; no automatic winner selection",
         "JSON data report and readable Markdown brief"
       ]

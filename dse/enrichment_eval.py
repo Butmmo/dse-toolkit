@@ -1943,13 +1943,15 @@ def _send_outcome_brief(report: dict) -> str:
                   "No variant is automatically selected. Review lead assignment, comparable lead mix, send status, and cross-variant exposure before using these numbers to change a waterfall.", ""])
     audits = report.get("assignment_audit_checks", [])
     if audits:
-        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches |",
-                      "|---|---|---|---|---:|---:|---:|---:|---|"])
+        lines.extend(["## Assignment audit", "", "| Experiment | Field | Audit status | Assigned CSV hash | Cohort record | Expected leads | In Send Desk lists | A expected/seen | B expected/seen | Seed matches | Integrity detail |",
+                      "|---|---|---|---|---:|---:|---:|---:|---:|---|---|"])
         for audit in audits:
             expected, seen = audit["expected_variant_counts"], audit["send_list_variant_counts"]
             hash_status = "matches" if audit["assigned_csv_hash_matches"] else "missing or mismatch"
+            cohort_status = "matches" if audit.get("cohort_record_matches") else "missing or mismatch"
             seed_status = "yes" if audit["assignment_seed_matches"] is True else "pending" if audit["assignment_seed_matches"] is None else "no"
-            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} |")
+            detail = str(audit.get("cohort_record_error") or "—").replace("|", "/").replace("\r", " ").replace("\n", " ")
+            lines.append(f"| {audit['experiment_id']} | {audit['experiment_field']} | {audit['status']} | {hash_status} | {cohort_status} | {audit['expected_lead_count']} | {audit['send_list_lead_count']} | {expected['A']}/{seen['A']} | {expected['B']}/{seen['B']} | {seed_status} | {detail} |")
         lines.append("")
     return "\n".join(lines)
 
