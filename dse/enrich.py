@@ -1165,7 +1165,10 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
             config_path = ROOT / config_path
         config_digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
         providers_json = json.dumps(experiment.get("providers", []), ensure_ascii=False, separators=(",", ":"))
-        for row in out_rows:
+        for row_number, row in enumerate(out_rows, 2):
+            lead_id = (row.get("waterfall_experiment_lead_id") or row.get("source_row")
+                       or row.get("lead_id") or row.get("id") or f"input-row:{row_number}")
+            row["waterfall_experiment_lead_id"] = str(lead_id).strip()
             row["waterfall_experiment_id"] = str(experiment.get("id") or "")
             row["waterfall_experiment_variant"] = str(experiment.get("variant") or "")
             row["waterfall_experiment_field"] = str(experiment.get("field") or "")

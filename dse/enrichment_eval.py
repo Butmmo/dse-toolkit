@@ -77,7 +77,8 @@ def prepare(source: str, out: str = "") -> Path:
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-enrichment-review.csv")
     source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker",
                                  "waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
-                                 "waterfall_experiment_providers", "waterfall_config_sha256") if h in headers]
+                                 "waterfall_experiment_providers", "waterfall_experiment_lead_id",
+                                 "waterfall_config_sha256") if h in headers]
     columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
@@ -696,6 +697,23 @@ def _decision_brief(report: dict) -> str:
     lines.append("")
     lines.extend(["## How to read this", "",
                   "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
+    experiment_comparisons = report.get("waterfall_experiment_comparisons") or []
+    lines.extend(["## Completed waterfall experiment comparisons", ""])
+    if experiment_comparisons:
+        for item in experiment_comparisons:
+            value = (item.get("dimensions") or {}).get("value_correct", {})
+            interval = value.get("lead_pair_bootstrap_95", {})
+            low, high = interval.get("lower"), interval.get("upper")
+            interval_text = f"{low:+.1%} to {high:+.1%}" if isinstance(low, (int, float)) and isinstance(high, (int, float)) else "unavailable"
+            availability = item.get("lead_availability", {})
+            lines.append(
+                f"- `{item.get('experiment_id')}` / `{item.get('field')}` ({item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}): A-minus-B reviewed correctness {_display_rate(value.get('rate_difference_a_minus_b'))}; interval {interval_text}; matched leads {value.get('matched_reviewed_leads', 0)}; outputs A {availability.get('variant_a', 0)}, B {availability.get('variant_b', 0)}. Status: `{item.get('decision_status')}`."
+            )
+    else:
+        lines.append("No completed A/B waterfall runs with preserved experiment lead IDs were found in this review file.")
+    lines.append("")
+    lines.extend(["## How to read this", "",
+                  "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
     return "\n".join(lines)
 
 
@@ -764,6 +782,106 @@ def _waterfall_experiment_plans(advisories: list[dict], min_labeled: int) -> lis
             "automatic_config_change": False,
         })
     return plans
+
+
+def _waterfall_experiment_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int,
+                                     bootstrap_reps: int, bootstrap_seed: int) -> list[dict]:
+    required = {"waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_lead_id"}
+    if not required.issubset(headers):
+        return []
+    label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
+                     for field in REVIEW_FIELDS[:4]}
+    groups: dict[tuple[str, str, str, str, str], dict[str, dict[str, list[dict[str, str]]]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(list)))
+    for row in rows:
+        experiment_id = (row.get("waterfall_experiment_id") or "").strip()
+        variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        field = (row.get("field") or "").strip()
+        if not experiment_id or variant not in {"A", "B"} or not lead_id or not field:
+            continue
+        cohort = tuple((row.get(key) or "unknown").strip() or "unknown"
+                       for key in ("engine_path", "enrichment_profile", "research_lane"))
+        groups[(experiment_id, field, *cohort)][lead_id][variant].append(row)
+    comparisons = []
+    for (experiment_id, field, engine_path, profile, lane), leads in sorted(groups.items()):
+        a_ids = {lead for lead, variants in leads.items() if variants.get("A")}
+        b_ids = {lead for lead, variants in leads.items() if variants.get("B")}
+        paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        excluded_duplicate = 0
+        excluded_unlabeled = defaultdict(int)
+        a_hashes, b_hashes = set(), set()
+        for lead in a_ids | b_ids:
+            variants = leads[lead]
+            for variant, hashes in (("A", a_hashes), ("B", b_hashes)):
+                for row in variants.get(variant, []):
+                    digest = (row.get("waterfall_config_sha256") or "").strip()
+                    if digest:
+                        hashes.add(digest)
+            if len(variants.get("A", [])) != 1 or len(variants.get("B", [])) != 1:
+                if variants.get("A") and variants.get("B"):
+                    excluded_duplicate += 1
+                continue
+            for dimension, column in label_columns.items():
+                a_label = _review_category(variants["A"][0].get(column, ""))
+                b_label = _review_category(variants["B"][0].get(column, ""))
+                if a_label not in {"yes", "no"} or b_label not in {"yes", "no"}:
+                    excluded_unlabeled[dimension] += 1
+                    continue
+                paired_labels[dimension].append((int(a_label == "yes"), int(b_label == "yes")))
+        dimensions = {}
+        for dimension in label_columns:
+            pairs = paired_labels[dimension]
+            a_yes = sum(pair[0] for pair in pairs)
+            b_yes = sum(pair[1] for pair in pairs)
+            differences = []
+            if bootstrap_reps and pairs:
+                rng = random.Random(f"{bootstrap_seed}:{experiment_id}:{field}:{engine_path}:{profile}:{lane}:{dimension}")
+                for _ in range(bootstrap_reps):
+                    sample = [pairs[rng.randrange(len(pairs))] for _ in pairs]
+                    differences.append(sum(a - b for a, b in sample) / len(sample))
+                differences.sort()
+            dimensions[dimension] = {
+                "matched_reviewed_leads": len(pairs),
+                "variant_a_yes": a_yes,
+                "variant_b_yes": b_yes,
+                "variant_a_wins": sum(a == "yes" and b == "no" for a, b in pairs),
+                "variant_b_wins": sum(a == "no" and b == "yes" for a, b in pairs),
+                "ties": sum(a == b for a, b in pairs),
+                "variant_a_yes_rate": _ratio(a_yes, len(pairs)),
+                "variant_b_yes_rate": _ratio(b_yes, len(pairs)),
+                "rate_difference_a_minus_b": _ratio(a_yes - b_yes, len(pairs)),
+                "lead_pair_bootstrap_95": {
+                    "method": "percentile bootstrap; resample matched leads with replacement",
+                    "seed": bootstrap_seed,
+                    "requested_replicates": bootstrap_reps,
+                    "valid_replicates": len(differences),
+                    "lower": differences[max(0, math.ceil(0.025 * len(differences)) - 1)] if differences else None,
+                    "upper": differences[max(0, math.ceil(0.975 * len(differences)) - 1)] if differences else None,
+                },
+                "excluded_unlabeled_or_unknown_pairs": excluded_unlabeled[dimension],
+                "minimum_labeled_count": min_labeled,
+                "minimum_labeled_met": len(pairs) >= min_labeled,
+            }
+        value = dimensions.get("value_correct", {})
+        comparisons.append({
+            "experiment_id": experiment_id,
+            "field": field,
+            "engine_path": engine_path,
+            "enrichment_profile": profile,
+            "research_lane": lane,
+            "variant_a_config_sha256": sorted(a_hashes),
+            "variant_b_config_sha256": sorted(b_hashes),
+            "lead_availability": {"variant_a": len(a_ids), "variant_b": len(b_ids),
+                                  "both_variants": len(a_ids & b_ids),
+                                  "only_a": len(a_ids - b_ids), "only_b": len(b_ids - a_ids),
+                                  "unpaired_leads_excluded_from_quality_comparison": len(a_ids - b_ids) + len(b_ids - a_ids)},
+            "duplicate_result_leads_excluded": excluded_duplicate,
+            "dimensions": dimensions,
+            "decision_status": "below_minimum_labeled_caution_threshold" if value.get("matched_reviewed_leads", 0) < min_labeled else "descriptive_only",
+            "automatic_provider_selection": False,
+        })
+    return comparisons
 
 
 def score(source: str, out: str = "", min_labeled: int = 20,
@@ -954,6 +1072,8 @@ def score(source: str, out: str = "", min_labeled: int = 20,
     paired_comparisons = _paired_source_comparisons(
         rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed)
     waterfall_advisories = _waterfall_evidence_advisories(paired_comparisons)
+    experiment_comparisons = _waterfall_experiment_comparisons(
+        rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed)
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "scoring_provenance": {
                   "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -973,6 +1093,7 @@ def score(source: str, out: str = "", min_labeled: int = 20,
               "paired_source_comparisons": paired_comparisons,
               "waterfall_evidence_advisories": waterfall_advisories,
               "waterfall_experiment_plans": _waterfall_experiment_plans(waterfall_advisories, min_labeled),
+              "waterfall_experiment_comparisons": experiment_comparisons,
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
