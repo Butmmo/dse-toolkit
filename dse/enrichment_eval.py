@@ -6,9 +6,10 @@ import csv
 import hashlib
 import itertools
 import json
+import math
 import random
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +79,7 @@ def prepare(source: str, out: str = "") -> Path:
     columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
-               "cost_quantity", "cost_estimated", *source_fields, *REVIEW_FIELDS]
+               "cost_quantity", "cost_estimated", "provider_waterfall_cost", "provider_cost_shared_from_duplicate_domain", *source_fields, *REVIEW_FIELDS]
     output.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     with output.open("w", encoding="utf-8-sig", newline="") as f:
@@ -112,7 +113,10 @@ def prepare(source: str, out: str = "") -> Path:
                               "identity_strength": identity.get("strength", ""), "identity_score": identity.get("score", ""),
                               "verification_status": verification.get("status", ""), "cost_amount": cost.get("amount", ""),
                               "cost_currency": cost.get("currency", ""), "cost_units": cost.get("units", ""),
-                              "cost_quantity": cost.get("quantity", ""), "cost_estimated": cost.get("estimated", "")}
+                              "cost_quantity": cost.get("quantity", ""), "cost_estimated": cost.get("estimated", ""),
+                              "provider_waterfall_cost": json.dumps(metadata.get("provider_waterfall_cost"), ensure_ascii=False, separators=(",", ":"))
+                                  if isinstance(metadata.get("provider_waterfall_cost"), dict) else "",
+                              "provider_cost_shared_from_duplicate_domain": bool(metadata.get("provider_cost_shared_from_duplicate_domain", False))}
                 output_row.update({name: row.get(name, "") for name in source_fields})
                 output_row.update({name: "" for name in REVIEW_FIELDS})
                 writer.writerow(output_row)
@@ -272,7 +276,8 @@ def _agreement(items: list[dict[str, str]], field: str) -> dict:
             "cohen_kappa": kappa, "confusion_matrix": confusion}
 
 
-def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int) -> list[dict]:
+def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], min_labeled: int,
+                              bootstrap_reps: int = 500, bootstrap_seed: int = 42) -> list[dict]:
     if "source_row" not in headers:
         return []
     label_columns = {field: f"adjudicated_{field}" if f"adjudicated_{field}" in headers else field
@@ -296,6 +301,39 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
         cases[(field, cohort, lead_id)][source].append(row)
 
     comparisons = []
+
+    def priced_attempt_cost(row: dict[str, str]) -> tuple[dict[str, float], int, int]:
+        payload = _json(row.get("provider_waterfall_cost"))
+        providers = payload.get("providers") if isinstance(payload, dict) else None
+        totals: dict[str, float] = defaultdict(float)
+        unknown_price_calls = 0
+        invalid_price_calls = 0
+        if not isinstance(providers, dict):
+            return {}, 0, 0
+        for attempt in providers.values():
+            if not isinstance(attempt, dict):
+                continue
+            try:
+                calls = max(0, int(attempt.get("calls", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+            if not calls:
+                continue
+            currency, amount = attempt.get("currency"), attempt.get("estimated_cost")
+            if not currency or amount is None:
+                unknown_price_calls += calls
+                continue
+            try:
+                amount_value = float(amount)
+            except (TypeError, ValueError):
+                invalid_price_calls += calls
+                continue
+            if not math.isfinite(amount_value) or amount_value < 0:
+                invalid_price_calls += calls
+                continue
+            totals[str(currency)] += amount_value
+        return dict(totals), unknown_price_calls, invalid_price_calls
+
     for (field, cohort), sources in sorted(by_field_cohort_sources.items()):
         for source_a, source_b in itertools.combinations(sorted(sources), 2):
             a_present = {lead for (case_field, case_cohort, lead), result_map in cases.items()
@@ -307,6 +345,15 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                                   "source_a_yes": 0, "source_b_yes": 0,
                                   "excluded_unknown_or_unlabeled": 0, "excluded_duplicate_result_sets": 0}
                       for dimension in REVIEW_FIELDS[:4]}
+            paired_costs: dict[str, dict[str, Any]] = defaultdict(
+                lambda: {"source_a_total": 0.0, "source_b_total": 0.0, "matched_leads": 0,
+                         "source_a_correct": 0, "source_b_correct": 0, "lead_cost_differences": [],
+                         "source_a_unknown_price_calls": 0, "source_b_unknown_price_calls": 0,
+                         "source_a_invalid_price_calls": 0, "source_b_invalid_price_calls": 0}
+            )
+            paired_cost_input_quality = {"source_a_unknown_price_calls": 0, "source_b_unknown_price_calls": 0,
+                                         "source_a_invalid_price_calls": 0, "source_b_invalid_price_calls": 0}
+            paired_labels: dict[str, list[tuple[int, int]]] = defaultdict(list)
             for lead in shared:
                 a_rows = cases[(field, cohort, lead)][source_a]
                 b_rows = cases[(field, cohort, lead)][source_b]
@@ -314,6 +361,23 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     for dimension_counts in counts.values():
                         dimension_counts["excluded_duplicate_result_sets"] += 1
                     continue
+                a_value_label = _review_category(a_rows[0].get(label_columns["value_correct"], ""))
+                b_value_label = _review_category(b_rows[0].get(label_columns["value_correct"], ""))
+                if a_value_label in {"yes", "no"} and b_value_label in {"yes", "no"}:
+                    a_costs, a_unknown, a_invalid = priced_attempt_cost(a_rows[0])
+                    b_costs, b_unknown, b_invalid = priced_attempt_cost(b_rows[0])
+                    paired_cost_input_quality["source_a_unknown_price_calls"] += a_unknown
+                    paired_cost_input_quality["source_b_unknown_price_calls"] += b_unknown
+                    paired_cost_input_quality["source_a_invalid_price_calls"] += a_invalid
+                    paired_cost_input_quality["source_b_invalid_price_calls"] += b_invalid
+                    for currency in a_costs.keys() & b_costs.keys():
+                        cost_pair = paired_costs[currency]
+                        cost_pair["source_a_total"] += a_costs[currency]
+                        cost_pair["source_b_total"] += b_costs[currency]
+                        cost_pair["matched_leads"] += 1
+                        cost_pair["source_a_correct"] += a_value_label == "yes"
+                        cost_pair["source_b_correct"] += b_value_label == "yes"
+                        cost_pair["lead_cost_differences"].append(a_costs[currency] - b_costs[currency])
                 for dimension, dimension_counts in counts.items():
                     a_label = _review_category(a_rows[0].get(label_columns[dimension], ""))
                     b_label = _review_category(b_rows[0].get(label_columns[dimension], ""))
@@ -322,6 +386,7 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                         continue
                     dimension_counts["source_a_yes"] += a_label == "yes"
                     dimension_counts["source_b_yes"] += b_label == "yes"
+                    paired_labels[dimension].append((int(a_label == "yes"), int(b_label == "yes")))
                     if a_label == b_label:
                         dimension_counts["ties"] += 1
                     elif a_label == "yes":
@@ -331,20 +396,115 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
             dimensions = {}
             for dimension, dimension_counts in counts.items():
                 matched = (dimension_counts["source_a_wins"] + dimension_counts["source_b_wins"] + dimension_counts["ties"])
+                label_pairs = paired_labels[dimension]
+                bootstrap_differences = []
+                if bootstrap_reps and label_pairs:
+                    rng = random.Random(
+                        f"{bootstrap_seed}:{field}:{cohort}:{source_a}:{source_b}:{dimension}"
+                    )
+                    for _ in range(bootstrap_reps):
+                        sample = [label_pairs[rng.randrange(len(label_pairs))] for _ in label_pairs]
+                        bootstrap_differences.append(
+                            sum(a_yes - b_yes for a_yes, b_yes in sample) / len(sample)
+                        )
+                    bootstrap_differences.sort()
                 dimensions[dimension] = {
                     "matched_adjudicated_leads": matched,
                     "source_a_wins": dimension_counts["source_a_wins"],
                     "source_b_wins": dimension_counts["source_b_wins"],
                     "ties": dimension_counts["ties"],
+                    "reviewed_agreement_rate": _ratio(dimension_counts["ties"], matched),
+                    "reviewed_disagreement_rate": _ratio(
+                        dimension_counts["source_a_wins"] + dimension_counts["source_b_wins"], matched),
                     "source_a_yes_rate": _ratio(dimension_counts["source_a_yes"], matched),
                     "source_b_yes_rate": _ratio(dimension_counts["source_b_yes"], matched),
                     "paired_rate_difference_a_minus_b": _ratio(dimension_counts["source_a_yes"] - dimension_counts["source_b_yes"], matched),
+                    "paired_rate_difference_cluster_bootstrap_95": {
+                        "method": "percentile bootstrap; sample matched lead pairs with replacement",
+                        "seed": bootstrap_seed,
+                        "requested_replicates": bootstrap_reps,
+                        "valid_replicates": len(bootstrap_differences),
+                        "lower": bootstrap_differences[max(0, math.ceil(0.025 * len(bootstrap_differences)) - 1)] if bootstrap_differences else None,
+                        "upper": bootstrap_differences[max(0, math.ceil(0.975 * len(bootstrap_differences)) - 1)] if bootstrap_differences else None,
+                    },
                     "excluded_unknown_or_unlabeled": dimension_counts["excluded_unknown_or_unlabeled"],
                     "excluded_duplicate_result_sets": dimension_counts["excluded_duplicate_result_sets"],
                     "minimum_labeled_count": min_labeled,
                     "minimum_labeled_met": matched >= min_labeled,
                 }
             value_result = dimensions["value_correct"]
+            cohort_leads = leads_by_cohort[cohort]
+            only_a = a_present - b_present
+            only_b = b_present - a_present
+            neither = cohort_leads - (a_present | b_present)
+            paired_cost_comparison = {}
+            for currency, cost_pair in paired_costs.items():
+                matched_cost_leads = int(cost_pair["matched_leads"])
+                a_mean = _ratio(float(cost_pair["source_a_total"]), matched_cost_leads)
+                b_mean = _ratio(float(cost_pair["source_b_total"]), matched_cost_leads)
+                cost_differences = cost_pair["lead_cost_differences"]
+                cost_bootstrap = []
+                if bootstrap_reps and cost_differences:
+                    rng = random.Random(
+                        f"{bootstrap_seed}:{field}:{cohort}:{source_a}:{source_b}:{currency}:cost"
+                    )
+                    for _ in range(bootstrap_reps):
+                        sample = [cost_differences[rng.randrange(len(cost_differences))]
+                                  for _ in cost_differences]
+                        cost_bootstrap.append(sum(sample) / len(sample))
+                    cost_bootstrap.sort()
+                paired_cost_comparison[currency] = {
+                    "matched_leads_with_priced_attempts_from_both_sources": matched_cost_leads,
+                    "source_a_mean_estimated_cost_per_matched_lead": a_mean,
+                    "source_b_mean_estimated_cost_per_matched_lead": b_mean,
+                    "mean_cost_difference_a_minus_b": (a_mean - b_mean) if a_mean is not None and b_mean is not None else None,
+                    "excluded_unknown_or_invalid_price_calls": {
+                        "source_a_unknown_price_calls": paired_cost_input_quality["source_a_unknown_price_calls"],
+                        "source_b_unknown_price_calls": paired_cost_input_quality["source_b_unknown_price_calls"],
+                        "source_a_invalid_price_calls": paired_cost_input_quality["source_a_invalid_price_calls"],
+                        "source_b_invalid_price_calls": paired_cost_input_quality["source_b_invalid_price_calls"],
+                    },
+                    "mean_cost_difference_cluster_bootstrap_95": {
+                        "method": "percentile bootstrap; sample matched lead cost pairs with replacement",
+                        "seed": bootstrap_seed,
+                        "requested_replicates": bootstrap_reps,
+                        "valid_replicates": len(cost_bootstrap),
+                        "lower": cost_bootstrap[max(0, math.ceil(0.025 * len(cost_bootstrap)) - 1)] if cost_bootstrap else None,
+                        "upper": cost_bootstrap[max(0, math.ceil(0.975 * len(cost_bootstrap)) - 1)] if cost_bootstrap else None,
+                    },
+                    "source_a_value_correct_rate_on_priced_subset": _ratio(int(cost_pair["source_a_correct"]), matched_cost_leads),
+                    "source_b_value_correct_rate_on_priced_subset": _ratio(int(cost_pair["source_b_correct"]), matched_cost_leads),
+                    "priced_subset_value_correct_rate_difference_a_minus_b": _ratio(
+                        int(cost_pair["source_a_correct"]) - int(cost_pair["source_b_correct"]), matched_cost_leads),
+                    "costs_include_failed_attempts_when_recorded": True,
+                }
+                cost_difference = paired_cost_comparison[currency]["mean_cost_difference_a_minus_b"]
+                quality_difference = paired_cost_comparison[currency]["priced_subset_value_correct_rate_difference_a_minus_b"]
+                if cost_difference is not None and quality_difference is not None and cost_difference != 0:
+                    cheaper_source = "source_a" if cost_difference < 0 else "source_b"
+                    cheaper_quality = quality_difference if cheaper_source == "source_a" else -quality_difference
+                    paired_cost_comparison[currency]["descriptive_cost_quality_readout"] = (
+                        f"{cheaper_source} had lower estimated cost and no lower reviewed correctness on this priced matched subset."
+                        if cheaper_quality >= 0 else
+                        f"{cheaper_source} had lower estimated cost, alongside lower reviewed correctness on this priced matched subset."
+                    )
+                else:
+                    paired_cost_comparison[currency]["descriptive_cost_quality_readout"] = "No clear cost direction in the priced matched subset."
+            value_interval = value_result["paired_rate_difference_cluster_bootstrap_95"]
+            if value_result["matched_adjudicated_leads"] < min_labeled:
+                evidence_status = "below_minimum_labeled_caution_threshold"
+                quality_direction = "insufficient_reviewed_leads"
+            elif value_interval["lower"] is not None and value_interval["lower"] > 0:
+                evidence_status, quality_direction = "interval_directional", "source_a_higher_reviewed_correctness"
+            elif value_interval["upper"] is not None and value_interval["upper"] < 0:
+                evidence_status, quality_direction = "interval_directional", "source_b_higher_reviewed_correctness"
+            else:
+                evidence_status, quality_direction = "no_clear_interval_direction", "unclear"
+            value_sign = value_result["paired_rate_difference_a_minus_b"]
+            tradeoffs = [name for name, values in dimensions.items()
+                         if name != "value_correct" and values["paired_rate_difference_a_minus_b"] is not None
+                         and value_sign is not None
+                         and values["paired_rate_difference_a_minus_b"] * value_sign < 0]
             comparisons.append({
                 "field": field,
                 "engine_path": cohort[0],
@@ -358,6 +518,30 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                 "source_b_leads_with_result": len(b_present),
                 "source_b_result_coverage": _ratio(len(b_present), len(leads_by_cohort[cohort])),
                 "shared_leads_with_result": len(shared),
+                "lead_result_availability": {
+                    "cohort_leads": len(cohort_leads),
+                    "both_sources_returned_result": len(shared),
+                    "only_source_a_returned_result": len(only_a),
+                    "only_source_b_returned_result": len(only_b),
+                    "neither_source_returned_result": len(neither),
+                    "both_sources_rate": _ratio(len(shared), len(cohort_leads)),
+                    "only_source_a_rate": _ratio(len(only_a), len(cohort_leads)),
+                    "only_source_b_rate": _ratio(len(only_b), len(cohort_leads)),
+                    "neither_rate": _ratio(len(neither), len(cohort_leads)),
+                },
+                "paired_provider_attempt_cost_by_currency": paired_cost_comparison,
+                "paired_cost_input_quality": {
+                    **paired_cost_input_quality,
+                    "scope": "matched leads with explicit yes/no value-correctness reviews from both sources",
+                    "rule": "only positive-call-count attempts with a finite, nonnegative estimate and a currency enter paired cost totals; missing prices are unknown, invalid amounts are excluded",
+                },
+                "decision_readout": {
+                    "evidence_status": evidence_status,
+                    "value_correctness_direction": quality_direction,
+                    "dimensions_with_opposing_point_estimate_direction": tradeoffs,
+                    "automatic_provider_selection": False,
+                    "note": "Descriptive comparison of this matched reviewed cohort; use business importance, evidence strength, coverage, and cost together.",
+                },
                 "dimensions": dimensions,
                 "matched_adjudicated_leads": value_result["matched_adjudicated_leads"],
                 "source_a_wins": value_result["source_a_wins"],
@@ -374,10 +558,79 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
     return comparisons
 
 
-def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path]:
+def _decision_brief(report: dict) -> str:
+    provenance = report.get("scoring_provenance", {})
+    lines = ["# Enrichment benchmark decision brief", "",
+             f"Reviewed field rows: {report.get('review_rows', 0)}", "",
+             f"Scored at (UTC): {provenance.get('scored_at_utc', 'unknown')}",
+             f"Source SHA-256: `{provenance.get('source_sha256', 'unknown')}`", "",
+             "> This is a descriptive summary of reviewed benchmark evidence. It does not automatically select a provider. Cost figures are configured estimates, not invoices.", ""]
+    comparisons = report.get("paired_source_comparisons") or []
+    if not comparisons:
+        lines.extend(["No paired source comparisons were available for this review file.", ""])
+        return "\n".join(lines)
+    lines.extend(["## Paired source comparisons", ""])
+    for item in comparisons:
+        source_a = item.get("source_a", {})
+        source_b = item.get("source_b", {})
+        label_a = f"{source_a.get('name', 'Source A')} ({source_a.get('type', 'unknown')})"
+        label_b = f"{source_b.get('name', 'Source B')} ({source_b.get('type', 'unknown')})"
+        readout = item.get("decision_readout", {})
+        coverage = item.get("lead_result_availability", {})
+        value = (item.get("dimensions") or {}).get("value_correct", {})
+        interval = value.get("paired_rate_difference_cluster_bootstrap_95", {})
+        low, high = interval.get("lower"), interval.get("upper")
+        interval_text = f"{low:+.1%} to {high:+.1%}" if isinstance(low, (int, float)) and isinstance(high, (int, float)) else "unavailable"
+        lines.extend([
+            f"### {item.get('field', '(unknown field)')}: {label_a} vs {label_b}", "",
+            f"- Evidence: `{readout.get('evidence_status', 'unavailable')}`; matched reviewed leads: {value.get('matched_adjudicated_leads', 0)}.",
+            f"- Value-correctness difference (A minus B): {_display_rate(value.get('paired_rate_difference_a_minus_b'))}; 95% lead-pair interval: {interval_text}.",
+            f"- Result availability: both {coverage.get('both_sources_returned_result', 0)}, only A {coverage.get('only_source_a_returned_result', 0)}, only B {coverage.get('only_source_b_returned_result', 0)}, neither {coverage.get('neither_source_returned_result', 0)} of {coverage.get('cohort_leads', 0)} cohort leads.",
+        ])
+        tradeoffs = readout.get("dimensions_with_opposing_point_estimate_direction") or []
+        if tradeoffs:
+            lines.append(f"- Other dimensions with opposing point-estimate direction: {', '.join(tradeoffs)}.")
+        for currency, costs in (item.get("paired_provider_attempt_cost_by_currency") or {}).items():
+            a_cost = costs.get("source_a_mean_estimated_cost_per_matched_lead")
+            b_cost = costs.get("source_b_mean_estimated_cost_per_matched_lead")
+            cost_interval = costs.get("mean_cost_difference_cluster_bootstrap_95", {})
+            cost_low, cost_high = cost_interval.get("lower"), cost_interval.get("upper")
+            cost_interval_text = (f"{cost_low:+.4g} to {cost_high:+.4g} {currency}"
+                                  if isinstance(cost_low, (int, float)) and isinstance(cost_high, (int, float))
+                                  else "unavailable")
+            lines.append(
+                f"- {currency} estimated cost per priced matched lead: A {_display_amount(a_cost)}; B {_display_amount(b_cost)}; A-minus-B cost interval {cost_interval_text}; {costs.get('descriptive_cost_quality_readout', 'No cost-quality readout.') }"
+            )
+        cost_quality = item.get("paired_cost_input_quality", {})
+        if cost_quality:
+            unknown = int(cost_quality.get("source_a_unknown_price_calls", 0)) + int(cost_quality.get("source_b_unknown_price_calls", 0))
+            invalid = int(cost_quality.get("source_a_invalid_price_calls", 0)) + int(cost_quality.get("source_b_invalid_price_calls", 0))
+            lines.append(f"- Paired cost metadata excluded {unknown} unknown-price calls and {invalid} invalid-price calls across both sources.")
+        lines.append("")
+    lines.extend(["## How to read this", "",
+                  "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
+    return "\n".join(lines)
+
+
+def _display_rate(value: Any) -> str:
+    return f"{value:.1%}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _display_amount(value: Any) -> str:
+    return f"{value:.4g}" if isinstance(value, (int, float)) else "n/a"
+
+
+def score(source: str, out: str = "", min_labeled: int = 20,
+          cost_bootstrap_reps: int = 500, cost_bootstrap_seed: int = 42,
+          paired_bootstrap_reps: int = 500, paired_bootstrap_seed: int = 42,
+          markdown_out: str = "") -> tuple[dict, Path]:
     """Summarize reviewed quality, coverage, freshness and declared provider cost."""
     if min_labeled < 1:
         raise ValueError("--min-labeled must be at least 1.")
+    if cost_bootstrap_reps < 0 or cost_bootstrap_reps > 5000:
+        raise ValueError("--cost-bootstrap-reps must be between 0 and 5000.")
+    if paired_bootstrap_reps < 0 or paired_bootstrap_reps > 5000:
+        raise ValueError("--paired-bootstrap-reps must be between 0 and 5000.")
     headers, rows = _read(source)
     required = {"field", "status", *REVIEW_FIELDS[:4]}
     missing = sorted(required - set(headers))
@@ -418,6 +671,15 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
             responses[field] = counts
         correct_values = sum((r.get(label_columns["value_correct"]) or "").strip().casefold() in YES for r in labeled["value_correct"])
         costs: dict[str, float] = defaultdict(float)
+        provider_attempt_costs: dict[str, float] = defaultdict(float)
+        provider_cost_review_denominator: dict[str, int] = defaultdict(int)
+        reviewed_provider_costs: dict[str, float] = defaultdict(float)
+        reviewed_cost_clusters: dict[str, dict[str, dict[str, float | int]]] = defaultdict(
+            lambda: defaultdict(lambda: {"cost": 0.0, "correct": 0})
+        )
+        human_correct_with_provider_attempts = 0
+        provider_cost_details: dict[str, dict] = defaultdict(lambda: {"calls": 0, "estimated_cost_by_currency": {}, "unknown_price_calls": 0})
+        unknown_provider_attempts = 0
         for row in items:
             try:
                 amount = float(row.get("cost_amount") or "")
@@ -425,8 +687,94 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                 continue
             currency = (row.get("cost_currency") or "unknown").strip() or "unknown"
             costs[currency] += amount
+        for row_index, row in enumerate(items):
+            waterfall_cost = _json(row.get("provider_waterfall_cost"))
+            if not isinstance(waterfall_cost, dict):
+                continue
+            provider_map = waterfall_cost.get("providers") if isinstance(waterfall_cost.get("providers"), dict) else {}
+            row_currencies = set()
+            row_has_attempts = False
+            for provider_name, attempt in provider_map.items():
+                if not isinstance(attempt, dict):
+                    continue
+                try:
+                    attempt_count = max(0, int(attempt.get("calls", 0) or 0))
+                except (TypeError, ValueError):
+                    continue
+                attempt_amount, attempt_currency = attempt.get("estimated_cost"), attempt.get("currency")
+                detail = provider_cost_details[str(provider_name)]
+                detail["calls"] += attempt_count
+                row_has_attempts |= attempt_count > 0
+                if isinstance(attempt_amount, (int, float)) and math.isfinite(float(attempt_amount)) and attempt_currency:
+                    provider_attempt_costs[str(attempt_currency)] += float(attempt_amount)
+                    row_currencies.add(str(attempt_currency))
+                    currency_totals = detail["estimated_cost_by_currency"]
+                    currency_totals[str(attempt_currency)] = currency_totals.get(str(attempt_currency), 0.0) + float(attempt_amount)
+                elif attempt_count:
+                    unknown_provider_attempts += attempt_count
+                    detail["unknown_price_calls"] += attempt_count
+            label_column = label_columns["value_correct"]
+            label = (row.get(label_column) or "").strip().casefold()
+            is_reviewed = label in YES | NO
+            is_human_correct = label in YES
+            cluster_id = (row.get("source_row") or row.get("evaluation_id") or f"row:{row_index}").strip()
+            if row_has_attempts and is_reviewed:
+                for currency in row_currencies:
+                    reviewed_cost_clusters[currency][cluster_id]["cost"] += sum(
+                        float(attempt.get("estimated_cost"))
+                        for attempt in provider_map.values()
+                        if isinstance(attempt, dict)
+                        and attempt.get("currency") == currency
+                        and isinstance(attempt.get("estimated_cost"), (int, float))
+                        and math.isfinite(float(attempt.get("estimated_cost")))
+                    )
+                for currency in row_currencies:
+                    row_cost = sum(
+                        float(attempt.get("estimated_cost"))
+                        for attempt in provider_map.values()
+                        if isinstance(attempt, dict)
+                        and attempt.get("currency") == currency
+                        and isinstance(attempt.get("estimated_cost"), (int, float))
+                        and math.isfinite(float(attempt.get("estimated_cost")))
+                    )
+                    reviewed_provider_costs[currency] += row_cost
+                    if is_human_correct:
+                        reviewed_cost_clusters[currency][cluster_id]["correct"] += 1
+            if row_has_attempts and is_human_correct:
+                human_correct_with_provider_attempts += 1
+                for currency in row_currencies:
+                    provider_cost_review_denominator[currency] += 1
         accepted = sum((r.get("status") or "").strip().casefold() == "accepted" for r in items)
         fresh_known = [r for r in items if (r.get("freshness_status") or "").strip() and (r.get("freshness_status") or "").casefold() != "unknown"]
+        cost_uncertainty = {}
+        for currency, clusters in reviewed_cost_clusters.items():
+            cluster_values = list(clusters.values())
+            point_denominator = sum(int(value["correct"]) for value in cluster_values)
+            ratios = []
+            if cost_bootstrap_reps and cluster_values:
+                rng = random.Random(f"{cost_bootstrap_seed}:{currency}:{'|'.join(sorted(clusters))}")
+                for _ in range(cost_bootstrap_reps):
+                    sampled = [cluster_values[rng.randrange(len(cluster_values))] for _ in cluster_values]
+                    denominator = sum(int(value["correct"]) for value in sampled)
+                    if denominator:
+                        numerator = sum(float(value["cost"]) for value in sampled)
+                        ratios.append(numerator / denominator)
+            ratios.sort()
+            cost_uncertainty[currency] = {
+                "reviewed_cost_estimate": reviewed_provider_costs[currency],
+                "human_reviewed_correct_denominator": point_denominator,
+                "point_estimate_per_human_reviewed_correct_result": _ratio(reviewed_provider_costs[currency], point_denominator),
+                "unique_leads_with_reviewed_provider_attempts": len(cluster_values),
+                "cluster_bootstrap_95": {
+                    "method": "percentile bootstrap; sample lead clusters with replacement",
+                    "seed": cost_bootstrap_seed,
+                    "requested_replicates": cost_bootstrap_reps,
+                    "valid_replicates": len(ratios),
+                    "replicates_without_correct_result": cost_bootstrap_reps - len(ratios),
+                    "lower": ratios[max(0, math.ceil(0.025 * len(ratios)) - 1)] if ratios else None,
+                    "upper": ratios[max(0, math.ceil(0.975 * len(ratios)) - 1)] if ratios else None,
+                },
+            }
         return {"fields": len(items), "accepted": accepted, "coverage": _ratio(accepted, len(items)),
                 "status_counts": {status: sum((r.get("status") or "").strip().casefold() == status for r in items)
                                   for status in ("accepted", "candidate", "not_found", "rejected", "error")},
@@ -444,27 +792,56 @@ def score(source: str, out: str = "", min_labeled: int = 20) -> tuple[dict, Path
                                         if f"reviewer_a_{field}" in headers and f"reviewer_b_{field}" in headers},
                 "freshness_documented": len(fresh_known), "freshness_documented_rate": _ratio(len(fresh_known), len(items)),
                 "declared_cost_by_currency": dict(costs),
-                "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()}}
+                "declared_cost_per_accepted_field_by_currency": {currency: _ratio(amount, accepted) for currency, amount in costs.items()},
+                "provider_attempt_cost_estimate_by_currency": dict(provider_attempt_costs),
+                "provider_attempt_cost_estimate_by_provider": dict(provider_cost_details),
+                "provider_attempt_estimate_per_accepted_result_by_currency": {currency: _ratio(amount, accepted) for currency, amount in provider_attempt_costs.items()},
+                "human_reviewed_correct_results_with_provider_attempts": human_correct_with_provider_attempts,
+                "provider_attempt_estimate_per_human_reviewed_correct_result_by_currency": {
+                    currency: _ratio(reviewed_provider_costs[currency], provider_cost_review_denominator[currency]) for currency in reviewed_provider_costs},
+                "provider_attempt_cost_human_correct_denominator_by_currency": dict(provider_cost_review_denominator),
+                "provider_cost_per_reviewed_correct_uncertainty_by_currency": cost_uncertainty,
+                "provider_attempts_with_unknown_price": unknown_provider_attempts,
+                "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded. Cost per human-reviewed correct result uses priced provider costs only from rows explicitly labeled yes or no for value_correct, divided by explicitly yes-labeled rows with priced provider attempts. Unknown-price attempts remain separately counted. The lead-cluster percentile bootstrap is descriptive sampling uncertainty; it cannot correct sampling bias or establish population performance. Estimates use configured call prices, not invoices."}
 
+    source_sha256 = hashlib.sha256(Path(source).read_bytes()).hexdigest()
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
+              "scoring_provenance": {
+                  "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                  "source_sha256": source_sha256,
+                  "settings": {
+                      "minimum_labeled_caution_threshold": min_labeled,
+                      "cost_bootstrap_replicates": cost_bootstrap_reps,
+                      "cost_bootstrap_seed": cost_bootstrap_seed,
+                      "paired_bootstrap_replicates": paired_bootstrap_reps,
+                      "paired_bootstrap_seed": paired_bootstrap_seed,
+                  },
+              },
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
               "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
                                        **metrics(items)}
                                       for (field, source_type, source_name), items in sorted(by_field_source.items())],
-              "paired_source_comparisons": _paired_source_comparisons(rows, headers, min_labeled),
+              "paired_source_comparisons": _paired_source_comparisons(
+                  rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed),
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
-              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. Paired source wins compare adjudicated value correctness for the same lead and field; they are descriptive and do not prove general provider superiority. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
+              "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Wilson intervals describe sampling uncertainty under a simple binomial model, not bias or representativeness. Paired source wins compare adjudicated value correctness for the same lead and field; they are descriptive and do not prove general provider superiority. Cost bootstrap intervals resample lead clusters from explicitly reviewed rows and do not correct sampling bias. The minimum labeled count is a caution flag, not proof of statistical power or significance. Source names may identify a provider or an evidence source depending on the producer. Declared costs may be estimates, not provider invoices. Compare cohorts only when field and lead mix are sufficiently similar."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if markdown_out:
+        brief_path = Path(markdown_out)
+        brief_path.parent.mkdir(parents=True, exist_ok=True)
+        brief_path.write_text(_decision_brief(report), encoding="utf-8")
+        print(f"Wrote decision brief: {brief_path}")
     print(f"Scored {len(rows)} reviewed field rows across {len(by_field)} fields: {output}")
     for field, values in report["fields"].items():
         m = values["review_labels"]
         fmt = lambda key: "n/a" if m[key]["rate"] is None else f"{m[key]['rate']:.1%} ({m[key]['labeled']} labeled)"
         print(f"  {field}: coverage {values['coverage']:.1%}; value correctness {fmt('value_correct')}; identity correctness {fmt('identity_correct')}; evidence adequacy {fmt('evidence_adequate')}; freshness accepted {fmt('freshness_acceptable')}")
     print("Costs are summed only when a result declares a numeric amount and currency; unknown costs are omitted.")
+    print("Provider waterfall cost-per-human-reviewed-correct metrics use only explicitly yes-labeled value_correct rows; estimates are not invoices.")
     return report, output
 
 
@@ -773,6 +1150,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("source", help="review CSV with yes/no labels")
     s.add_argument("--out", default="", help="JSON report output path")
     s.add_argument("--min-labeled", type=int, default=20, help="minimum yes/no labels before a cohort is flagged as reaching the caution threshold (default: 20)")
+    s.add_argument("--cost-bootstrap-reps", type=int, default=500, help="lead-cluster bootstrap replicates for reviewed cost intervals (0 disables; default: 500)")
+    s.add_argument("--cost-bootstrap-seed", type=int, default=42, help="seed for reproducible reviewed cost intervals (default: 42)")
+    s.add_argument("--paired-bootstrap-reps", type=int, default=500, help="lead-pair bootstrap replicates for paired source quality and cost differences (0 disables; default: 500)")
+    s.add_argument("--paired-bootstrap-seed", type=int, default=42, help="seed for reproducible paired source quality and cost intervals (default: 42)")
+    s.add_argument("--markdown-out", default="", help="optional Markdown decision brief output path")
     sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
     sm.add_argument("source", help="prepared human-review CSV from `prepare`")
     sm.add_argument("--leads", type=int, default=40, help="maximum leads to sample (default: 40)")
@@ -791,7 +1173,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "prepare":
             prepare(args.source, args.out)
         elif args.action == "score":
-            score(args.source, args.out, args.min_labeled)
+            score(args.source, args.out, args.min_labeled, args.cost_bootstrap_reps, args.cost_bootstrap_seed,
+                  args.paired_bootstrap_reps, args.paired_bootstrap_seed, args.markdown_out)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
         elif args.action == "pair-reviewers":

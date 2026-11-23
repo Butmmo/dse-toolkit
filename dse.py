@@ -236,6 +236,23 @@ def main():
     en.add_argument("--max-provider-spend", type=float, default=None, help="required approved ceiling for known configured-provider charges")
     en.add_argument("--allow-unknown-provider-cost", action="store_true", help="acknowledge configured providers with unknown prices; unknown charges are outside the numeric ceiling")
     en.add_argument("--spend-preview", action="store_true", help="read-only estimate from provider prices and waterfall caps; does not read lead data or make requests")
+    en.add_argument("--build-waterfall-config", action="store_true", help="validate providers and save a local ordered waterfall JSON (never overwrites)")
+    en.add_argument("--review-waterfall-config", action="store_true", help="read-only check local provider mappings, keys and spend readiness")
+    en.add_argument("--waterfall-name", default="", help="name for the locally saved waterfall config")
+    en.add_argument("--email-providers", default="", help="ordered provider names, comma separated")
+    en.add_argument("--phone-providers", default="", help="ordered phone-provider names, comma separated")
+    en.add_argument("--person-identity-providers", default="", help="ordered person-identity provider names, comma separated")
+    en.add_argument("--firmographics-providers", default="", help="ordered firmographic-provider names, comma separated")
+    en.add_argument("--email-call-cap", type=int, default=25)
+    en.add_argument("--phone-call-cap", type=int, default=25)
+    en.add_argument("--person-identity-call-cap", type=int, default=25)
+    en.add_argument("--firmographics-call-cap", type=int, default=25)
+    en.add_argument("--stop-when", choices=sorted(enrich.wf.STOP_RULES), default="personal_email_and_named_person")
+    en.add_argument("--email-min-confidence", type=float, default=0)
+    en.add_argument("--phone-min-confidence", type=float, default=0)
+    en.add_argument("--person-identity-min-confidence", type=float, default=0)
+    en.add_argument("--firmographics-min-confidence", type=float, default=0)
+    en.add_argument("--person-identity-min-score", type=float, default=0)
     en.add_argument("--providers", action="store_true", help="list the providers set up here"); en.add_argument("--add-provider", default="", dest="add_provider")
     en.add_argument("--catalog", action="store_true", help="show supported, candidate, retired, and restricted enrichment providers")
     en.add_argument("--usage", action="store_true", help="show this PC's optional enrichment-provider usage estimates")
@@ -323,6 +340,14 @@ def main():
         try:
             if a.providers:
                 print(enrich_providers.describe())
+            elif a.build_waterfall_config:
+                print(enrich.wf.build_local_config(a.waterfall_name, a.email_providers, a.phone_providers,
+                    a.person_identity_providers, a.firmographics_providers, a.email_call_cap, a.phone_call_cap,
+                    a.person_identity_call_cap, a.firmographics_call_cap, a.stop_when, a.email_min_confidence,
+                    a.phone_min_confidence, a.person_identity_min_confidence, a.firmographics_min_confidence,
+                    a.person_identity_min_score))
+            elif a.review_waterfall_config:
+                print(enrich.wf.review_local_config(a.waterfall_config, a.max, a.budget))
             elif a.spend_preview:
                 print(enrich.provider_spend_preview(a.waterfall_config, a.max, a.provider, a.budget))
             elif a.catalog:

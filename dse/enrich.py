@@ -22,6 +22,7 @@ Rules it follows:
 from __future__ import annotations
 
 import datetime as dt
+import copy
 import html as htmllib
 import json
 import math
@@ -360,7 +361,12 @@ def run_field_waterfalls(out: dict, fields: dict, company: str, contact_name: st
                         return {"candidates": [], "projected": 1}
                     return {"candidates": []}
                 calls_before, cache_before = budget.used, budget.cached
-                candidates = ep.lookup_field(provider, field_name, identity, budget, today)
+                try:
+                    candidates = ep.lookup_field(provider, field_name, identity, budget, today)
+                except ep.ProviderError as error:
+                    error.waterfall_api_calls = budget.used - calls_before
+                    error.waterfall_cache_hits = budget.cached - cache_before
+                    raise
                 return {"candidates": candidates, "api_calls": budget.used - calls_before,
                         "cache_hits": budget.cached - cache_before}
             chain.append({"name": provider["name"], "run": run})
@@ -557,12 +563,19 @@ def enrich_site(website: str, icp_terms: list[str] | None = None, render: bool =
                     found = ep.lookup(provider_cfg, out["domain"], company, budget, today)
                 except ep.ProviderError as error:
                     notes.append(str(error))
+                    error.waterfall_api_calls = budget.used - calls_before
+                    error.waterfall_cache_hits = budget.cached - cache_before
                     raise
                 return {"candidates": found, "api_calls": budget.used - calls_before,
                         "cache_hits": budget.cached - cache_before}
             return {"name": provider_cfg["name"], "run": run_lookup}
 
         result = wf.execute_chain([rung_for(p) for p in provider_chain], accept, stop_after)
+        provider_by_name = {provider_cfg["name"]: provider_cfg for provider_cfg in provider_chain}
+        for rung in result["rungs"]:
+            adapter = provider_by_name.get(rung.get("rung"), {})
+            rung["cost_per_call"] = adapter.get("cost_per_call")
+            rung["cost_currency"] = adapter.get("cost_currency", "")
         out["waterfall_candidates"] = result["candidates"]
         calls = sum(r["api_calls"] for r in result["rungs"])
         cache_hits = sum(r["cache_hits"] for r in result["rungs"])
@@ -704,6 +717,45 @@ def field_audit(site: dict, row_email: str, best_email: str, best_email_source: 
     return json.dumps(audit, ensure_ascii=False, separators=(",", ":"))
 
 
+def _waterfall_cost(metrics: dict | None) -> dict | None:
+    """Summarize actual configured provider attempts using declared local per-call prices."""
+    if not isinstance(metrics, dict) or metrics.get("dry_run"):
+        return None
+    by_provider, currencies, unknown = {}, set(), []
+    for rung in metrics.get("providers", []):
+        if not isinstance(rung, dict):
+            continue
+        calls = max(0, int(rung.get("api_calls", 0) or 0))
+        if not calls:
+            continue
+        name, raw = str(rung.get("rung", "unknown")), rung.get("cost_per_call")
+        currency = str(rung.get("cost_currency", "")).upper()
+        item = {"calls": calls, "cost_per_call": raw, "currency": currency or None}
+        if raw is None or not currency:
+            item["estimated_cost"] = None
+            unknown.append(name)
+        else:
+            try:
+                price = float(raw)
+            except (TypeError, ValueError):
+                price = float("nan")
+            if not math.isfinite(price) or price < 0:
+                item["estimated_cost"] = None
+                unknown.append(name)
+            else:
+                item["estimated_cost"] = round(calls * price, 8)
+                currencies.add(currency)
+        by_provider[name] = item
+    if not by_provider:
+        return None
+    complete = not unknown and len(currencies) == 1
+    return {"attempted_calls": sum(item["calls"] for item in by_provider.values()),
+            "estimated_cost": round(sum(item["estimated_cost"] for item in by_provider.values()), 8) if complete else None,
+            "currency": next(iter(currencies)) if complete else None, "cost_estimated": complete,
+            "unknown_price_providers": sorted(set(unknown)), "providers": by_provider,
+            "basis": "configured cost_per_call; estimate, not vendor invoice"}
+
+
 def shared_field_results(site: dict, row_email: str, best_email: str, best_email_source: str, today: dt.date) -> str:
     """Emit the shared contract while retaining enrichment_audit for older consumers."""
     observed = dt.datetime.combine(today, dt.time.min, tzinfo=dt.timezone.utc).isoformat().replace("+00:00", "Z")
@@ -712,6 +764,9 @@ def shared_field_results(site: dict, row_email: str, best_email: str, best_email
     calls = int(provider_usage.get("api_calls", 0) or 0)
     cache_hits = int(provider_usage.get("cache_hits", 0) or 0)
     provider_name = provider_usage.get("provider", "")
+    waterfall_costs = {"email": _waterfall_cost(site.get("waterfall_metrics"))}
+    waterfall_costs.update({name: _waterfall_cost(metrics) for name, metrics in
+                            (site.get("field_waterfall_metrics") or {}).items()})
 
     def add(field: str, value, url: str = "", source_type: str = "company_website", source_name: str = "Company website",
             subject: str = "company", strength: str = "strong", verification: str = "not_checked", miss: str = ""):
@@ -740,13 +795,14 @@ def shared_field_results(site: dict, row_email: str, best_email: str, best_email
     elif best_email_source and best_email_source.startswith("http"):
         email_type, email_name = "company_website", "Company website"
     elif best_email_source:
-        email_type, email_name = "configured_provider", provider_name or best_email_source
+        email_type, email_name = "configured_provider", best_email_source.split(" (your own API key", 1)[0]
     else:
         email_type, email_name = "", ""
+    email_cost = waterfall_costs.get("email") if email_type == "configured_provider" else None
     email_candidates = [fr.source_ref(source_type="input_csv", source_name="Input CSV", status="accepted" if best_email_source == "your file" else "rejected",
                                        value=row_email)] if row_email else []
     email_candidates.extend(fr.source_ref(source_type="company_website" if str(e.get("source", "")).startswith("http") else "configured_provider",
-                                          source_name=provider_name if not str(e.get("source", "")).startswith("http") else "Company website",
+                                          source_name=str(e.get("source", "")).split(" (your own API key", 1)[0] if not str(e.get("source", "")).startswith("http") else "Company website",
                                           source_url=e.get("source", "") if str(e.get("source", "")).startswith("http") else "",
                                           status="accepted" if e.get("email") == best_email and best_email_source != "your file" else "candidate", value=e.get("email"))
                             for e in site.get("emails", []))
@@ -761,11 +817,15 @@ def shared_field_results(site: dict, row_email: str, best_email: str, best_email
                                  identity_match="input accepted by domain policy" if best_email_source == "your file" else "domain-scoped provider/site result" if best_email else "",
                                  identity_strength="moderate" if best_email else "unknown", verification_status="not_checked" if best_email else "not_found",
                                  verification_method="MX presence is checked separately; mailbox delivery is not verified" if best_email else "",
-                                 cost_units="provider_api_calls" if email_type == "configured_provider" else "", cost_quantity=float(calls) if email_type == "configured_provider" else None,
-                                 cost_estimated=False if email_type == "configured_provider" else None,
+                                 cost_amount=email_cost.get("estimated_cost") if email_cost else None,
+                                 cost_currency=email_cost.get("currency") if email_cost else None,
+                                 cost_units="provider_api_attempts" if email_cost else "",
+                                 cost_quantity=float(email_cost["attempted_calls"]) if email_cost else None,
+                                 cost_estimated=email_cost.get("cost_estimated") if email_cost else None,
                                  miss_reason="No accepted email; guesses, if any, remain candidates only." if not best_email else "",
                                  candidates=email_candidates, metadata={"email_source_label": best_email_source, "provider_cache_hits": cache_hits,
-                                                                      "waterfall_metrics": site.get("waterfall_metrics", {})}))
+                                                                      "waterfall_metrics": site.get("waterfall_metrics", {}),
+                                                                      "provider_waterfall_cost": waterfall_costs.get("email")}))
     add("phone", (site.get("phones") or [None])[0], (site.get("field_sources") or {}).get("phone", ""))
     person = (site.get("people") or [None])[0]
     add("decision_maker", {"name": person.get("name"), "title": person.get("title", "")} if person else None,
@@ -789,11 +849,19 @@ def shared_field_results(site: dict, row_email: str, best_email: str, best_email
             target = next((item for item in fields if item.get("field") == result_field), None)
             if target:
                 target.setdefault("metadata", {})["provider_waterfall"] = metrics
+                cost_detail = waterfall_costs.get(waterfall_field)
+                if cost_detail:
+                    target["metadata"]["provider_waterfall_cost"] = cost_detail
+                    if target.get("source", {}).get("type") == "configured_provider":
+                        target["cost"].update({"amount": cost_detail["estimated_cost"], "currency": cost_detail["currency"],
+                                               "units": "provider_api_attempts", "quantity": float(cost_detail["attempted_calls"]),
+                                               "estimated": cost_detail["cost_estimated"]})
                 target["candidates"].extend(fr.source_ref(source_type="configured_provider", source_name=c.get("waterfall_provider", ""),
                     source_url=c.get("source_url", ""), status=c.get("waterfall_status", "candidate"),
                     value={"value": c.get("value"), "reason": c.get("waterfall_reason", "")}) for c in candidates)
             if waterfall_field == "firmographics":
                 selected = next((c for c in candidates if c.get("waterfall_status") == "accepted"), None)
+                cost_detail = waterfall_costs.get("firmographics")
                 fields.append(fr.make_result(field="firmographics", value=site.get("firmographics") or None,
                     status="accepted" if site.get("firmographics") else "not_found",
                     source_type="configured_provider" if selected else "", source_name=selected.get("waterfall_provider", "") if selected else "",
@@ -801,17 +869,23 @@ def shared_field_results(site: dict, row_email: str, best_email: str, best_email
                     identity_subject="company" if site.get("firmographics") else "unknown", identity_match="provider company identity policy" if site.get("firmographics") else "",
                     identity_strength="moderate" if site.get("firmographics") else "unknown", verification_status="provider_returned_unverified" if site.get("firmographics") else "not_found",
                     miss_reason="No configured provider returned identity-matched firmographic values." if not site.get("firmographics") else "",
+                    cost_amount=cost_detail.get("estimated_cost") if selected and cost_detail else None,
+                    cost_currency=cost_detail.get("currency") if selected and cost_detail else None,
+                    cost_units="provider_api_attempts" if selected and cost_detail else "",
+                    cost_quantity=float(cost_detail["attempted_calls"]) if selected and cost_detail else None,
+                    cost_estimated=cost_detail.get("cost_estimated") if selected and cost_detail else None,
                     candidates=[fr.source_ref(source_type="configured_provider", source_name=c.get("waterfall_provider", ""), source_url=c.get("source_url", ""),
                         status=c.get("waterfall_status", "candidate"), value={"value": c.get("value"), "reason": c.get("waterfall_reason", "")}) for c in candidates],
-                    metadata={"provider_waterfall": metrics}))
+                    metadata={"provider_waterfall": metrics, "provider_waterfall_cost": cost_detail}))
     if calls or cache_hits:
         fields.append(fr.make_result(field="provider_lookup", value={"provider": provider_name, "api_calls": calls, "cache_hits": cache_hits},
                                      status="candidate" if calls or cache_hits else "not_found", source_type="configured_provider", source_name=provider_name,
                                      observed_at=observed, verification_status="not_applicable", cost_units="provider_api_calls", cost_quantity=float(calls),
                                      cost_estimated=False, miss_reason=site.get("provider_note", ""),
-                                     metadata={"currency_cost": None, "pricing_note": "No provider monetary price is declared."}))
+                                     metadata={"pricing_note": "Provider calls are counted here; configured per-field cost estimates are attached to their field results when available."}))
     for result in fields:
-        result.setdefault("metadata", {})["lane"] = "website_enrichment"
+        result.setdefault("metadata", {}).update({"lane": "website_enrichment",
+            "provider_cost_shared_from_duplicate_domain": bool(site.get("provider_cost_shared_from_duplicate_domain"))})
     return fr.dump_results(fields)
 
 
@@ -871,6 +945,8 @@ def provider_spend_preview(waterfall_config_path: str, lead_count: int, provider
     """Read-only price/call-cap estimate; opens no lead list and makes no network requests."""
     if not 1 <= lead_count <= 2000:
         raise ValueError("Preview between 1 and 2000 leads.")
+    if budget_override is not None and not 0 <= budget_override <= 5000:
+        raise ValueError("Provider-call override must be between 0 and 5000.")
     config = wf.load_config(waterfall_config_path, provider, budget_override)
     providers = wf.provider_configs(config, dry_run=True) if config["providers"] else []
     fields = wf.load_field_waterfalls(waterfall_config_path, budget_override, dry_run=True)
@@ -915,7 +991,18 @@ def enrich_rows(rows: list[dict], headers: list[str], icp_terms: list[str], rend
         row_email = (r.get(m.get("email", ""), "") or "").strip().lower()
         row_name = (r.get(m.get("contact_name", ""), "") or "").strip()
         if dom in seen_domains:
-            site = seen_domains[dom]
+            site = copy.deepcopy(seen_domains[dom])
+            site["provider_cost_shared_from_duplicate_domain"] = True
+            usage = site.get("provider_usage") or {}
+            usage.update({"api_calls": 0, "cache_hits": 0, "reused_from_same_run": True})
+            for metrics in [site.get("waterfall_metrics", {}), *(site.get("field_waterfall_metrics") or {}).values()]:
+                if not isinstance(metrics, dict):
+                    continue
+                for rung in metrics.get("providers", []):
+                    rung["api_calls"] = 0
+                    rung["cache_hits"] = 0
+                    rung["status"] = "reused_same_run"
+            site["provider_usage"] = usage
         else:
             log(f"[{stats['rows']}/{min(len(rows), max_rows)}] {dom or '(no website)'}")
             try:
