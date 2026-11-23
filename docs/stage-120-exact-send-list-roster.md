@@ -14,4 +14,5 @@ Outcome scoring compared expected and observed assignment counts by variant, but
 ## Verification
 
 - Checked Python compilation, CLI help, catalog JSON and Markdown formatting logic.
+- Pushed to `codex/hq-runner-id-routing` and restarted the PC runner; its startup log reports 181 tools.
 - No Send Desk lists, outcomes, assignments or email sends were changed.
