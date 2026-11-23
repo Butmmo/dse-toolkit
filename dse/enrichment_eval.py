@@ -2169,6 +2169,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                                "mature_won_rate_a_minus_b": _ratio(mature_a["won_count"], mature_a["mature_sent_leads"]) - _ratio(mature_b["won_count"], mature_b["mature_sent_leads"])
                                    if mature_a["won_rate"] is not None and mature_b["won_rate"] is not None else None})
     imports_dir = engine_dir(engine) / "imports"
+    from . import importer
     audit_candidates = sorted(imports_dir.glob(f"*-{experiment_id}-outreach-assigned-assignment.json")) if experiment_id else sorted(imports_dir.glob("*-outreach-assigned-assignment.json"))
     assignment_audit_checks = []
     for audit_path in audit_candidates:
@@ -2184,6 +2185,14 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         csv_path = (audit_path.parent / assigned_name).resolve() if assigned_name and Path(assigned_name).name == assigned_name else None
         csv_exists = bool(csv_path and csv_path.is_file() and imports_dir.resolve() in csv_path.parents)
         csv_hash_matches = bool(csv_exists and hashlib.sha256(csv_path.read_bytes()).hexdigest() == audit.get("assigned_csv_sha256"))
+        cohort_record_matches = False
+        cohort_record_error = ""
+        if csv_hash_matches and csv_path is not None:
+            try:
+                importer._verify_waterfall_assignment_file(engine, csv_path)
+                cohort_record_matches = True
+            except (OSError, ValueError) as error:
+                cohort_record_error = str(error)[:300]
         observed = {variant: len(assignment_variant_leads[(eid, field, variant)]) for variant in ("A", "B")}
         expected_raw = audit.get("variant_counts") if isinstance(audit.get("variant_counts"), dict) else {}
         expected = {variant: int(expected_raw.get(variant, 0) or 0) for variant in ("A", "B")}
@@ -2195,6 +2204,8 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             status = "assigned_csv_missing"
         elif not csv_hash_matches:
             status = "assigned_csv_hash_mismatch"
+        elif not cohort_record_matches:
+            status = "cohort_record_mismatch"
         elif observed_total < expected_total:
             status = "send_lists_incomplete"
         elif observed_total > expected_total or observed != expected or seed_matches is False:
@@ -2205,6 +2216,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
              "audit_file": audit_path.name, "assigned_csv": assigned_name,
              "source_sha256": audit.get("source_sha256"), "assigned_csv_sha256": audit.get("assigned_csv_sha256"),
              "assigned_csv_exists": csv_exists, "assigned_csv_hash_matches": csv_hash_matches,
+             "cohort_record_matches": cohort_record_matches, "cohort_record_error": cohort_record_error or None,
              "expected_lead_count": expected_total, "expected_variant_counts": expected,
              "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
              "assignment_seed_matches": seed_matches, "status": status})
@@ -2226,7 +2238,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "assignment_audit_checks": assignment_audit_checks,
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
-              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; when an assignment audit exists, comparisons are also withheld until the assigned CSV hash, expected counts, seed, and complete Send Desk-list coverage reconcile. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+              "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; when an assignment audit exists, comparisons are also withheld until the assigned CSV hash, local cohort record, source evidence, expected counts, seed, and complete Send Desk-list coverage reconcile. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
