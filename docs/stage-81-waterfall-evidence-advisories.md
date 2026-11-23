@@ -1,0 +1,5 @@
+# Stage 81: Waterfall evidence advisories
+
+The enrichment evaluation report now derives `waterfall_evidence_advisories` from paired comparisons only when both sources are named `configured_provider` sources, the matched reviewed lead count reaches the caution threshold, and the paired value-correctness bootstrap interval points directionally to one provider. The advisory identifies a provider to consider testing earlier against the compared provider and carries its field, Engine path, profile, lane, sample count, interval, and other-dimension trade-offs.
+
+The Markdown decision brief includes a corresponding “Waterfall experiments to consider” section. If no comparison meets these conditions, it says so. Evidence advisories do not rewrite waterfall JSON, guarantee performance, or produce a complete ordering. Conflicting pairwise comparisons can occur and must be resolved through controlled, path-specific experiments. Providers whose source type is not `configured_provider` are excluded because their source names may represent evidence sources rather than waterfall adapters.

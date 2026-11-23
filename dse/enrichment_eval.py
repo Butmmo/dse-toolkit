@@ -607,6 +607,16 @@ def _decision_brief(report: dict) -> str:
             invalid = int(cost_quality.get("source_a_invalid_price_calls", 0)) + int(cost_quality.get("source_b_invalid_price_calls", 0))
             lines.append(f"- Paired cost metadata excluded {unknown} unknown-price calls and {invalid} invalid-price calls across both sources.")
         lines.append("")
+    advisories = report.get("waterfall_evidence_advisories") or []
+    lines.extend(["## Waterfall experiments to consider", ""])
+    if advisories:
+        for item in advisories:
+            lines.append(
+                f"- For `{item.get('field')}` in `{item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}`, consider testing `{item.get('candidate_to_test_earlier')}` earlier than `{item.get('compared_with')}`. This signal comes from {item.get('matched_reviewed_leads')} matched reviewed leads; check trade-offs: {', '.join(item.get('other_dimensions_with_opposing_point_estimate_direction') or []) or 'none flagged'}; no config was changed."
+            )
+    else:
+        lines.append("No configured-provider pair currently has a directional interval and enough reviewed labels to produce an experiment suggestion.")
+    lines.append("")
     lines.extend(["## How to read this", "",
                   "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
     return "\n".join(lines)
@@ -618,6 +628,40 @@ def _display_rate(value: Any) -> str:
 
 def _display_amount(value: Any) -> str:
     return f"{value:.4g}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _waterfall_evidence_advisories(comparisons: list[dict]) -> list[dict]:
+    """Surface sufficiently reviewed provider-pair signals without editing waterfall configs."""
+    advisories = []
+    for item in comparisons:
+        source_a, source_b = item.get("source_a", {}), item.get("source_b", {})
+        readout = item.get("decision_readout", {})
+        if source_a.get("type") != "configured_provider" or source_b.get("type") != "configured_provider":
+            continue
+        if readout.get("evidence_status") != "interval_directional":
+            continue
+        direction = readout.get("value_correctness_direction")
+        if direction not in {"source_a_higher_reviewed_correctness", "source_b_higher_reviewed_correctness"}:
+            continue
+        favored = source_a if direction.startswith("source_a") else source_b
+        other = source_b if direction.startswith("source_a") else source_a
+        value = (item.get("dimensions") or {}).get("value_correct", {})
+        interval = value.get("paired_rate_difference_cluster_bootstrap_95", {})
+        advisories.append({
+            "field": item.get("field", ""),
+            "engine_path": item.get("engine_path", "unknown"),
+            "enrichment_profile": item.get("enrichment_profile", "unknown"),
+            "research_lane": item.get("research_lane", "unknown"),
+            "candidate_to_test_earlier": favored.get("name", ""),
+            "compared_with": other.get("name", ""),
+            "matched_reviewed_leads": value.get("matched_adjudicated_leads", 0),
+            "paired_correctness_difference_a_minus_b": value.get("paired_rate_difference_a_minus_b"),
+            "paired_correctness_interval_95": {"lower": interval.get("lower"), "upper": interval.get("upper")},
+            "other_dimensions_with_opposing_point_estimate_direction": readout.get("dimensions_with_opposing_point_estimate_direction", []),
+            "action": "consider_in_a_controlled_waterfall_order_experiment",
+            "automatic_config_change": False,
+        })
+    return advisories
 
 
 def score(source: str, out: str = "", min_labeled: int = 20,
@@ -805,6 +849,8 @@ def score(source: str, out: str = "", min_labeled: int = 20,
                 "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded. Cost per human-reviewed correct result uses priced provider costs only from rows explicitly labeled yes or no for value_correct, divided by explicitly yes-labeled rows with priced provider attempts. Unknown-price attempts remain separately counted. The lead-cluster percentile bootstrap is descriptive sampling uncertainty; it cannot correct sampling bias or establish population performance. Estimates use configured call prices, not invoices."}
 
     source_sha256 = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+    paired_comparisons = _paired_source_comparisons(
+        rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed)
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "scoring_provenance": {
                   "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -821,8 +867,8 @@ def score(source: str, out: str = "", min_labeled: int = 20,
               "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
                                        **metrics(items)}
                                       for (field, source_type, source_name), items in sorted(by_field_source.items())],
-              "paired_source_comparisons": _paired_source_comparisons(
-                  rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed),
+              "paired_source_comparisons": paired_comparisons,
+              "waterfall_evidence_advisories": _waterfall_evidence_advisories(paired_comparisons),
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
