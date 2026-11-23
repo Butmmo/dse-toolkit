@@ -7,3 +7,5 @@ The preflight requires the matching A and B drafts created by the experiment bui
 It reviews both drafts for local key presence, adapter mappings, provider caps, prices, and currencies. It adds the conservative maximum estimates for A and B, compares that combined amount with a single user-entered ceiling, and requires explicit acknowledgement when any provider price is unknown. The result states whether the pair is ready; it makes no network/provider requests, writes no files, and returns no lead row values or API key values.
 
 Validation performed: Python compilation of `dse.py` and `dse/waterfall.py`, `dse.py enrich --help`, and JSON parsing of `bridge/catalog.json`. No provider calls were made.
+
+The implementation was pushed to codex/hq-runner-id-routing and installed in the active PC runner checkout. The runner restarted and reported 182 tools online. The user's local packs/automation.json change in that checkout was preserved.
