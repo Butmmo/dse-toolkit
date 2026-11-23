@@ -1,0 +1,5 @@
+# Stage 85: Waterfall experiment run provenance
+
+The two configs created by `--build-waterfall-experiment` now carry a shared deterministic experiment ID, field, provider pair, source-config SHA-256 digest, and their A/B variant label. When either config is used with CSV enrichment, each output row receives `waterfall_experiment_id`, `waterfall_experiment_variant`, `waterfall_experiment_field`, `waterfall_experiment_providers`, and the exact run config’s `waterfall_config_sha256`. The adjacent Markdown run summary repeats the experiment ID, variant, field, providers, and config digest.
+
+The enrichment review-sheet `prepare` command preserves these columns when converting field results for human review. This makes variant outputs traceable without changing enrichment behavior for ordinary waterfall configs. Experiment metadata is provenance only; it does not randomize leads, change provider order, or authorize spend. Use the paired manifest to keep the selected cohort aligned and score only after both variants have been reviewed.

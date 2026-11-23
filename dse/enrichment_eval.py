@@ -75,7 +75,9 @@ def prepare(source: str, out: str = "") -> Path:
     if result_col not in headers:
         raise ValueError("Input CSV needs a field_results JSON column (dbi.field-result.v1 records).")
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-enrichment-review.csv")
-    source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker") if h in headers]
+    source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker",
+                                 "waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                                 "waterfall_experiment_providers", "waterfall_config_sha256") if h in headers]
     columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",

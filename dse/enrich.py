@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import datetime as dt
 import copy
+import hashlib
 import html as htmllib
 import json
 import math
@@ -1157,12 +1158,30 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
     for field_config in field_configs.values():
         field_config["spend_approval"] = approval
     out_rows, stats = enrich_rows(rows, headers, terms, render, max_rows, today, pause, None, bud, provs, config, dry_run, field_configs)
+    experiment = config.get("waterfall_experiment") if isinstance(config.get("waterfall_experiment"), dict) else None
+    if experiment:
+        config_path = Path(waterfall_config_path)
+        if not config_path.is_absolute():
+            config_path = ROOT / config_path
+        config_digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
+        providers_json = json.dumps(experiment.get("providers", []), ensure_ascii=False, separators=(",", ":"))
+        for row in out_rows:
+            row["waterfall_experiment_id"] = str(experiment.get("id") or "")
+            row["waterfall_experiment_variant"] = str(experiment.get("variant") or "")
+            row["waterfall_experiment_field"] = str(experiment.get("field") or "")
+            row["waterfall_experiment_providers"] = providers_json
+            row["waterfall_config_sha256"] = config_digest
+        stats["waterfall_experiment"] = experiment
     LISTS.mkdir(exist_ok=True)
     stem = re.sub(r"[^a-z0-9]+", "-", p.stem.lower()).strip("-")[:40] or "list"
     out_csv = LISTS / f"{(today or dt.date.today()).isoformat()}-enriched-{stem}.csv"
     write_csv(out_csv, out_rows, first=list(headers))
     provider_names = ", ".join(config["providers"])
     text = summary(stats, out_rows, p.name, bud, provider_names, dry_run, provs)
+    if experiment:
+        text += (f"\nWaterfall experiment: {experiment.get('id', '')} / variant {experiment.get('variant', '')}; "
+                 f"field {experiment.get('field', '')}; providers {', '.join(experiment.get('providers', []))}. "
+                 f"Run config SHA-256: {config_digest}.")
     out_csv.with_suffix(".md").write_text(text, encoding="utf-8")
     extra = ""
     if engine:

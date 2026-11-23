@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 from pathlib import Path
 import re
@@ -121,6 +122,10 @@ def build_order_experiment_configs(source_path: str, field_name: str, provider_a
         raise ValueError(f"Could not read source waterfall {source_path}: {type(error).__name__}.") from None
     except ValueError:
         raise ValueError(f"Source waterfall {source_path} is not valid JSON.") from None
+    source_digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    experiment_id = "wfexp-" + hashlib.sha256(
+        f"{source_digest}|{field_name}|{provider_a}|{provider_b}".encode("utf-8")
+    ).hexdigest()[:12]
     provider_key = "providers" if field_name == "email" else "field_waterfalls"
     target = original[provider_key] if field_name == "email" else original[provider_key][field_name]
     order = list(target if field_name == "email" else target["providers"])
@@ -134,6 +139,13 @@ def build_order_experiment_configs(source_path: str, field_name: str, provider_a
             variant["providers"] = variant_order
         else:
             variant["field_waterfalls"][field_name]["providers"] = variant_order
+        variant["waterfall_experiment"] = {
+            "id": experiment_id,
+            "variant": label.upper(),
+            "field": field_name,
+            "providers": [provider_a, provider_b],
+            "source_config_sha256": source_digest,
+        }
         variants.append((label, variant, variant_order))
     output_dir = ROOT / "enrich-waterfalls"
     output_dir.mkdir(parents=True, exist_ok=True)
