@@ -1621,6 +1621,81 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
     return report, output
 
 
+def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "") -> tuple[dict, Path]:
+    """Join experiment-tagged Send Desk rows to explicit taps and summarize unique-lead outcomes."""
+    from . import desklog, outcomes
+    from .engines import engine_dir, load
+
+    load(engine)
+    hist = desklog.history(engine)
+    cohorts: dict[tuple[str, str, str], dict[str, dict[str, bool]]] = defaultdict(dict)
+    missing_ids = 0
+    for row in desklog.load_lists(engine):
+        eid = (row.get("waterfall_experiment_id") or "").strip()
+        variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+        lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+        if not eid or variant not in {"A", "B"}:
+            continue
+        if experiment_id and eid != experiment_id:
+            continue
+        if not lead_id:
+            missing_ids += 1
+            continue
+        field = (row.get("waterfall_experiment_field") or "").strip()
+        flags = outcomes._flags(hist.get((row["_source"], row["_row_id"]), []))
+        lead = cohorts[(eid, field, variant)].setdefault(lead_id,
+                  {k: False for k in ("sent", "replied", "booked", "won", "lost", "skipped")})
+        for key in lead:
+            lead[key] = lead[key] or bool(flags.get(key))
+
+    if not cohorts:
+        raise ValueError("No tagged experiment rows with stable lead IDs were found for this engine" +
+                         (f" and experiment {experiment_id!r}." if experiment_id else "."))
+
+    groups: dict[tuple[str, str], dict] = {}
+    for (eid, field, variant), leads in sorted(cohorts.items()):
+        sent = sum(bool(x["sent"]) for x in leads.values())
+        groups[(eid, field)] = groups.get((eid, field), {"experiment_id": eid, "field": field, "variants": {}})
+        groups[(eid, field)]["variants"][variant] = {
+            "assigned_unique_leads": len(leads), "sent_unique_leads": sent,
+            "replied_unique_leads": sum(bool(x["replied"]) for x in leads.values()),
+            "booked_unique_leads": sum(bool(x["booked"]) for x in leads.values()),
+            "won_unique_leads": sum(bool(x["won"]) for x in leads.values()),
+            "lost_unique_leads": sum(bool(x["lost"]) for x in leads.values()),
+            "reply_rate_per_sent_lead": _ratio(sum(bool(x["replied"]) for x in leads.values()), sent),
+            "booked_rate_per_sent_lead": _ratio(sum(bool(x["booked"]) for x in leads.values()), sent),
+            "won_rate_per_sent_lead": _ratio(sum(bool(x["won"]) for x in leads.values()), sent),
+        }
+    comparisons = []
+    for item in groups.values():
+        variants = item["variants"]
+        ids_by_variant = {v: set(cohorts[(item["experiment_id"], item["field"], v)]) for v in ("A", "B")}
+        overlap = ids_by_variant["A"] & ids_by_variant["B"]
+        item["same_leads_in_both_variants"] = len(overlap)
+        item["interpretation"] = "descriptive only; no causal winner is declared"
+        if "A" in variants and "B" in variants:
+            comparisons.append({"experiment_id": item["experiment_id"], "field": item["field"],
+                               "reply_rate_a_minus_b": (variants["A"]["reply_rate_per_sent_lead"] - variants["B"]["reply_rate_per_sent_lead"])
+                                   if variants["A"]["reply_rate_per_sent_lead"] is not None and variants["B"]["reply_rate_per_sent_lead"] is not None else None,
+                               "booked_rate_a_minus_b": (variants["A"]["booked_rate_per_sent_lead"] - variants["B"]["booked_rate_per_sent_lead"])
+                                   if variants["A"]["booked_rate_per_sent_lead"] is not None and variants["B"]["booked_rate_per_sent_lead"] is not None else None,
+                               "won_rate_a_minus_b": (variants["A"]["won_rate_per_sent_lead"] - variants["B"]["won_rate_per_sent_lead"])
+                                   if variants["A"]["won_rate_per_sent_lead"] is not None and variants["B"]["won_rate_per_sent_lead"] is not None else None,
+                               "same_leads_in_both_variants": len(overlap),
+                               "overlap_caution": "overlapping leads may have received both variants; compare as descriptive only" if overlap else ""})
+    report = {"schema": "dbi.waterfall-send-outcomes.v1", "engine": engine, "experiment_filter": experiment_id or None,
+              "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
+              "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
+              "interpretation": "Counts deduplicate by stable experiment lead ID, combine all tagged touches, and include only explicit logged outcomes. Rates are descriptive; assignment, delivery, attribution windows, sample representativeness and statistical power are not established. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
+    output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Scored {sum(v['assigned_unique_leads'] for g in groups.values() for v in g['variants'].values())} tagged lead-variant records across {len(groups)} experiment-field cohorts: {output}")
+    print("Rates are descriptive only; overlapping leads across A/B are flagged in the report.")
+    return report, output
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="dse.py eval-enrichment", description="Prepare and score a reviewed enrichment benchmark.")
     sub = parser.add_subparsers(dest="action", required=True)
@@ -1653,6 +1728,10 @@ def main(argv: list[str] | None = None) -> int:
     wx.add_argument("--leads", type=int, default=50)
     wx.add_argument("--seed", type=int, default=42)
     wx.add_argument("--out", default="", help="manifest CSV output path")
+    so = sub.add_parser("score-send-outcomes", help="join experiment variants to explicit Send Desk outcomes for one engine")
+    so.add_argument("engine", help="engine slug")
+    so.add_argument("--experiment-id", default="", help="limit the report to one experiment ID")
+    so.add_argument("--out", default="", help="JSON report output path")
     pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
     pr.add_argument("source", help="prepared sample review CSV")
     pr.add_argument("--out", default="", help="paired review CSV output path")
@@ -1675,6 +1754,8 @@ def main(argv: list[str] | None = None) -> int:
                                       args.leads, args.seed, args.out)
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
+        elif args.action == "score-send-outcomes":
+            score_send_outcomes(args.engine, args.experiment_id, args.out)
         else:
             score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:
