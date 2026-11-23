@@ -14,4 +14,5 @@ The assignment tool recorded a cohort-bound audit, but later Engine import and l
 ## Verification
 
 - Checked Python compilation, catalog JSON, and the import CLI help.
+- Pushed to `codex/hq-runner-id-routing` and restarted the PC runner; its startup log reports 181 tools.
 - No Engine import, lead assignment, enrichment provider call, or Send Desk run was performed.
