@@ -383,6 +383,9 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "source_a_wins": dimension_counts["source_a_wins"],
                     "source_b_wins": dimension_counts["source_b_wins"],
                     "ties": dimension_counts["ties"],
+                    "reviewed_agreement_rate": _ratio(dimension_counts["ties"], matched),
+                    "reviewed_disagreement_rate": _ratio(
+                        dimension_counts["source_a_wins"] + dimension_counts["source_b_wins"], matched),
                     "source_a_yes_rate": _ratio(dimension_counts["source_a_yes"], matched),
                     "source_b_yes_rate": _ratio(dimension_counts["source_b_yes"], matched),
                     "paired_rate_difference_a_minus_b": _ratio(dimension_counts["source_a_yes"] - dimension_counts["source_b_yes"], matched),
@@ -400,6 +403,10 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                     "minimum_labeled_met": matched >= min_labeled,
                 }
             value_result = dimensions["value_correct"]
+            cohort_leads = leads_by_cohort[cohort]
+            only_a = a_present - b_present
+            only_b = b_present - a_present
+            neither = cohort_leads - (a_present | b_present)
             paired_cost_comparison = {}
             for currency, cost_pair in paired_costs.items():
                 matched_cost_leads = int(cost_pair["matched_leads"])
@@ -425,6 +432,17 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                 "source_b_leads_with_result": len(b_present),
                 "source_b_result_coverage": _ratio(len(b_present), len(leads_by_cohort[cohort])),
                 "shared_leads_with_result": len(shared),
+                "lead_result_availability": {
+                    "cohort_leads": len(cohort_leads),
+                    "both_sources_returned_result": len(shared),
+                    "only_source_a_returned_result": len(only_a),
+                    "only_source_b_returned_result": len(only_b),
+                    "neither_source_returned_result": len(neither),
+                    "both_sources_rate": _ratio(len(shared), len(cohort_leads)),
+                    "only_source_a_rate": _ratio(len(only_a), len(cohort_leads)),
+                    "only_source_b_rate": _ratio(len(only_b), len(cohort_leads)),
+                    "neither_rate": _ratio(len(neither), len(cohort_leads)),
+                },
                 "paired_provider_attempt_cost_by_currency": paired_cost_comparison,
                 "dimensions": dimensions,
                 "matched_adjudicated_leads": value_result["matched_adjudicated_leads"],
