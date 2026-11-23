@@ -5,6 +5,7 @@ import argparse
 import csv
 import hashlib
 import json
+import random
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -72,7 +73,7 @@ def prepare(source: str, out: str = "") -> Path:
         raise ValueError("Input CSV needs a field_results JSON column (dbi.field-result.v1 records).")
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-enrichment-review.csv")
     source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker") if h in headers]
-    columns = ["evaluation_id", "source_row", "field", "value", "status", "source_type", "source_name", "source_url",
+    columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
                "cost_quantity", "cost_estimated", *source_fields, *REVIEW_FIELDS]
@@ -93,7 +94,13 @@ def prepare(source: str, out: str = "") -> Path:
                 identity = result.get("identity") if isinstance(result.get("identity"), dict) else {}
                 verification = result.get("verification") if isinstance(result.get("verification"), dict) else {}
                 cost = result.get("cost") if isinstance(result.get("cost"), dict) else {}
+                metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+                profile_payload = _json(row.get("enrichment_profile"))
+                profile_key = profile_payload.get("profile_key", "") if isinstance(profile_payload, dict) else ""
+                engine_path = row.get("engine_path") or row.get("path") or ""
                 output_row = {"evaluation_id": _stable_id(row, row_number), "source_row": row_number,
+                              "engine_path": engine_path, "enrichment_profile": profile_key or "unknown",
+                              "research_lane": str(metadata.get("lane") or "unknown"),
                               "field": result.get("field", ""), "value": json.dumps(result.get("value"), ensure_ascii=False) if isinstance(result.get("value"), (dict, list)) else result.get("value", ""),
                               "status": result.get("status", ""), "source_type": source_info.get("type", ""),
                               "source_name": source_info.get("name", ""), "source_url": source_info.get("url", ""),
@@ -115,6 +122,74 @@ def prepare(source: str, out: str = "") -> Path:
     return output
 
 
+def sample_ledger(source: str, leads: int = 40, seed: int = 42, stratify: str = "engine_path,enrichment_profile", out: str = "") -> Path:
+    """Select whole lead rows from a prepared worksheet, stratified by cohort."""
+    if leads < 1:
+        raise ValueError("--leads must be at least 1.")
+    headers, rows = _read(source)
+    required = {"source_row", "field", "value_correct", "identity_correct", "evidence_adequate", "freshness_acceptable"}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Prepared review sheet is missing columns: " + ", ".join(missing) + ". Run `prepare` first.")
+    strata_fields = [field.strip() for field in stratify.split(",") if field.strip()]
+    missing_strata = [field for field in strata_fields if field not in headers]
+    if missing_strata:
+        raise ValueError("Cannot stratify by missing columns: " + ", ".join(missing_strata))
+
+    clusters: dict[str, list[dict[str, str]]] = defaultdict(list)
+    cluster_strata: dict[str, tuple[str, ...]] = {}
+    for row in rows:
+        lead_id = (row.get("source_row") or "").strip()
+        if not lead_id:
+            continue
+        clusters[lead_id].append(row)
+        cluster_strata[lead_id] = tuple((row.get(field) or "unknown").strip() or "unknown" for field in strata_fields)
+    if not clusters:
+        raise ValueError("No lead rows with field results are available to sample.")
+
+    rng = random.Random(seed)
+    grouped: dict[tuple[str, ...], list[str]] = defaultdict(list)
+    for lead_id, key in cluster_strata.items():
+        grouped[key].append(lead_id)
+    if len(grouped) > leads:
+        raise ValueError(f"The requested sample of {leads} leads is smaller than the {len(grouped)} strata. Increase --leads or choose fewer --stratify fields.")
+
+    allocation = {key: 1 for key in grouped}
+    remaining = min(leads, len(clusters)) - len(allocation)
+    while remaining > 0:
+        available = [key for key, members in grouped.items() if allocation[key] < len(members)]
+        if not available:
+            break
+        # Give the next lead to the most under-sampled proportional stratum.
+        key = max(available, key=lambda k: (len(grouped[k]) / (allocation[k] + 1), tuple(reversed(k))))
+        allocation[key] += 1
+        remaining -= 1
+
+    selected: list[tuple[str, ...]] = []
+    for key in sorted(grouped):
+        members = sorted(grouped[key])
+        rng.shuffle(members)
+        selected.extend((lead_id, key) for lead_id in members[:allocation[key]])
+    rng.shuffle(selected)
+    selected_ids = {lead_id for lead_id, _ in selected}
+    stratum_labels = {lead_id: "|".join(key) if key else "all" for lead_id, key in selected}
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-benchmark-sample.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=[*headers, "benchmark_stratum", "benchmark_seed"], extrasaction="ignore")
+        writer.writeheader()
+        for lead_id, _ in selected:
+            for row in clusters[lead_id]:
+                output_row = dict(row)
+                output_row.update({field: "" for field in REVIEW_FIELDS})
+                output_row["benchmark_stratum"] = stratum_labels[lead_id]
+                output_row["benchmark_seed"] = str(seed)
+                writer.writerow(output_row)
+    print(f"Selected {len(selected_ids)} leads ({sum(len(clusters[lead_id]) for lead_id in selected_ids)} field reviews) across {len(grouped)} strata: {output}")
+    print("The sample is deterministic for this seed and remains a manual audit, not a representative population estimate.")
+    return output
+
+
 def _ratio(numerator: float, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
@@ -127,8 +202,11 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
     if missing:
         raise ValueError("Review CSV is missing columns: " + ", ".join(missing))
     by_field: dict[str, list[dict[str, str]]] = defaultdict(list)
+    by_path_profile_lane: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
         by_field[(row.get("field") or "(blank field)").strip()].append(row)
+        cohort = tuple((row.get(key) or "unknown").strip() or "unknown" for key in ("engine_path", "enrichment_profile", "research_lane"))
+        by_path_profile_lane[cohort].append(row)
 
     def metrics(items: list[dict[str, str]]) -> dict:
         labeled = {field: [r for r in items if (r.get(field) or "").strip().casefold() in YES | NO] for field in REVIEW_FIELDS[:4]}
@@ -155,6 +233,7 @@ def score(source: str, out: str = "") -> tuple[dict, Path]:
 
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "review_rows": len(rows), "fields": {name: metrics(items) for name, items in sorted(by_field.items())},
+              "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "interpretation": "Coverage is the accepted-result share. Human label rates apply only to explicitly labeled rows; they are not population-wide accuracy estimates. Declared costs may be estimates, not provider invoices."}
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
@@ -473,6 +552,12 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("score", help="score a completed human-review CSV")
     s.add_argument("source", help="review CSV with yes/no labels")
     s.add_argument("--out", default="", help="JSON report output path")
+    sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
+    sm.add_argument("source", help="prepared human-review CSV from `prepare`")
+    sm.add_argument("--leads", type=int, default=40, help="maximum leads to sample (default: 40)")
+    sm.add_argument("--seed", type=int, default=42, help="random seed for reproducible sampling (default: 42)")
+    sm.add_argument("--stratify", default="engine_path,enrichment_profile", help="comma-separated prepared CSV columns (default: engine_path,enrichment_profile)")
+    sm.add_argument("--out", default="", help="sample CSV output path")
     l = sub.add_parser("score-ledger", help="score fit reviews exported from a Ledger grid")
     l.add_argument("source", help="Ledger grid CSV with an enrichment_review column")
     l.add_argument("--out", default="", help="JSON report output path")
@@ -483,6 +568,8 @@ def main(argv: list[str] | None = None) -> int:
             prepare(args.source, args.out)
         elif args.action == "score":
             score(args.source, args.out)
+        elif args.action == "sample-ledger":
+            sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
         else:
             score_ledger(args.source, args.out, args.min_decided)
     except (OSError, ValueError) as exc:

@@ -9,7 +9,7 @@ Added a local CLI harness to turn an enriched CSV's `field_results` contract int
 - evidence adequacy;
 - freshness acceptability.
 
-The scorer reports accepted-result coverage, status counts, labeled yes rates and declared cost totals by currency, including cost per accepted field. It outputs JSON so later slices can compare path, profile, provider or run cohorts without changing the scoring core.
+The scorer reports accepted-result coverage, status counts, labeled yes rates and declared cost totals by currency, including cost per accepted field. Prepared sheets retain Engine path, enrichment profile and research lane when available; the report can compare those cohorts. Stage 53 adds lead-level stratified sampling for a manageable benchmark review.
 
 ## Use
 
