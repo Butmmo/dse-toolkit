@@ -75,7 +75,9 @@ def prepare(source: str, out: str = "") -> Path:
     if result_col not in headers:
         raise ValueError("Input CSV needs a field_results JSON column (dbi.field-result.v1 records).")
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-enrichment-review.csv")
-    source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker") if h in headers]
+    source_fields = [h for h in ("engine_path", "path", "company", "business", "website", "domain", "contact_name", "decision_maker",
+                                 "waterfall_experiment_id", "waterfall_experiment_variant", "waterfall_experiment_field",
+                                 "waterfall_experiment_providers", "waterfall_config_sha256") if h in headers]
     columns = ["evaluation_id", "source_row", "engine_path", "enrichment_profile", "research_lane", "field", "value", "status", "source_type", "source_name", "source_url",
                "observed_at", "publication_date", "freshness_status", "age_days", "identity_subject", "identity_match",
                "identity_strength", "identity_score", "verification_status", "cost_amount", "cost_currency", "cost_units",
@@ -193,6 +195,78 @@ def sample_ledger(source: str, leads: int = 40, seed: int = 42, stratify: str = 
                 writer.writerow(output_row)
     print(f"Selected {len(selected_ids)} leads ({sum(len(clusters[lead_id]) for lead_id in selected_ids)} field reviews) across {len(grouped)} strata: {output}")
     print("The sample is deterministic for this seed and remains a manual audit, not a representative population estimate.")
+    return output
+
+
+def plan_waterfall_experiment(source: str, field: str, provider_a: str, provider_b: str,
+                              engine_path: str, enrichment_profile: str, research_lane: str,
+                              leads: int = 50, seed: int = 42, out: str = "") -> Path:
+    """Write a deterministic paired lead manifest for a manual provider-order experiment."""
+    if leads < 1:
+        raise ValueError("--leads must be at least 1.")
+    if not field.strip() or not provider_a.strip() or not provider_b.strip() or provider_a == provider_b:
+        raise ValueError("Choose a field and two different provider names.")
+    headers, rows = _read(source)
+    required = {"source_row", "field", "engine_path", "enrichment_profile", "research_lane", "source_type", "source_name"}
+    missing = sorted(required - set(headers))
+    if missing:
+        raise ValueError("Review CSV is missing columns needed for cohort matching: " + ", ".join(missing))
+    label_column = "adjudicated_value_correct" if "adjudicated_value_correct" in headers else "value_correct"
+    if label_column not in headers:
+        raise ValueError("Review CSV needs value_correct or adjudicated_value_correct labels.")
+    identity_columns = [column for column in ("company", "business", "website", "domain", "city", "state") if column in headers]
+    cohort = (engine_path.strip(), enrichment_profile.strip(), research_lane.strip())
+    grouped: dict[str, dict[str, list[dict[str, str]]]] = defaultdict(lambda: defaultdict(list))
+    lead_rows: dict[str, dict[str, str]] = {}
+    for row in rows:
+        row_cohort = tuple((row.get(key) or "unknown").strip() or "unknown"
+                           for key in ("engine_path", "enrichment_profile", "research_lane"))
+        source_row = (row.get("source_row") or "").strip()
+        if (row_cohort != cohort or (row.get("field") or "").strip() != field.strip()
+                or (row.get("source_type") or "").strip() != "configured_provider"
+                or not source_row):
+            continue
+        source_name = (row.get("source_name") or "").strip()
+        if source_name not in {provider_a.strip(), provider_b.strip()}:
+            continue
+        label = _review_category(row.get(label_column, ""))
+        if label not in {"yes", "no"}:
+            continue
+        grouped[source_row][source_name].append(row)
+        lead_rows.setdefault(source_row, row)
+    eligible = [lead_id for lead_id, by_provider in grouped.items()
+                if len(by_provider.get(provider_a.strip(), [])) == 1
+                and len(by_provider.get(provider_b.strip(), [])) == 1]
+    if not eligible:
+        raise ValueError("No leads have exactly one explicitly reviewed result from each provider in the selected field and cohort.")
+    rng = random.Random(seed)
+    eligible.sort()
+    rng.shuffle(eligible)
+    selected = eligible[:min(leads, len(eligible))]
+    source_digest = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+    plan_id = hashlib.sha256(
+        f"{source_digest}|{field}|{provider_a}|{provider_b}|{cohort}|{seed}|{','.join(selected)}".encode("utf-8")
+    ).hexdigest()[:16]
+    output = Path(out) if out else Path(source).with_name(Path(source).stem + "-waterfall-experiment-manifest.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    columns = ["plan_id", "source_sha256", "seed", "source_row", *identity_columns,
+               "field", "engine_path", "enrichment_profile", "research_lane",
+               "variant_a_provider_order", "variant_b_provider_order", "paired_reviewed_value_correct"]
+    with output.open("w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        for lead_id in selected:
+            provider_rows = grouped[lead_id]
+            row = dict(lead_rows[lead_id])
+            row.update({"plan_id": plan_id, "source_sha256": source_digest, "seed": seed,
+                        "source_row": lead_id, "field": field.strip(), "engine_path": cohort[0],
+                        "enrichment_profile": cohort[1], "research_lane": cohort[2],
+                        "variant_a_provider_order": f"{provider_a.strip()} > {provider_b.strip()}",
+                        "variant_b_provider_order": f"{provider_b.strip()} > {provider_a.strip()}",
+                        "paired_reviewed_value_correct": f"{provider_a.strip()}={_review_category(provider_rows[provider_a.strip()][0].get(label_column, ''))};{provider_b.strip()}={_review_category(provider_rows[provider_b.strip()][0].get(label_column, ''))}"})
+            writer.writerow(row)
+    print(f"Created paired waterfall experiment manifest for {len(selected)} of {len(eligible)} eligible leads: {output}")
+    print("Each lead is listed once with both order variants. This does not run providers or outreach; maintain isolated outputs and an approved spend cap when executing manually.")
     return output
 
 
@@ -607,6 +681,19 @@ def _decision_brief(report: dict) -> str:
             invalid = int(cost_quality.get("source_a_invalid_price_calls", 0)) + int(cost_quality.get("source_b_invalid_price_calls", 0))
             lines.append(f"- Paired cost metadata excluded {unknown} unknown-price calls and {invalid} invalid-price calls across both sources.")
         lines.append("")
+    advisories = report.get("waterfall_evidence_advisories") or []
+    plans = report.get("waterfall_experiment_plans") or []
+    lines.extend(["## Waterfall experiments to consider", ""])
+    if plans:
+        for item in plans:
+            variant_a, variant_b = item["variants"]
+            lines.append(
+                f"- For `{item.get('field')}` in `{item.get('engine_path')} / {item.get('enrichment_profile')} / {item.get('research_lane')}`, compare A `{ ' > '.join(variant_a['provider_order']) }` with B `{ ' > '.join(variant_b['provider_order']) }`. Hold the lead sample, thresholds, stop rules, budget and currency constant. Review coverage, correctness dimensions, freshness, cost, failures and unknown prices. No run or config change was made."
+            )
+    else:
+        lines.append("No configured-provider pair currently has a directional interval and enough reviewed labels to produce an experiment plan.")
+    lines.append("The reviewed-pair minimum is a caution threshold, not a sample-size or power guarantee. Run only on an approved small sample and keep outreach disabled during the comparison.")
+    lines.append("")
     lines.extend(["## How to read this", "",
                   "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
     return "\n".join(lines)
@@ -618,6 +705,65 @@ def _display_rate(value: Any) -> str:
 
 def _display_amount(value: Any) -> str:
     return f"{value:.4g}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _waterfall_evidence_advisories(comparisons: list[dict]) -> list[dict]:
+    """Surface sufficiently reviewed provider-pair signals without editing waterfall configs."""
+    advisories = []
+    for item in comparisons:
+        source_a, source_b = item.get("source_a", {}), item.get("source_b", {})
+        readout = item.get("decision_readout", {})
+        if source_a.get("type") != "configured_provider" or source_b.get("type") != "configured_provider":
+            continue
+        if readout.get("evidence_status") != "interval_directional":
+            continue
+        direction = readout.get("value_correctness_direction")
+        if direction not in {"source_a_higher_reviewed_correctness", "source_b_higher_reviewed_correctness"}:
+            continue
+        favored = source_a if direction.startswith("source_a") else source_b
+        other = source_b if direction.startswith("source_a") else source_a
+        value = (item.get("dimensions") or {}).get("value_correct", {})
+        interval = value.get("paired_rate_difference_cluster_bootstrap_95", {})
+        advisories.append({
+            "field": item.get("field", ""),
+            "engine_path": item.get("engine_path", "unknown"),
+            "enrichment_profile": item.get("enrichment_profile", "unknown"),
+            "research_lane": item.get("research_lane", "unknown"),
+            "candidate_to_test_earlier": favored.get("name", ""),
+            "compared_with": other.get("name", ""),
+            "matched_reviewed_leads": value.get("matched_adjudicated_leads", 0),
+            "paired_correctness_difference_a_minus_b": value.get("paired_rate_difference_a_minus_b"),
+            "paired_correctness_interval_95": {"lower": interval.get("lower"), "upper": interval.get("upper")},
+            "other_dimensions_with_opposing_point_estimate_direction": readout.get("dimensions_with_opposing_point_estimate_direction", []),
+            "action": "consider_in_a_controlled_waterfall_order_experiment",
+            "automatic_config_change": False,
+        })
+    return advisories
+
+
+def _waterfall_experiment_plans(advisories: list[dict], min_labeled: int) -> list[dict]:
+    plans = []
+    for advisory in advisories:
+        provider_a = advisory["candidate_to_test_earlier"]
+        provider_b = advisory["compared_with"]
+        plans.append({
+            "field": advisory["field"],
+            "engine_path": advisory["engine_path"],
+            "enrichment_profile": advisory["enrichment_profile"],
+            "research_lane": advisory["research_lane"],
+            "providers": [provider_a, provider_b],
+            "variants": [
+                {"variant": "A", "provider_order": [provider_a, provider_b]},
+                {"variant": "B", "provider_order": [provider_b, provider_a]},
+            ],
+            "hold_constant": ["same lead sample", "same field acceptance thresholds", "same stop rules", "same provider-call budget", "same currency and pricing configuration"],
+            "measure": ["accepted coverage", "reviewed value correctness", "identity correctness", "evidence adequacy", "freshness", "provider-attempt cost", "failure and unknown-price rates"],
+            "reviewed_pairs_caution_threshold": min_labeled,
+            "guardrails": ["run on a small approved sample", "do not send outreach from the experiment", "review evidence and cost before wider rollout", "this threshold is a caution flag, not a power guarantee"],
+            "automatic_execution": False,
+            "automatic_config_change": False,
+        })
+    return plans
 
 
 def score(source: str, out: str = "", min_labeled: int = 20,
@@ -805,6 +951,9 @@ def score(source: str, out: str = "", min_labeled: int = 20,
                 "provider_attempt_cost_note": "Attempt totals include failed/rejected lookups when recorded. Cost per human-reviewed correct result uses priced provider costs only from rows explicitly labeled yes or no for value_correct, divided by explicitly yes-labeled rows with priced provider attempts. Unknown-price attempts remain separately counted. The lead-cluster percentile bootstrap is descriptive sampling uncertainty; it cannot correct sampling bias or establish population performance. Estimates use configured call prices, not invoices."}
 
     source_sha256 = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+    paired_comparisons = _paired_source_comparisons(
+        rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed)
+    waterfall_advisories = _waterfall_evidence_advisories(paired_comparisons)
     report = {"schema": "dbi.enrichment-evaluation.v1", "source_file": str(Path(source).resolve()),
               "scoring_provenance": {
                   "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -821,8 +970,9 @@ def score(source: str, out: str = "", min_labeled: int = 20,
               "by_field_and_source": [{"field": field, "source_type": source_type, "source_name": source_name,
                                        **metrics(items)}
                                       for (field, source_type, source_name), items in sorted(by_field_source.items())],
-              "paired_source_comparisons": _paired_source_comparisons(
-                  rows, headers, min_labeled, paired_bootstrap_reps, paired_bootstrap_seed),
+              "paired_source_comparisons": paired_comparisons,
+              "waterfall_evidence_advisories": waterfall_advisories,
+              "waterfall_experiment_plans": _waterfall_experiment_plans(waterfall_advisories, min_labeled),
               "by_path_profile_and_lane": {"|".join(key): metrics(items) for key, items in sorted(by_path_profile_lane.items())},
               "overall": metrics(rows),
               "minimum_labeled_for_caution_flag": min_labeled,
@@ -1161,6 +1311,17 @@ def main(argv: list[str] | None = None) -> int:
     sm.add_argument("--seed", type=int, default=42, help="random seed for reproducible sampling (default: 42)")
     sm.add_argument("--stratify", default="engine_path,enrichment_profile", help="comma-separated prepared CSV columns (default: engine_path,enrichment_profile)")
     sm.add_argument("--out", default="", help="sample CSV output path")
+    wx = sub.add_parser("plan-waterfall-experiment", help="create a reproducible paired manifest for manually testing two provider orders")
+    wx.add_argument("source", help="prepared or adjudicated enrichment review CSV")
+    wx.add_argument("--field", required=True)
+    wx.add_argument("--provider-a", required=True)
+    wx.add_argument("--provider-b", required=True)
+    wx.add_argument("--engine-path", required=True)
+    wx.add_argument("--enrichment-profile", required=True)
+    wx.add_argument("--research-lane", required=True)
+    wx.add_argument("--leads", type=int, default=50)
+    wx.add_argument("--seed", type=int, default=42)
+    wx.add_argument("--out", default="", help="manifest CSV output path")
     pr = sub.add_parser("pair-reviewers", help="create independent reviewer and adjudication columns")
     pr.add_argument("source", help="prepared sample review CSV")
     pr.add_argument("--out", default="", help="paired review CSV output path")
@@ -1177,6 +1338,10 @@ def main(argv: list[str] | None = None) -> int:
                   args.paired_bootstrap_reps, args.paired_bootstrap_seed, args.markdown_out)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
+        elif args.action == "plan-waterfall-experiment":
+            plan_waterfall_experiment(args.source, args.field, args.provider_a, args.provider_b,
+                                      args.engine_path, args.enrichment_profile, args.research_lane,
+                                      args.leads, args.seed, args.out)
         elif args.action == "pair-reviewers":
             pair_reviewers(args.source, args.out)
         else:
