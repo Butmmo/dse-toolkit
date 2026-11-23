@@ -11918,6 +11918,107 @@
         "Spend estimate and required approvals"
       ]
     },
+    "dse.enrich_waterfall_build_experiment": {
+      "label": "Lead enrichment: draft a two-provider comparison",
+      "group": "Grow",
+      "help": "Creates two local waterfall drafts from one saved config. The drafts differ only by swapping the two selected provider positions in the chosen field; they share a stable experiment ID and record the source config hash. This prepares a comparison but does not read leads, call providers, or choose a winner. Review and preview the spend for both drafts, then use the same bounded lead cohort for both variants.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--build-waterfall-experiment",
+          "field": "go"
+        },
+        {
+          "opt": "--waterfall-config",
+          "field": "waterfall_config"
+        },
+        {
+          "opt": "--experiment-field",
+          "field": "experiment_field"
+        },
+        {
+          "opt": "--experiment-provider-a",
+          "field": "provider_a"
+        },
+        {
+          "opt": "--experiment-provider-b",
+          "field": "provider_b"
+        }
+      ],
+      "fields": [
+        {
+          "name": "go",
+          "label": "Create local comparison drafts",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "waterfall_config",
+          "label": "Saved source waterfall JSON",
+          "type": "file",
+          "required": true,
+          "glob": "enrich-waterfalls/*.json",
+          "exclude": "-experiment-"
+        },
+        {
+          "name": "experiment_field",
+          "label": "Field to compare",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            {
+              "value": "email",
+              "label": "Email"
+            },
+            {
+              "value": "phone",
+              "label": "Phone"
+            },
+            {
+              "value": "person_identity",
+              "label": "Person identity"
+            },
+            {
+              "value": "firmographics",
+              "label": "Firmographics"
+            }
+          ],
+          "default": "email"
+        },
+        {
+          "name": "provider_a",
+          "label": "First configured provider",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        },
+        {
+          "name": "provider_b",
+          "label": "Second configured provider",
+          "type": "text",
+          "required": true,
+          "max": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [
+        "enrich-waterfalls/*-experiment-*.json"
+      ],
+      "category": "source",
+      "source": "Saved local waterfall config",
+      "cost": "Local-only config creation; no lead data, provider calls, internet searches, paid services, or cloud AI.",
+      "outputs_summary": [
+        "Two never-overwrite config drafts with the selected provider positions swapped",
+        "One stable experiment ID and source config fingerprint shared by both variants",
+        "Original waterfall is unchanged",
+        "Both drafts can be reviewed and spend-previewed before any live enrichment"
+      ]
+    },
     "dse.waterfall_assign_outreach": {
       "label": "Waterfall experiments: assign outreach variants",
       "group": "Waterfall experiments",
