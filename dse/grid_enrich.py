@@ -5,6 +5,8 @@ import argparse
 import csv
 import datetime as dt
 import json
+import math
+import os
 import re
 import sys
 import tempfile
@@ -48,20 +50,26 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
               path: str = "any", profile: str = "any", decision_maker: str = "any", legal_form: str = "any",
               decision_role: str = "signal_based", custom_role: str = "", search_provider: str = "duckduckgo",
               search_budget: int = 12, minimum_identity_score: float = 0.0, use_ai: bool = True,
-              enrichment_profile: str = "", provider_budget: int | None = None):
+              enrichment_profile: str = "", provider_budget: int | None = None,
+              brave_cost_per_1000: float | None = None, brave_max_spend: float | None = None,
+              announce_cost_ceiling: bool = True, max_provider_spend: float | None = None,
+              allow_unknown_provider_cost: bool = False):
     if lane == "website":
         from . import enrich
         active_waterfall = waterfall_config if provider_budget is None or provider_budget > 0 else ""
         active_dry_run = dry_run if provider_budget is None or provider_budget > 0 else False
         report = enrich.enrich_file(str(source), icp=icp, engine=engine, max_rows=limit, render=False,
-                                    waterfall_config_path=active_waterfall, dry_run=active_dry_run, budget=provider_budget)
+                                    waterfall_config_path=active_waterfall, dry_run=active_dry_run, budget=provider_budget,
+                                    max_provider_spend=max_provider_spend, allow_unknown_provider_cost=allow_unknown_provider_cost)
         m = re.search(r"Saved: (\S+\.csv)", report)
     elif lane == "herald":
         from . import signal_enrichment
         report = signal_enrichment.enrich_file(str(source), engine=engine, max_rows=limit, use_ai=use_ai,
             business_profile=profile, decision_maker=decision_maker, legal_form=legal_form, decision_role=decision_role,
             custom_role=custom_role, search_provider=search_provider, path_key=path, search_budget=search_budget,
-            minimum_identity_score=minimum_identity_score, enrichment_profile=enrichment_profile)
+            minimum_identity_score=minimum_identity_score, enrichment_profile=enrichment_profile,
+            brave_cost_per_1000=brave_cost_per_1000, brave_max_spend=brave_max_spend,
+            announce_cost_ceiling=announce_cost_ceiling)
         m = re.search(r"Saved: (\S+\.csv)", report)
     else:
         from . import signal_enrichment
@@ -527,6 +535,71 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     result_path: Path | None = None
     written = skipped = oversized = completed = 0
     say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows in batches of {batch_size}, starting at row {start_row}.")
+    brave_run = lane == "herald" and str(options.get("search_provider", "duckduckgo")) == "brave"
+    brave_requests_used = 0
+    brave_request_cap = 0
+    brave_usage_warnings: list[str] = []
+    brave_cost = options.get("brave_cost_per_1000")
+    brave_max_spend = options.get("brave_max_spend")
+    if brave_run:
+        try:
+            requested_search_budget = int(options.get("search_budget", 12))
+        except (TypeError, ValueError):
+            raise ValueError("Search budget must be a whole number between 0 and 30.") from None
+        if not 0 <= requested_search_budget <= 30:
+            raise ValueError("Search budget must be between 0 and 30 queries per row.")
+        if brave_cost is not None and (not isinstance(brave_cost, (int, float)) or not math.isfinite(brave_cost) or not 0 <= brave_cost <= 100000):
+            raise ValueError("Brave cost per 1,000 requests must be between 0 and 100000 USD.")
+        if brave_max_spend is not None and (not isinstance(brave_max_spend, (int, float)) or not math.isfinite(brave_max_spend) or not 0 <= brave_max_spend <= 100000):
+            raise ValueError("Brave maximum spend must be between 0 and 100000 USD.")
+        from . import signal_enrichment
+        brave_request_cap = min(requested_search_budget * len(source_rows), signal_enrichment._brave_request_cap())
+        max_cost = brave_request_cap * brave_cost / 1000 if brave_cost is not None else None
+        if brave_request_cap and (brave_cost is None or brave_max_spend is None):
+            raise ValueError("Brave grid searches need both the current price per 1,000 requests and a maximum-spend approval. Use DuckDuckGo if you cannot estimate or approve a spend ceiling.")
+        if max_cost is not None and brave_max_spend is not None and max_cost > brave_max_spend + 1e-9:
+            raise ValueError(f"Brave grid estimate is {max_cost:.4f} USD, above your approved maximum of {brave_max_spend:.4f} USD. Lower the request budget or raise the approved maximum.")
+        if brave_request_cap:
+            say(f"Brave spend ceiling approved: up to {brave_request_cap} requests; {max_cost:.4f} USD estimated at your declared rate; user maximum {brave_max_spend:.4f} USD.")
+    provider_batch_ceilings: list[float] = []
+    if lane == "website" and options.get("waterfall_config"):
+        from . import enrich, waterfall as wf
+        cfg = wf.load_config(str(options["waterfall_config"]), budget_override=provider_budget)
+        email_providers = wf.provider_configs(cfg, dry_run=True) if cfg["providers"] else []
+        field_configs = wf.load_field_waterfalls(str(options["waterfall_config"]), provider_budget, dry_run=True)
+        batch_count = (len(source_rows) + batch_size - 1) // batch_size
+        batch_caps = []
+        for batch_index in range(batch_count):
+            if provider_budget is None:
+                batch_caps.append(None)
+            else:
+                base_budget, extra_calls = divmod(provider_budget, batch_count)
+                batch_caps.append(base_budget + (1 if batch_index < extra_calls else 0))
+        projections = []
+        for batch_index, batch_offset in enumerate(range(0, len(source_rows), batch_size)):
+            batch_count_rows = min(batch_size, len(source_rows) - batch_offset)
+            batch_cfg = wf.load_config(str(options["waterfall_config"]), budget_override=batch_caps[batch_index])
+            batch_fields = wf.load_field_waterfalls(str(options["waterfall_config"]), batch_caps[batch_index], dry_run=True)
+            projections.append(wf.spend_projection(email_providers, batch_cfg["max_provider_calls"], batch_fields, batch_count_rows))
+        total_estimate = sum(item["estimate"] for item in projections)
+        currencies = {item["currency"] for item in projections if item["currency"]}
+        if len(currencies) > 1:
+            raise ValueError("Configured providers use multiple currencies; split the waterfalls so each run has one approved currency.")
+        unknown_names = sorted({name for item in projections for name in item["unknown_providers"]})
+        attempts = sum(item["possible_calls"] for item in projections)
+        maximum = options.get("max_provider_spend")
+        if maximum is not None and (not isinstance(maximum, (int, float)) or not math.isfinite(maximum) or not 0 <= maximum <= 10000000):
+            raise ValueError("Maximum configured-provider spend must be between 0 and 10000000.")
+        allow_unknown = bool(options.get("allow_unknown_provider_cost"))
+        if attempts and unknown_names and not allow_unknown:
+            raise ValueError(f"Configured provider price is unknown for {', '.join(unknown_names)}. Enable unknown provider cost only after reviewing its pricing.")
+        if attempts and maximum is None:
+            raise ValueError(f"Configured-provider estimate is {total_estimate:.4f} {next(iter(currencies), 'known-price currency')} across {attempts} calls; approve it with the maximum-provider-spend control.")
+        if maximum is not None and total_estimate > maximum + 1e-9:
+            raise ValueError(f"Configured-provider estimate is {total_estimate:.4f} {next(iter(currencies), 'known-price currency')}, above the approved maximum of {maximum:.4f}.")
+        provider_batch_ceilings = [item["estimate"] for item in projections]
+        if attempts:
+            say(f"Configured-provider spend estimate approved: up to {total_estimate:.4f} {next(iter(currencies), 'known-price currency')} across {attempts} calls; maximum {maximum:.4f}. Runtime ceilings apply per saved batch. Unknown prices: {', '.join(unknown_names) if unknown_names else 'none'}.")
     for batch_offset in range(0, len(source_rows), batch_size):
         batch_rows = source_rows[batch_offset:batch_offset + batch_size]
         batch_index = batch_offset // batch_size
@@ -536,6 +609,8 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             base_budget, extra_calls = divmod(provider_budget, batch_count)
             batch_provider_budget = base_budget + (1 if batch_index < extra_calls else 0)
         input_path: Path | None = None
+        original_search_limit = os.environ.get("DSE_BRAVE_SEARCH_QUERY_LIMIT")
+        batch_brave_active = False
         try:
             with tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="", suffix=".csv", prefix="grid-enrich-", dir=LISTS, delete=False) as file:
                 input_path = Path(file.name)
@@ -544,11 +619,33 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 for row in batch_rows:
                     data = row.get("data") or {}
                     writer.writerow({c["label"]: _cell(data.get(c["key"])) for c in columns})
+            batch_options = dict(options)
+            if provider_batch_ceilings:
+                batch_options["max_provider_spend"] = provider_batch_ceilings[batch_index]
+            if brave_run:
+                from . import signal_enrichment
+                batch_brave_active = True
+                remaining_brave = max(0, brave_request_cap - brave_requests_used)
+                signal_enrichment.BRAVE_SEARCH_REQUESTS = 0
+                os.environ["DSE_BRAVE_SEARCH_QUERY_LIMIT"] = str(max(1, remaining_brave))
+                if remaining_brave == 0:
+                    batch_options["search_budget"] = 0
+                batch_options["announce_cost_ceiling"] = False
             result_path, batch_headers, enriched_rows = _run_lane(input_path, lane, engine, len(batch_rows), output_detail,
-                enrichment_profile=enrichment_profile, provider_budget=batch_provider_budget, **options)
+                enrichment_profile=enrichment_profile, provider_budget=batch_provider_budget, **batch_options)
         except Exception as error:
             raise RuntimeError(f"Grid enrichment stopped after {completed} rows were saved. Resume with --start-row {start_row + completed} using the same lane and settings. {str(error)[:220]}") from error
         finally:
+            if batch_brave_active:
+                from . import signal_enrichment
+                brave_requests_used += signal_enrichment.BRAVE_SEARCH_REQUESTS
+                for warning in signal_enrichment.BRAVE_USAGE_WARNINGS:
+                    if warning not in brave_usage_warnings:
+                        brave_usage_warnings.append(warning)
+                if original_search_limit is None:
+                    os.environ.pop("DSE_BRAVE_SEARCH_QUERY_LIMIT", None)
+                else:
+                    os.environ["DSE_BRAVE_SEARCH_QUERY_LIMIT"] = original_search_limit
             if input_path:
                 input_path.unlink(missing_ok=True)
         if len(enriched_rows) != len(batch_rows):
@@ -587,9 +684,17 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         say(f"PROGRESS {completed}/{len(source_rows)} failed 0 skipped {skipped}")
     assert result_path is not None
     omitted_note = f" {len(omitted_columns)} output columns could not be added because this grid is at its 60-column limit." if omitted_columns else ""
+    spend_note = ""
+    if brave_run:
+        actual_cost = brave_requests_used * brave_cost / 1000 if brave_cost is not None else None
+        cost_text = f"{actual_cost:.4f} USD estimated at your declared rate" if actual_cost is not None else "monetary cost unknown (no declared rate)"
+        approval = f" Approved max: {brave_max_spend:.4f} USD." if brave_max_spend is not None else ""
+        spend_note = f" Brave requests: {brave_requests_used}/{brave_request_cap} run ceiling; {cost_text}.{approval} Usage was added to this PC's provider journal."
+        if brave_usage_warnings:
+            spend_note += " Usage-record warning: " + " ".join(brave_usage_warnings)
     return (f"FINISHED {lane} enrichment: {written} rows updated, {skipped} rows had no new values, {oversized} oversized values omitted. "
             f"Saved {completed} rows starting at row {start_row} in {((completed + batch_size - 1) // batch_size)} batches. "
-            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}\n")
+            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}\n")
 
 
 def cli(argv: list[str]) -> int:
@@ -605,6 +710,8 @@ def cli(argv: list[str]) -> int:
     parser.add_argument("--icp", default="")
     parser.add_argument("--waterfall-config", default="")
     parser.add_argument("--dry-run-providers", action="store_true")
+    parser.add_argument("--max-provider-spend", type=float, default=None, help="required approved ceiling for configured known-price provider charges")
+    parser.add_argument("--allow-unknown-provider-cost", action="store_true", help="acknowledge provider charges not covered by the numeric estimate")
     parser.add_argument("--path", default="any")
     parser.add_argument("--enrichment-profile", choices=["none", *enrichment_profiles.available_paths()], default="none")
     parser.add_argument("--profile", default="any")
@@ -614,6 +721,8 @@ def cli(argv: list[str]) -> int:
     parser.add_argument("--custom-role", default="")
     parser.add_argument("--search-provider", default="duckduckgo")
     parser.add_argument("--search-budget", type=int, default=12)
+    parser.add_argument("--brave-cost-per-1000", type=float, default=None, help="user-declared USD rate for cost estimates only")
+    parser.add_argument("--brave-max-spend", type=float, default=None, help="required USD estimate ceiling approval for a Brave run")
     parser.add_argument("--minimum-identity-score", type=float, default=0.0)
     parser.add_argument("--no-ai", action="store_true")
     args = parser.parse_args(argv)

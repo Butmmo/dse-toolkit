@@ -134,8 +134,22 @@ def check_toolkit_update(now: float) -> list[dict]:
     if not local:
         return [item(a, "GitHub toolkit updates", "unknown", "Could not read this clone's current Git revision.")]
     branch = _git(root, "branch", "--show-current")
-    if branch != "main":
-        return [item(a, "GitHub toolkit updates", "unknown", f"This checkout is on branch '{branch or 'detached'}'; the safe main-branch update instructions do not apply to it.")]
+    dirty = _git(root, "status", "--porcelain", "--untracked-files=normal")
+    if branch != "main" or dirty:
+        details = [f"branch '{branch or 'detached'}'", f"revision {local[:10]}"]
+        if dirty:
+            dirty_count = len([line for line in dirty.splitlines() if line.strip()])
+            details.append(f"{dirty_count} modified, staged or untracked path(s)")
+        upstream = _git(root, "rev-parse", "--verify", "origin/main")
+        if upstream:
+            counts = _git(root, "rev-list", "--left-right", "--count", f"{upstream}...{local}").split()
+            if len(counts) == 2 and all(part.isdigit() for part in counts):
+                main_only, branch_only = map(int, counts)
+                details.append(f"last-fetched origin/main has {main_only} commit(s) absent from this checkout and this checkout has {branch_only} unique commit(s)")
+        reason = "; ".join(details)
+        fix = ("Do not run git switch, pull, reset or clean on this checkout yet. Preserve the working-tree changes and any branch-only commits, then have the toolkit changes explicitly reconciled with main. "
+               "Only update/restart the runner after the reconciled checkout is clean and its commit is verified.")
+        return [item(a, "Toolkit update needs safe reconciliation", "fix", f"This checkout cannot use the simple main-branch update sequence: {reason}. No files were changed.", fix)]
     cached = {}
     try:
         cached = json.loads(UPDATE_CACHE.read_text(encoding="utf-8"))

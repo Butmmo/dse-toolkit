@@ -8409,16 +8409,46 @@
           "required": false,
           "default": "none",
           "choices": [
-            {"value": "none", "label": "No path profile"},
-            {"value": "smb", "label": "SMB Optimisation"},
-            {"value": "search", "label": "Search & AI Visibility"},
-            {"value": "voiceai", "label": "AI Voice Receptionist"},
-            {"value": "automation", "label": "AI Automation Engineering"},
-            {"value": "revenue", "label": "Revenue Recovery"},
-            {"value": "gtm", "label": "Go-to-Market Engineering"},
-            {"value": "authority", "label": "Authority Engine"},
-            {"value": "broadcast", "label": "Broadcast Engine"},
-            {"value": "ascent", "label": "The Ascent"}
+            {
+              "value": "none",
+              "label": "No path profile"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimisation"
+            },
+            {
+              "value": "search",
+              "label": "Search & AI Visibility"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "authority",
+              "label": "Authority Engine"
+            },
+            {
+              "value": "broadcast",
+              "label": "Broadcast Engine"
+            },
+            {
+              "value": "ascent",
+              "label": "The Ascent"
+            }
           ]
         },
         {
@@ -10069,6 +10099,14 @@
           "field": "budget"
         },
         {
+          "opt": "--max-provider-spend",
+          "field": "max_provider_spend"
+        },
+        {
+          "flag": "--allow-unknown-provider-cost",
+          "field": "allow_unknown_provider_cost"
+        },
+        {
           "flag": "--dry-run",
           "field": "dry_run"
         }
@@ -10135,6 +10173,20 @@
           "max": 5000
         },
         {
+          "name": "max_provider_spend",
+          "label": "Approved ceiling for known configured-provider charges (required for live paid calls)",
+          "type": "float",
+          "required": false,
+          "min": 0,
+          "max": 10000000
+        },
+        {
+          "name": "allow_unknown_provider_cost",
+          "label": "Allow configured providers with unknown prices (charges can exceed numeric estimate)",
+          "type": "bool",
+          "default": false
+        },
+        {
           "name": "dry_run",
           "label": "Dry run (no optional provider requests; show projected calls)",
           "type": "bool",
@@ -10148,12 +10200,13 @@
       ],
       "category": "enrich",
       "source": "First-party company websites; optional configured providers",
-      "cost": "Website checks run on your PC. Optional providers run in configured order with your own keys and call cap; dry run makes no provider requests.",
+      "cost": "Website checks run on your PC. Live optional-provider calls require an approved ceiling for known prices and a separate acknowledgment for unknown prices; the runtime stops known-price requests before they exceed the ceiling. Estimates are not invoices.",
       "outputs_summary": [
         "Website-sourced contact and business fields",
         "Shared per-field provenance, identity, freshness and verification records",
         "Per-rung attempts, cache hits, accepted/rejected candidates and errors",
-        "Dry-run projected calls; configured price estimate only when supplied, otherwise unknown",
+        "Enriched CSV and report",
+        "Conservative configured-provider spend estimate and runtime ceiling; unknown-priced providers require separate acknowledgment",
         "Enriched CSV and report"
       ]
     },
@@ -10188,6 +10241,14 @@
         {
           "opt": "--search-budget",
           "field": "search_budget"
+        },
+        {
+          "opt": "--brave-cost-per-1000",
+          "field": "brave_cost_per_1000"
+        },
+        {
+          "opt": "--brave-max-spend",
+          "field": "brave_max_spend"
         },
         {
           "opt": "--minimum-identity-score",
@@ -10295,16 +10356,46 @@
           "required": false,
           "default": "none",
           "choices": [
-            {"value": "none", "label": "No path profile"},
-            {"value": "smb", "label": "SMB Optimisation"},
-            {"value": "search", "label": "Search & AI Visibility"},
-            {"value": "voiceai", "label": "AI Voice Receptionist"},
-            {"value": "automation", "label": "AI Automation Engineering"},
-            {"value": "revenue", "label": "Revenue Recovery"},
-            {"value": "gtm", "label": "Go-to-Market Engineering"},
-            {"value": "authority", "label": "Authority Engine"},
-            {"value": "broadcast", "label": "Broadcast Engine"},
-            {"value": "ascent", "label": "The Ascent"}
+            {
+              "value": "none",
+              "label": "No path profile"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimisation"
+            },
+            {
+              "value": "search",
+              "label": "Search & AI Visibility"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "authority",
+              "label": "Authority Engine"
+            },
+            {
+              "value": "broadcast",
+              "label": "Broadcast Engine"
+            },
+            {
+              "value": "ascent",
+              "label": "The Ascent"
+            }
           ]
         },
         {
@@ -10314,6 +10405,22 @@
           "min": 0,
           "max": 30,
           "default": 12
+        },
+        {
+          "name": "brave_cost_per_1000",
+          "label": "USD cost per 1,000 Brave requests (optional; Herald + Brave estimates only)",
+          "type": "float",
+          "required": false,
+          "min": 0,
+          "max": 100000
+        },
+        {
+          "name": "brave_max_spend",
+          "label": "Maximum Brave spend to approve for this run in USD (required if Brave searches may run)",
+          "type": "float",
+          "required": false,
+          "min": 0,
+          "max": 100000
         },
         {
           "name": "minimum_identity_score",
@@ -10505,11 +10612,13 @@
       ],
       "category": "signal",
       "source": "Public web search; local Ollama is optional",
-      "cost": "DuckDuckGo mode has no search-provider fee. Brave uses your own API key and may charge; Ollama runs locally.",
+      "cost": "DuckDuckGo mode has no search-provider fee. Brave uses your own API key and allowance. A declared rate and user-approved maximum are required before any searches; run spend is estimated and checked against that maximum before work. This is not a provider invoice. Requests are journaled locally. Ollama runs locally.",
       "outputs_summary": [
         "Sourced company/person signals",
         "Shared field-result records with evidence, identity cues and per-query waterfall metrics",
         "Configurable per-lead query budget and minimum identity score",
+        "Declared Brave rate and approved run maximum when searches may run",
+        "Local provider-usage journal entry for each Brave API attempt",
         "Path-fit tags",
         "Path outcome brief links priority/supporting source candidates to a DSE outcome, commercial viability checks and a concrete human next step",
         "Research CSV and report",
@@ -10610,6 +10719,85 @@
       "cost": "Status check only; does not perform a paid lookup.",
       "outputs_summary": [
         "Configured provider names and readiness"
+      ]
+    },
+    "dse.enrich_catalog": {
+      "label": "Lead enrichment: paid-provider catalog",
+      "group": "Grow",
+      "help": "Shows enrichment and signal providers that are ready, candidates, retired, or restricted, with their official pricing and documentation links. This is information only: it does not enable a provider, make a paid request, or claim current prices.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--catalog",
+          "field": "go"
+        }
+      ],
+      "fields": [
+        {
+          "name": "go",
+          "label": "Show provider catalog",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [],
+      "category": "source",
+      "source": "Local reviewed provider catalog with official links",
+      "cost": "Catalog lookup only; makes no provider request.",
+      "outputs_summary": [
+        "Provider capabilities and integration state",
+        "Official pricing, API and policy links",
+        "Retired or restricted provider warnings"
+      ]
+    },
+    "dse.enrich_usage": {
+      "label": "Lead enrichment: provider usage and cost estimates",
+      "group": "Grow",
+      "help": "Shows this PC's recent optional enrichment-provider API-call records, configured cost estimates and calls with unknown cost. It stores no lead names or domains and does not show vendor invoice totals.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--usage",
+          "field": "go"
+        },
+        {
+          "opt": "--usage-days",
+          "field": "days"
+        }
+      ],
+      "fields": [
+        {
+          "name": "go",
+          "label": "Show usage",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "days",
+          "label": "History window in days",
+          "type": "int",
+          "min": 1,
+          "max": 3650,
+          "default": 30
+        }
+      ],
+      "timeout_min": 1,
+      "outputs": [],
+      "category": "source",
+      "source": "Local provider-call journal on this PC",
+      "cost": "Read-only usage summary; no provider call or payment is made.",
+      "outputs_summary": [
+        "Provider requests and outcomes",
+        "Configured monetary estimates by currency",
+        "Requests where monetary cost remains unknown",
+        "Clear distinction from vendor invoices"
       ]
     },
     "dse.enrich_row": {
@@ -10860,6 +11048,14 @@
           "field": "waterfall_config"
         },
         {
+          "opt": "--max-provider-spend",
+          "field": "max_provider_spend"
+        },
+        {
+          "flag": "--allow-unknown-provider-cost",
+          "field": "allow_unknown_provider_cost"
+        },
+        {
           "flag": "--dry-run-providers",
           "field": "dry_run_providers"
         },
@@ -10898,6 +11094,14 @@
         {
           "opt": "--search-budget",
           "field": "search_budget"
+        },
+        {
+          "opt": "--brave-cost-per-1000",
+          "field": "brave_cost_per_1000"
+        },
+        {
+          "opt": "--brave-max-spend",
+          "field": "brave_max_spend"
         },
         {
           "opt": "--minimum-identity-score",
@@ -11009,6 +11213,20 @@
           "glob": "enrich-waterfalls/*.json"
         },
         {
+          "name": "max_provider_spend",
+          "label": "Approved ceiling for known configured-provider charges (required for live paid calls)",
+          "type": "float",
+          "required": false,
+          "min": 0,
+          "max": 10000000
+        },
+        {
+          "name": "allow_unknown_provider_cost",
+          "label": "Allow configured providers with unknown prices (charges can exceed numeric estimate)",
+          "type": "bool",
+          "default": false
+        },
+        {
           "name": "dry_run_providers",
           "label": "Project provider calls without making them",
           "type": "bool",
@@ -11070,16 +11288,46 @@
           "required": false,
           "default": "none",
           "choices": [
-            {"value": "none", "label": "No path profile"},
-            {"value": "smb", "label": "SMB Optimisation"},
-            {"value": "search", "label": "Search & AI Visibility"},
-            {"value": "voiceai", "label": "AI Voice Receptionist"},
-            {"value": "automation", "label": "AI Automation Engineering"},
-            {"value": "revenue", "label": "Revenue Recovery"},
-            {"value": "gtm", "label": "Go-to-Market Engineering"},
-            {"value": "authority", "label": "Authority Engine"},
-            {"value": "broadcast", "label": "Broadcast Engine"},
-            {"value": "ascent", "label": "The Ascent"}
+            {
+              "value": "none",
+              "label": "No path profile"
+            },
+            {
+              "value": "smb",
+              "label": "SMB Optimisation"
+            },
+            {
+              "value": "search",
+              "label": "Search & AI Visibility"
+            },
+            {
+              "value": "voiceai",
+              "label": "AI Voice Receptionist"
+            },
+            {
+              "value": "automation",
+              "label": "AI Automation Engineering"
+            },
+            {
+              "value": "revenue",
+              "label": "Revenue Recovery"
+            },
+            {
+              "value": "gtm",
+              "label": "Go-to-Market Engineering"
+            },
+            {
+              "value": "authority",
+              "label": "Authority Engine"
+            },
+            {
+              "value": "broadcast",
+              "label": "Broadcast Engine"
+            },
+            {
+              "value": "ascent",
+              "label": "The Ascent"
+            }
           ]
         },
         {
@@ -11251,6 +11499,22 @@
           "default": 12
         },
         {
+          "name": "brave_cost_per_1000",
+          "label": "USD cost per 1,000 Brave requests (optional; Herald + Brave estimates only)",
+          "type": "float",
+          "required": false,
+          "min": 0,
+          "max": 100000
+        },
+        {
+          "name": "brave_max_spend",
+          "label": "Maximum Brave spend to approve for this run in USD (required if Brave searches may run)",
+          "type": "float",
+          "required": false,
+          "min": 0,
+          "max": 100000
+        },
+        {
           "name": "minimum_identity_score",
           "label": "Minimum identity match score (heuristic 0–1)",
           "type": "float",
@@ -11269,7 +11533,7 @@
       "outputs": [],
       "category": "enrich",
       "source": "The selected Ledger grid and the public sources of the chosen lane",
-      "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances.",
+      "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances. Brave grid runs require a declared rate and user-approved maximum when searches may run; the estimate is checked before work and the request cap spans saved batches. The estimate is not a provider invoice. Configured website-provider waterfalls require a declared approved ceiling and guard each saved batch; unknown-priced providers require separate acknowledgment.",
       "outputs_summary": [
         "Enriches existing grid rows in place",
         "Creates/reuses columns for the selected output fields",
@@ -11278,6 +11542,7 @@
         "Retains source URLs and compares repeated complete searches; partial runs never imply a source disappeared.",
         "Persists a compact source-monitoring timeline on each Ledger row for cross-device review",
         "Adds an in-grid evidence review for Website provider selections and alternatives, Herald decisions and citations, and Presence identity, freshness and search waterfall measurements",
+        "Journals Brave usage across saved grid batches and shows a request/spend ceiling when a user-declared rate is supplied",
         "Shows path-specific customer outcomes, proof metrics, commercial viability checks and next human validation in Ledger evidence review",
         "Separates existing lead/enrichment observations from prospect-confirmed commercial qualification checks",
         "Keeps up to six local path-advice snapshots, marking advice as changed, unchanged, or not generated in that run"

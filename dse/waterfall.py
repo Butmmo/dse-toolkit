@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
+import re
 from typing import Callable
 
 from . import enrich_providers as ep
@@ -113,6 +115,44 @@ def load_field_waterfalls(path: str = "", budget_override: int | None = None, dr
         cfg["provider_configs"] = configs
         configured[field_name] = cfg
     return configured
+
+
+def spend_projection(email_providers: list[dict], email_calls: int, field_waterfalls: dict, leads: int) -> dict:
+    """Conservative configured-provider maximum; assumes each eligible attempt uses the priciest rung."""
+    chains = []
+    if email_providers:
+        chains.append(("email", email_providers, max(0, int(email_calls))))
+    for field_name, config in field_waterfalls.items():
+        providers = config.get("provider_configs", [])
+        if providers:
+            chains.append((field_name, providers, max(0, int(config.get("max_provider_calls", 0)))))
+    currencies, unknown, estimate, attempts = set(), [], 0.0, 0
+    for field_name, providers, call_cap in chains:
+        possible = min(call_cap, max(0, leads) * len(providers))
+        if not possible:
+            continue
+        attempts += possible
+        priced = []
+        for provider in providers:
+            raw = provider.get("cost_per_call")
+            if raw is None:
+                unknown.append(provider["name"])
+                continue
+            try:
+                price = float(raw)
+            except (TypeError, ValueError):
+                raise ValueError(f"{provider['name']}: cost_per_call must be a finite non-negative number.") from None
+            currency = str(provider.get("cost_currency", "")).upper()
+            if not math.isfinite(price) or price < 0 or not re.fullmatch(r"[A-Z]{3}", currency):
+                raise ValueError(f"{provider['name']}: a declared provider price needs a finite non-negative amount and three-letter currency.")
+            currencies.add(currency)
+            priced.append(price)
+        if priced:
+            estimate += possible * max(priced)
+    if len(currencies) > 1:
+        raise ValueError("Configured providers use multiple currencies; split the waterfalls so each run has one approved currency.")
+    return {"estimate": estimate, "currency": next(iter(currencies), ""), "unknown_providers": sorted(set(unknown)),
+            "possible_calls": attempts, "has_unknown_cost": bool(unknown)}
 
 
 def confidence_value(raw) -> float | None:
