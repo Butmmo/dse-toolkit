@@ -1647,7 +1647,11 @@ def _send_outcome_brief(report: dict) -> str:
             lines.append(f"\n{variant} fixed-window outcomes ({mature['window_days']} days): {mature['mature_sent_leads']} mature sent leads; {mature['awaiting_window_leads']} still awaiting the full window; replies {pct(mature['reply_rate'])}, booked {pct(mature['booked_rate'])}, wins {pct(mature['won_rate'])}.\n")
             if m["reply_categories_unique_leads"]:
                 cats = ", ".join(f"{str(label).replace('|', '/')} ({count})" for label, count in sorted(m["reply_categories_unique_leads"].items()))
-                lines.append(f"Logged reply categories, unique leads per category (categories can overlap): {cats}.\n")
+                lines.append(f"All-time logged reply categories, unique leads per category (categories can overlap): {cats}.\n")
+            mature_cats = mature.get("reply_categories_unique_leads", {})
+            if mature_cats:
+                cats = ", ".join(f"{str(label).replace('|', '/')} ({count})" for label, count in sorted(mature_cats.items()))
+                lines.append(f"Reply categories inside the fixed window, mature leads only (categories can overlap): {cats}.\n")
         lines.append(f"\nLeads present in both variants: **{cohort['same_leads_in_both_variants']}**. Shared leads may have received both variants, so interpret comparisons cautiously.\n")
         comparison = next((item for item in report["comparisons"]
                            if item["experiment_id"] == cohort["experiment_id"] and item["field"] == cohort["field"]), None)
@@ -1689,7 +1693,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
         lead = cohorts[(eid, field, variant)].setdefault(lead_id,
                   {**{k: False for k in ("sent", "replied", "booked", "won", "lost", "skipped")},
                    "_sent_dates": [], "_outcome_dates": {k: [] for k in ("replied", "booked", "won")},
-                   "_reply_categories": set()})
+                   "_reply_categories": set(), "_reply_category_dates": defaultdict(list)})
         for key in ("sent", "replied", "booked", "won", "lost", "skipped"):
             lead[key] = lead[key] or bool(flags.get(key))
         for event in events:
@@ -1703,7 +1707,9 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             if event.get("status") in ("replied", "booked", "won") and not desklog.is_out_of_office(event):
                 lead["_outcome_dates"][event["status"]].append(day)
             if event.get("status") == "replied" and not desklog.is_out_of_office(event):
-                lead["_reply_categories"].add((event.get("category") or "uncategorized").strip().casefold())
+                category = (event.get("category") or "uncategorized").strip().casefold()
+                lead["_reply_categories"].add(category)
+                lead["_reply_category_dates"][category].append(day)
 
     if not cohorts:
         raise ValueError("No tagged experiment rows with stable lead IDs were found for this engine" +
@@ -1736,7 +1742,14 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                 continue
             mature_leads[lead_id] = {key: any(first_sent <= day <= window_end for day in lead["_outcome_dates"][key])
                                      for key in ("replied", "booked", "won")}
+            mature_leads[lead_id]["_reply_categories"] = {
+                category for category, days in lead["_reply_category_dates"].items()
+                if any(first_sent <= day <= window_end for day in days)}
         mature_counts = {key: sum(bool(x[key]) for x in mature_leads.values()) for key in ("replied", "booked", "won")}
+        mature_reply_categories = defaultdict(int)
+        for lead in mature_leads.values():
+            for category in lead["_reply_categories"]:
+                mature_reply_categories[category] += 1
         mature_id_sets[(eid, field, variant)] = set(mature_leads)
         metric = {"assigned_unique_leads": len(leads), "sent_unique_leads": sent,
                   "skipped_unique_leads": skipped, "unmarked_unique_leads": unmarked,
@@ -1752,6 +1765,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                   "mature_window": {"window_days": maturity_days, "mature_sent_leads": len(mature_leads),
                                     "awaiting_window_leads": max(0, sent - len(mature_leads) - missing_sent_date),
                                     "sent_leads_missing_date": missing_sent_date,
+                                    "reply_categories_unique_leads": dict(sorted(mature_reply_categories.items())),
                                     "reply_count": mature_counts["replied"], "booked_count": mature_counts["booked"],
                                     "won_count": mature_counts["won"],
                                     "reply_rate": _ratio(mature_counts["replied"], len(mature_leads)),
