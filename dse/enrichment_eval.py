@@ -501,9 +501,59 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
     return comparisons
 
 
+def _decision_brief(report: dict) -> str:
+    lines = ["# Enrichment benchmark decision brief", "",
+             f"Reviewed field rows: {report.get('review_rows', 0)}", "",
+             "> This is a descriptive summary of reviewed benchmark evidence. It does not automatically select a provider. Cost figures are configured estimates, not invoices.", ""]
+    comparisons = report.get("paired_source_comparisons") or []
+    if not comparisons:
+        lines.extend(["No paired source comparisons were available for this review file.", ""])
+        return "\n".join(lines)
+    lines.extend(["## Paired source comparisons", ""])
+    for item in comparisons:
+        source_a = item.get("source_a", {})
+        source_b = item.get("source_b", {})
+        label_a = f"{source_a.get('name', 'Source A')} ({source_a.get('type', 'unknown')})"
+        label_b = f"{source_b.get('name', 'Source B')} ({source_b.get('type', 'unknown')})"
+        readout = item.get("decision_readout", {})
+        coverage = item.get("lead_result_availability", {})
+        value = (item.get("dimensions") or {}).get("value_correct", {})
+        interval = value.get("paired_rate_difference_cluster_bootstrap_95", {})
+        low, high = interval.get("lower"), interval.get("upper")
+        interval_text = f"{low:+.1%} to {high:+.1%}" if isinstance(low, (int, float)) and isinstance(high, (int, float)) else "unavailable"
+        lines.extend([
+            f"### {item.get('field', '(unknown field)')}: {label_a} vs {label_b}", "",
+            f"- Evidence: `{readout.get('evidence_status', 'unavailable')}`; matched reviewed leads: {value.get('matched_adjudicated_leads', 0)}.",
+            f"- Value-correctness difference (A minus B): {_display_rate(value.get('paired_rate_difference_a_minus_b'))}; 95% lead-pair interval: {interval_text}.",
+            f"- Result availability: both {coverage.get('both_sources_returned_result', 0)}, only A {coverage.get('only_source_a_returned_result', 0)}, only B {coverage.get('only_source_b_returned_result', 0)}, neither {coverage.get('neither_source_returned_result', 0)} of {coverage.get('cohort_leads', 0)} cohort leads.",
+        ])
+        tradeoffs = readout.get("dimensions_with_opposing_point_estimate_direction") or []
+        if tradeoffs:
+            lines.append(f"- Other dimensions with opposing point-estimate direction: {', '.join(tradeoffs)}.")
+        for currency, costs in (item.get("paired_provider_attempt_cost_by_currency") or {}).items():
+            a_cost = costs.get("source_a_mean_estimated_cost_per_matched_lead")
+            b_cost = costs.get("source_b_mean_estimated_cost_per_matched_lead")
+            lines.append(
+                f"- {currency} estimated cost per priced matched lead: A {_display_amount(a_cost)}; B {_display_amount(b_cost)}; {costs.get('descriptive_cost_quality_readout', 'No cost-quality readout.') }"
+            )
+        lines.append("")
+    lines.extend(["## How to read this", "",
+                  "A positive A-minus-B value-correctness difference favors A in this reviewed cohort; a negative difference favors B. An interval spanning zero does not show a clear direction. Coverage and the matched review count matter: comparisons can be biased if the reviewed leads are not representative. Cost comparisons use only the priced matched subset and should be considered alongside the quality interval and business context.", ""])
+    return "\n".join(lines)
+
+
+def _display_rate(value: Any) -> str:
+    return f"{value:.1%}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _display_amount(value: Any) -> str:
+    return f"{value:.4g}" if isinstance(value, (int, float)) else "n/a"
+
+
 def score(source: str, out: str = "", min_labeled: int = 20,
           cost_bootstrap_reps: int = 500, cost_bootstrap_seed: int = 42,
-          paired_bootstrap_reps: int = 500, paired_bootstrap_seed: int = 42) -> tuple[dict, Path]:
+          paired_bootstrap_reps: int = 500, paired_bootstrap_seed: int = 42,
+          markdown_out: str = "") -> tuple[dict, Path]:
     """Summarize reviewed quality, coverage, freshness and declared provider cost."""
     if min_labeled < 1:
         raise ValueError("--min-labeled must be at least 1.")
@@ -698,6 +748,11 @@ def score(source: str, out: str = "", min_labeled: int = 20,
     output = Path(out) if out else Path(source).with_name(Path(source).stem + "-evaluation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if markdown_out:
+        brief_path = Path(markdown_out)
+        brief_path.parent.mkdir(parents=True, exist_ok=True)
+        brief_path.write_text(_decision_brief(report), encoding="utf-8")
+        print(f"Wrote decision brief: {brief_path}")
     print(f"Scored {len(rows)} reviewed field rows across {len(by_field)} fields: {output}")
     for field, values in report["fields"].items():
         m = values["review_labels"]
@@ -1017,6 +1072,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--cost-bootstrap-seed", type=int, default=42, help="seed for reproducible reviewed cost intervals (default: 42)")
     s.add_argument("--paired-bootstrap-reps", type=int, default=500, help="lead-pair bootstrap replicates for paired source rate differences (0 disables; default: 500)")
     s.add_argument("--paired-bootstrap-seed", type=int, default=42, help="seed for reproducible paired source intervals (default: 42)")
+    s.add_argument("--markdown-out", default="", help="optional Markdown decision brief output path")
     sm = sub.add_parser("sample-ledger", help="select a reproducible, stratified lead-level benchmark sample")
     sm.add_argument("source", help="prepared human-review CSV from `prepare`")
     sm.add_argument("--leads", type=int, default=40, help="maximum leads to sample (default: 40)")
@@ -1036,7 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
             prepare(args.source, args.out)
         elif args.action == "score":
             score(args.source, args.out, args.min_labeled, args.cost_bootstrap_reps, args.cost_bootstrap_seed,
-                  args.paired_bootstrap_reps, args.paired_bootstrap_seed)
+                  args.paired_bootstrap_reps, args.paired_bootstrap_seed, args.markdown_out)
         elif args.action == "sample-ledger":
             sample_ledger(args.source, args.leads, args.seed, args.stratify, args.out)
         elif args.action == "pair-reviewers":
