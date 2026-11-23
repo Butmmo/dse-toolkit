@@ -303,28 +303,48 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
             b_present = {lead for (case_field, case_cohort, lead), result_map in cases.items()
                          if case_field == field and case_cohort == cohort and source_b in result_map}
             shared = a_present & b_present
-            wins_a = wins_b = ties = duplicate = unlabeled = 0
-            a_yes = b_yes = 0
+            counts = {dimension: {"source_a_wins": 0, "source_b_wins": 0, "ties": 0,
+                                  "source_a_yes": 0, "source_b_yes": 0,
+                                  "excluded_unknown_or_unlabeled": 0, "excluded_duplicate_result_sets": 0}
+                      for dimension in REVIEW_FIELDS[:4]}
             for lead in shared:
                 a_rows = cases[(field, cohort, lead)][source_a]
                 b_rows = cases[(field, cohort, lead)][source_b]
                 if len(a_rows) != 1 or len(b_rows) != 1:
-                    duplicate += 1
+                    for dimension_counts in counts.values():
+                        dimension_counts["excluded_duplicate_result_sets"] += 1
                     continue
-                a_label = _review_category(a_rows[0].get(label_columns["value_correct"], ""))
-                b_label = _review_category(b_rows[0].get(label_columns["value_correct"], ""))
-                if a_label not in {"yes", "no"} or b_label not in {"yes", "no"}:
-                    unlabeled += 1
-                    continue
-                a_yes += a_label == "yes"
-                b_yes += b_label == "yes"
-                if a_label == b_label:
-                    ties += 1
-                elif a_label == "yes":
-                    wins_a += 1
-                else:
-                    wins_b += 1
-            matched = wins_a + wins_b + ties
+                for dimension, dimension_counts in counts.items():
+                    a_label = _review_category(a_rows[0].get(label_columns[dimension], ""))
+                    b_label = _review_category(b_rows[0].get(label_columns[dimension], ""))
+                    if a_label not in {"yes", "no"} or b_label not in {"yes", "no"}:
+                        dimension_counts["excluded_unknown_or_unlabeled"] += 1
+                        continue
+                    dimension_counts["source_a_yes"] += a_label == "yes"
+                    dimension_counts["source_b_yes"] += b_label == "yes"
+                    if a_label == b_label:
+                        dimension_counts["ties"] += 1
+                    elif a_label == "yes":
+                        dimension_counts["source_a_wins"] += 1
+                    else:
+                        dimension_counts["source_b_wins"] += 1
+            dimensions = {}
+            for dimension, dimension_counts in counts.items():
+                matched = (dimension_counts["source_a_wins"] + dimension_counts["source_b_wins"] + dimension_counts["ties"])
+                dimensions[dimension] = {
+                    "matched_adjudicated_leads": matched,
+                    "source_a_wins": dimension_counts["source_a_wins"],
+                    "source_b_wins": dimension_counts["source_b_wins"],
+                    "ties": dimension_counts["ties"],
+                    "source_a_yes_rate": _ratio(dimension_counts["source_a_yes"], matched),
+                    "source_b_yes_rate": _ratio(dimension_counts["source_b_yes"], matched),
+                    "paired_rate_difference_a_minus_b": _ratio(dimension_counts["source_a_yes"] - dimension_counts["source_b_yes"], matched),
+                    "excluded_unknown_or_unlabeled": dimension_counts["excluded_unknown_or_unlabeled"],
+                    "excluded_duplicate_result_sets": dimension_counts["excluded_duplicate_result_sets"],
+                    "minimum_labeled_count": min_labeled,
+                    "minimum_labeled_met": matched >= min_labeled,
+                }
+            value_result = dimensions["value_correct"]
             comparisons.append({
                 "field": field,
                 "engine_path": cohort[0],
@@ -338,17 +358,18 @@ def _paired_source_comparisons(rows: list[dict[str, str]], headers: list[str], m
                 "source_b_leads_with_result": len(b_present),
                 "source_b_result_coverage": _ratio(len(b_present), len(leads_by_cohort[cohort])),
                 "shared_leads_with_result": len(shared),
-                "matched_adjudicated_leads": matched,
-                "source_a_wins": wins_a,
-                "source_b_wins": wins_b,
-                "ties": ties,
-                "source_a_value_correct_rate": _ratio(a_yes, matched),
-                "source_b_value_correct_rate": _ratio(b_yes, matched),
-                "paired_rate_difference_a_minus_b": _ratio(a_yes - b_yes, matched),
-                "excluded_unknown_or_unlabeled": unlabeled,
-                "excluded_duplicate_result_sets": duplicate,
+                "dimensions": dimensions,
+                "matched_adjudicated_leads": value_result["matched_adjudicated_leads"],
+                "source_a_wins": value_result["source_a_wins"],
+                "source_b_wins": value_result["source_b_wins"],
+                "ties": value_result["ties"],
+                "source_a_value_correct_rate": value_result["source_a_yes_rate"],
+                "source_b_value_correct_rate": value_result["source_b_yes_rate"],
+                "paired_rate_difference_a_minus_b": value_result["paired_rate_difference_a_minus_b"],
+                "excluded_unknown_or_unlabeled": value_result["excluded_unknown_or_unlabeled"],
+                "excluded_duplicate_result_sets": value_result["excluded_duplicate_result_sets"],
                 "minimum_labeled_count": min_labeled,
-                "minimum_labeled_met": matched >= min_labeled,
+                "minimum_labeled_met": value_result["minimum_labeled_met"],
             })
     return comparisons
 

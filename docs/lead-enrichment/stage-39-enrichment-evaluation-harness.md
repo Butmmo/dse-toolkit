@@ -9,7 +9,7 @@ Added a local CLI harness to turn an enriched CSV's `field_results` contract int
 - evidence adequacy;
 - freshness acceptability.
 
-The scorer reports accepted-result coverage, labeled yes rates with Wilson 95% intervals, review response counts, and declared costs. Prepared sheets retain Engine path, enrichment profile and research lane when available. Stages 53–57 add stratified sampling, a shared rubric, independent paired review, agreement metrics and field/source breakdowns; Stage 58 flags small labeled denominators.
+The scorer reports accepted-result coverage, labeled yes rates with Wilson 95% intervals, review response counts, and declared costs. Prepared sheets retain Engine path, enrichment profile and research lane when available. Stages 53–60 add stratified sampling, review calibration, source breakdowns, uncertainty flags, and paired source comparisons across four quality dimensions.
 
 ## Use
 

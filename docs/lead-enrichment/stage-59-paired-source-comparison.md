@@ -6,6 +6,8 @@ The evaluation JSON now includes `paired_source_comparisons`. It compares each f
 
 Paired rows make source comparisons less sensitive to different leads being enriched by different providers. Keeping path, profile, and lane separate also avoids mixing distinct research strategies. The comparison uses only `value_correct` adjudication. Two sources both labeled yes or both labeled no count as ties. Unknown/missing labels and cases with multiple result rows from a source for the same lead/field/cohort are excluded from the matched quality rate and counted separately.
 
+Stage 60 expands the paired comparison to identity correctness, evidence adequacy, and freshness as separate dimensions.
+
 ## Use
 
 Use the normal reviewed scoring command after adjudication:
