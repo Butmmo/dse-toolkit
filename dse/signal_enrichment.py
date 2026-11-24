@@ -683,7 +683,8 @@ def _attach_profile_results(encoded: str, profile_record: dict, signals: list[di
     return json.dumps(results, ensure_ascii=False, separators=(",", ":"))
 
 
-def _monitor_review_payload(action: object, evidence: object, categories: object, sources: object) -> dict:
+def _monitor_review_payload(action: object, evidence: object, categories: object, sources: object,
+                            source_ids: dict[str, str] | None = None) -> dict:
     """Return a stable, structured review cue shared by Herald and Presence."""
     def as_list(value: object) -> list:
         if isinstance(value, str):
@@ -693,11 +694,23 @@ def _monitor_review_payload(action: object, evidence: object, categories: object
                 return []
         return [item for item in value if isinstance(item, (dict, str))] if isinstance(value, list) else []
 
+    source_ids = source_ids or {}
+    normalized_sources = []
+    for item in as_list(sources):
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "")
+        normalized_sources.append({
+            "category": str(item.get("category") or ""),
+            "url": url,
+            "url_fingerprint": str(item.get("url_fingerprint") or ""),
+            "record_id": source_ids.get(url, ""),
+        })
     return {
         "action": str(action or ""),
         "evidence": str(evidence or ""),
         "categories": as_list(categories),
-        "sources": [item for item in as_list(sources) if isinstance(item, dict)],
+        "sources": normalized_sources,
     }
 
 
@@ -757,7 +770,8 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
         value={"status": monitor_status, "action": row.get("herald_change_action", ""),
                "evidence": row.get("herald_change_evidence", ""),
                "review": _monitor_review_payload(row.get("herald_change_action"), row.get("herald_change_evidence"),
-                                                  row.get("herald_change_categories"), row.get("herald_change_sources")),
+                                                  row.get("herald_change_categories"), row.get("herald_change_sources"),
+                                                  {url: str(signal.get("id") or "") for url, signal in signal_by_url.items()}),
                "summary": row.get("herald_change_summary", ""),
                "new_source_urls": row.get("herald_new_source_urls", ""),
                "changed_source_urls": row.get("herald_changed_source_urls", ""),
@@ -895,7 +909,8 @@ def build_presence_field_results(signals: list[dict], checked_at: str, search_me
         value={"status": monitor_status, "action": monitor_row.get("presence_change_action", ""),
                "evidence": monitor_row.get("presence_change_evidence", ""),
                "review": _monitor_review_payload(monitor_row.get("presence_change_action"), monitor_row.get("presence_change_evidence"),
-                                                  monitor_categories, monitor_refs),
+                                                  monitor_categories, monitor_refs,
+                                                  {url: str(signal.get("id") or "") for url, signal in signal_by_url.items()}),
                "summary": monitor_row.get("presence_change_summary", ""), "categories": monitor_categories,
                "sources": monitor_refs, "previous_checked_at": monitor_row.get("presence_previous_checked_at", "")},
         status="candidate" if monitor_status in ("compared", "first_check") or monitor_candidates else "not_found",
