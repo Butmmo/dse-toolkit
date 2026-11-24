@@ -7,9 +7,11 @@ catalog = json.loads(path.read_text(encoding="utf-8"))
 tools = catalog["tools"]
 tools["dse.grid_enrich"] = {
     "label": "Ledgers: enrich grid rows live", "group": "Grow",
-    "help": "Runs the existing lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, or Presence public social signals. The PC reads the grid rows, runs the selected enrichment lane, then creates or reuses result columns and writes the results back into these rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. The original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted.",
+    "help": "Runs lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, technology and website-gap checks, Herald company/person signals and draft, Presence public social signals, or UK director lookup through the official Companies House register. Tech checks read each row's website and respect robots.txt. For director lookup, the grid needs a business-name column; city and address columns improve matching. The PC reads grid rows, runs the selected lane, then creates or reuses result columns and writes results back into those rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. Original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted.",
     "script": "dse.py", "args": [
         {"lit": "grid"}, {"lit": "enrich"}, {"field": "grid"}, {"opt": "--lane", "field": "lane"},
+        {"opt": "--company-column", "field": "company_column"}, {"opt": "--city-column", "field": "city_column"},
+        {"flag": "--fast-tech", "field": "fast_tech"},
         {"opt": "--engine", "field": "engine"}, {"opt": "--limit", "field": "limit"},
         {"opt": "--output-detail", "field": "output_detail"}, {"flag": "--overwrite", "field": "overwrite"},
         {"opt": "--icp", "field": "icp"}, {"opt": "--waterfall-config", "field": "waterfall_config"},
@@ -24,8 +26,13 @@ tools["dse.grid_enrich"] = {
         {"name": "grid", "label": "Grid to enrich", "type": "text", "required": True, "max": 120},
         {"name": "lane", "label": "What to research on these rows", "type": "choice", "required": True, "default": "website", "choices": [
             {"value": "website", "label": "Website enrichment: contacts and company details"},
+            {"value": "tech", "label": "Website technology and gaps"},
             {"value": "herald", "label": "Herald: company/person signals and email draft"},
-            {"value": "presence", "label": "Presence: public professional/social signals"}]},
+            {"value": "presence", "label": "Presence: public professional/social signals"},
+            {"value": "directors", "label": "UK: Companies House director lookup"}]},
+        {"name": "company_column", "label": "Business-name column for director lookup (optional; auto-detects Company, Business or Name)", "type": "text", "required": False, "max": 60},
+        {"name": "city_column", "label": "City or town column for director matching (optional; auto-detects City or Town)", "type": "text", "required": False, "max": 60},
+        {"name": "fast_tech", "label": "Skip the hidden browser fallback for technology scans", "type": "bool", "default": False},
         {"name": "engine", "label": "Engine for path guidance (optional; preset from this Ledger)", "type": "text", "required": False, "max": 80},
         {"name": "limit", "label": "Most grid rows to enrich in this run", "type": "int", "required": True, "min": 1, "max": 500, "default": 25},
         {"name": "output_detail", "label": "Result columns", "type": "choice", "required": True, "default": "essentials", "choices": [
@@ -61,8 +68,8 @@ tools["dse.grid_enrich"] = {
         {"name": "no_ai", "label": "Only collect evidence (do not draft with local AI)", "type": "bool", "default": False}
     ],
     "timeout_min": 240, "outputs": [], "category": "enrich", "source": "The selected Ledger grid and the public sources of the chosen lane",
-    "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances. Brave grid runs require a declared rate and user-approved maximum when searches may run; the estimate is checked before work and the request cap spans saved batches. The estimate is not a provider invoice.",
-    "outputs_summary": ["Enriches existing grid rows in place", "Creates/reuses columns for the selected output fields", "Preserves original row inputs; existing result cells are kept unless replace is selected", "Website, Herald and Presence lanes"]
+    "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances. Brave grid runs require a declared rate and user-approved maximum when searches may run; the estimate is checked before work and the request cap spans saved batches. Companies House uses the user's own free API key, stays on this PC and is paced to the service's documented allowance. Estimates are not provider invoices.",
+    "outputs_summary": ["Enriches existing grid rows in place", "Creates/reuses columns for the selected output fields", "Preserves original row inputs; existing result cells are kept unless replace is selected", "Website, technology, Herald, Presence and Companies House director lanes"]
 }
 path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("grid enrich tool added; tools:", len(tools))

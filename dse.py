@@ -160,6 +160,8 @@ def main():
     m = sub.add_parser("mystery"); m.add_argument("action", choices=["new", "score"]); m.add_argument("csv")
     sub.add_parser("engines")
     dl = sub.add_parser("daily"); dl.add_argument("engine"); dl.add_argument("--start"); dl.add_argument("--days", type=int, default=1)
+    dl.add_argument("--cities", default="", help="optional location override for this run only")
+    dl.add_argument("--country", default="", help="optional two-letter country override for this run only")
     dl.add_argument("--per-day", type=int); dl.add_argument("--fast", action="store_true")
     fu = sub.add_parser("followups"); fu.add_argument("engine"); fu.add_argument("--start"); fu.add_argument("--days", type=int, default=1)
     fu.add_argument("--preview", action="store_true", help="show them, save nothing")
@@ -698,7 +700,7 @@ def main():
     elif a.cmd == "engines":
         engines.list_engines()
     elif a.cmd == "daily":
-        engines.daily(a.engine, a.start, a.days, a.per_day, render=not a.fast)
+        engines.daily(a.engine, a.start, a.days, a.per_day, render=not a.fast, cities_override=a.cities or None, country_override=a.country or None)
     elif a.cmd == "mystery":
         (mystery.new if a.action == "new" else mystery.score)(a.csv)
 

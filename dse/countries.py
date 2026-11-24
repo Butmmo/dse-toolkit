@@ -12,7 +12,7 @@ from __future__ import annotations
 
 # ISO 3166-1 alpha-2 code -> English name (only the countries in a group below)
 NAMES: dict[str, str] = {
-    "US": "United States", "GB": "United Kingdom",
+    "US": "United States", "CA": "Canada", "GB": "United Kingdom",
     "AT": "Austria", "BE": "Belgium", "BG": "Bulgaria", "HR": "Croatia", "CY": "Cyprus", "CZ": "Czechia", "DK": "Denmark",
     "EE": "Estonia", "FI": "Finland", "FR": "France", "DE": "Germany", "GR": "Greece", "HU": "Hungary", "IE": "Ireland",
     "IT": "Italy", "LV": "Latvia", "LT": "Lithuania", "LU": "Luxembourg", "MT": "Malta", "NL": "Netherlands", "PL": "Poland",
@@ -33,6 +33,7 @@ NAMES: dict[str, str] = {
 # group -> (tier, label, country codes)
 GROUPS: dict[str, tuple[int, str, list[str]]] = {
     "us": (1, "United States", ["US"]),
+    "north-america": (1, "North America", ["US", "CA"]),
     "uk": (1, "United Kingdom", ["GB"]),
     "eu": (1, "European Union", ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV",
                                  "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]),
@@ -54,7 +55,7 @@ GROUPS: dict[str, tuple[int, str, list[str]]] = {
 
 # Countries where business websites are normally in English. The built-in "does the site talk about this trade" check uses
 # English words, so it is applied only here: elsewhere it would throw away real businesses whose sites are in their own language.
-ENGLISH: set[str] = {"US", "GB", "IE", "AU", "NZ", "SG", "ZA", "KE", "UG", "TZ", "ZM", "ZW", "BW", "NA", "MW", "MU", "FJ", "PG",
+ENGLISH: set[str] = {"US", "CA", "GB", "IE", "AU", "NZ", "SG", "ZA", "KE", "UG", "TZ", "ZM", "ZW", "BW", "NA", "MW", "MU", "FJ", "PG",
                      "SB", "VU", "WS", "TO", "MY", "PH", "LS", "SZ", "RW", "MT", "CY", "BN", "BI", "DJ"}
 
 

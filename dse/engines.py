@@ -115,7 +115,7 @@ def fill(template: str, row: dict, cfg: dict) -> str:
         return f"[opener template problem: {e}] " + template
 
 
-def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
+def candidates(cfg: dict, need: int, render: bool, cities_override: str | None = None, country_override: str | None = None) -> list[dict]:
     """New, checked leads for the engine: from the lead finder, Apple Podcasts, or the engine's own seed list."""
     slug, path = cfg["slug"], cfg.get("path", "smb")
     mode = cfg.get("source") if path == "custom" else {"gtm": "import", "authority": "pasted"}.get(path)   # custom engines pick their own lead source
@@ -165,14 +165,14 @@ def candidates(cfg: dict, need: int, render: bool) -> list[dict]:
         return [r for r in read_csv(checked) if r.get("gap_line")][:need]
 
     kinds = cfg.get("kinds") or []
-    cities = "; ".join(cfg.get("cities") or [])
+    cities = cities_override.strip() if cities_override else "; ".join(cfg.get("cities") or [])
     if not kinds or not cities:
         sys.exit("This engine needs at least one business type and one city (edit it in Citadel).")
     pool = []
     for kind in kinds:
         if len(pool) >= need:
             break
-        src = places.find(kind, cities, float(cfg.get("miles", 25)), max(need * 3, 30), out=str(raw / f"{stamp}-{kind}.csv"))
+        src = places.find(kind, cities, float(cfg.get("miles", 25)), max(need * 3, 30), out=str(raw / f"{stamp}-{kind}.csv"), country=country_override or "US")
         new = fresh(read_csv(src))
         if not new:
             continue
@@ -289,13 +289,18 @@ def validate_waterfall_outreach_rows(slug: str, candidates: list[dict]) -> None:
         raise ValueError(f"Blocked Engine list: experiment {experiment!r} would put lead {lead_id!r} in both variants {', '.join(sorted(variants))}. Keep paired enrichment outputs outside engines/{slug}/imports and import only the `*-outreach-assigned.csv` produced by `python dse.py eval-enrichment assign-outreach <paired.csv> --experiment-id {experiment}`.")
 
 
-def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | None = None, render: bool = True) -> list[str]:
+def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | None = None, render: bool = True, cities_override: str | None = None, country_override: str | None = None) -> list[str]:
     cfg = load(slug)
     if cfg.get("archived"):
         sys.exit(f"Engine '{slug}' is archived.")
     if cfg.get("path") == "custom" and cfg.get("source", "none") == "none":
         print(f"'{cfg.get('name', slug)}' is a chat-and-notes engine: there are no lead lists to build. Open DBI-AI and pick it from the menu.")
         return []
+    if cities_override or country_override:
+        path = cfg.get("path", "smb")
+        mode = cfg.get("source") if path == "custom" else {"gtm": "import", "authority": "pasted"}.get(path)
+        if path in ("broadcast", "ministry", "revenue", "ascent") or mode in ("import", "pasted", "podcasts") or cfg.get("seed_urls") or cfg.get("local_seed_urls"):
+            sys.exit("This Engine uses a seed, imported or podcast source; city rotation only works with city-based business searches.")
     per_day = per_day or int(cfg.get("per_day", 20))
     caps = {ch: int((cfg.get("caps") or {}).get(ch, 999)) for ch in CHANNELS}
     order = [c for c in (cfg.get("channels") or list(CHANNELS)) if c in CHANNELS]
@@ -307,7 +312,7 @@ def daily(slug: str, start: str | None = None, days: int = 1, per_day: int | Non
             dates.append(d)
         d += dt.timedelta(days=1)
     log(f"Engine '{cfg.get('name', slug)}' ({cfg.get('path')}): {per_day} a day for {days} day(s) from {dates[0]}")
-    pool = candidates(cfg, per_day * days, render)
+    pool = candidates(cfg, per_day * days, render, cities_override, country_override)
     opener_tpl = cfg.get("opener") or chk.load_pack(cfg.get("pack", cfg.get("path", "smb"))).get("opener", "")
     if cfg.get("path") == "broadcast" or (cfg.get("path") == "custom" and cfg.get("source") == "podcasts"):
         opener_tpl = cfg.get("opener") or podcasts.OPENER.replace("{show}", "{business}").replace("{genre}", cfg.get("genre", "business"))

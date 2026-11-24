@@ -273,13 +273,42 @@ def _query_fingerprints(source: dict) -> list[dict]:
     return out[:8]
 
 
+_TRACKING_QUERY_KEYS = {"fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "igshid", "vero_id"}
+
+
+def _canonical_monitor_url(url: str) -> str:
+    """Normalize tracking-only URL differences for monitoring identity, not for display/open links."""
+    raw = str(url or "").strip()
+    try:
+        parsed = urllib.parse.urlsplit(raw)
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            return raw
+        scheme = parsed.scheme.lower()
+        host = parsed.hostname.lower()
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = parsed.port
+        netloc = host
+        if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+            netloc = f"{netloc}:{port}"
+        query = [(key, value) for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+                 if not key.casefold().startswith("utm_") and key.casefold() not in _TRACKING_QUERY_KEYS]
+        query.sort(key=lambda item: (item[0].casefold(), item[0], item[1]))
+        return urllib.parse.urlunsplit((scheme, netloc, parsed.path or "/", urllib.parse.urlencode(query, doseq=True), ""))
+    except (ValueError, UnicodeError):
+        return raw
+
+
 def _url_fingerprint(source: dict) -> str:
-    """Compare compact snapshots by the full URL, even when their display URL is shortened."""
+    """Compare URLs after removing fragments and common tracking parameters."""
     supplied = str(source.get("url_fingerprint") or "").strip()
-    if supplied:
+    if supplied.startswith("u2:"):
         return supplied
     url = str(source.get("url") or "").strip()
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16] if url else ""
+    if not url and supplied:
+        return supplied
+    canonical = _canonical_monitor_url(url)
+    return "u2:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16] if canonical else ""
 
 
 def _publication_date(title: str, snippet: str, date_hint: str = "") -> dict:
@@ -455,7 +484,7 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             metric["search_calls"] = (BRAVE_SEARCH_REQUESTS - calls_before) if search_provider == "brave" else 1
             metric["results_returned"] = len(results)
             metric["observed_url_fingerprints"] = list(dict.fromkeys(
-                hashlib.sha256(str(item.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]
+                _url_fingerprint(item)
                 for item in results if isinstance(item, dict) and item.get("url")))[:30]
         except SearchProviderError as e:
             metric["search_calls"] = BRAVE_SEARCH_REQUESTS - calls_before if search_provider == "brave" else 0
@@ -551,7 +580,7 @@ def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, min
             results = search(query)
             metric["search_calls"], metric["results_returned"] = 1, len(results)
             metric["observed_url_fingerprints"] = list(dict.fromkeys(
-                hashlib.sha256(str(item.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]
+                _url_fingerprint(item)
                 for item in results if isinstance(item, dict) and item.get("url")))[:30]
         except Exception as e:
             metric["errors"], metric["status"] = 1, "error"
@@ -654,6 +683,37 @@ def _attach_profile_results(encoded: str, profile_record: dict, signals: list[di
     return json.dumps(results, ensure_ascii=False, separators=(",", ":"))
 
 
+def _monitor_review_payload(action: object, evidence: object, categories: object, sources: object,
+                            source_ids: dict[str, str] | None = None) -> dict:
+    """Return a stable, structured review cue shared by Herald and Presence."""
+    def as_list(value: object) -> list:
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                return []
+        return [item for item in value if isinstance(item, (dict, str))] if isinstance(value, list) else []
+
+    source_ids = source_ids or {}
+    normalized_sources = []
+    for item in as_list(sources):
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "")
+        normalized_sources.append({
+            "category": str(item.get("category") or ""),
+            "url": url,
+            "url_fingerprint": str(item.get("url_fingerprint") or ""),
+            "record_id": source_ids.get(url, ""),
+        })
+    return {
+        "action": str(action or ""),
+        "evidence": str(evidence or ""),
+        "categories": as_list(categories),
+        "sources": normalized_sources,
+    }
+
+
 def build_herald_field_results(row: dict, signals: list[dict], search_provider: str, search_metrics: list[dict] | None = None,
                                search_budget: int = 12, minimum_identity_score: float = 0.0,
                                brave_cost_per_1000: float | None = None) -> str:
@@ -689,23 +749,41 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
     monitor_status = row.get("herald_comparison_status", "")
     monitor_urls = set((row.get("herald_new_source_urls", "") + "\n" + row.get("herald_changed_source_urls", "")).splitlines())
     monitor_sources = [s for s in signals if s.get("url") in monitor_urls]
+    try:
+        monitor_refs = json.loads(row.get("herald_change_sources") or "[]")
+    except (ValueError, TypeError):
+        monitor_refs = []
+    signal_by_url = {str(signal.get("url") or ""): signal for signal in signals if isinstance(signal, dict) and signal.get("url")}
+    monitor_candidates = [fr.source_ref(
+        source_type="public_web_search", source_name=f"Monitoring cue: {ref.get('category') or 'source change'}",
+        source_url=str(ref.get("url") or ""),
+        source_record_id=str(signal_by_url.get(str(ref.get("url") or ""), {}).get("id") or ""),
+        value={"change_category": ref.get("category", ""), "url_fingerprint": ref.get("url_fingerprint", "")})
+        for ref in monitor_refs if isinstance(ref, dict) and ref.get("url")]
+    seen_monitor_urls = {str(ref.get("url") or "") for ref in monitor_refs if isinstance(ref, dict)}
+    monitor_candidates.extend(fr.source_ref(source_type="public_web_search", source_name=s.get("provider", search_provider),
+                                  source_url=s.get("url", ""), source_record_id=s.get("id", ""),
+                                  value={"title": s.get("title", ""), "snippet": s.get("snippet", "")})
+                              for s in monitor_sources if s.get("url") not in seen_monitor_urls)
     results.append(fr.make_result(
         field="signal_source_monitoring",
-        value={"status": monitor_status, "summary": row.get("herald_change_summary", ""),
+        value={"status": monitor_status, "action": row.get("herald_change_action", ""),
+               "evidence": row.get("herald_change_evidence", ""),
+               "review": _monitor_review_payload(row.get("herald_change_action"), row.get("herald_change_evidence"),
+                                                  row.get("herald_change_categories"), row.get("herald_change_sources"),
+                                                  {url: str(signal.get("id") or "") for url, signal in signal_by_url.items()}),
+               "summary": row.get("herald_change_summary", ""),
                "new_source_urls": row.get("herald_new_source_urls", ""),
                "changed_source_urls": row.get("herald_changed_source_urls", ""),
                "not_returned_urls": row.get("herald_not_returned_urls", ""),
                "change_categories": row.get("herald_change_categories", "[]"),
                "change_sources": row.get("herald_change_sources", "[]"),
                "previous_checked_at": row.get("herald_previous_checked_at", "")},
-        status="candidate" if monitor_status in ("compared", "first_check") else "not_found",
+        status="candidate" if monitor_status in ("compared", "first_check") or monitor_candidates else "not_found",
         observed_at=now, source_type="public_web_search", source_name=search_provider,
         verification_status="source_snapshot_comparison",
         verification_method="Compares source URL, title, snippet and publication date. Missing-source checks also compare recorded query-rung fingerprints; partial or changed-query coverage is inconclusive.",
-        candidates=[fr.source_ref(source_type="public_web_search", source_name=s.get("provider", search_provider),
-                                  source_url=s.get("url", ""), source_record_id=s.get("id", ""),
-                                  value={"title": s.get("title", ""), "snippet": s.get("snippet", "")})
-                    for s in monitor_sources]))
+        candidates=monitor_candidates))
     try:
         events_doc = json.loads(row.get("herald_signal_events") or "{}")
     except (ValueError, TypeError):
@@ -787,7 +865,8 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
 
 
 def build_presence_field_results(signals: list[dict], checked_at: str, search_metrics: list[dict] | None = None,
-                                  search_budget: int = 3, minimum_identity_score: float = 0.0) -> str:
+                                  search_budget: int = 3, minimum_identity_score: float = 0.0,
+                                  monitor_row: dict | None = None) -> str:
     """Map public social search snippets to contract records without calling them verified reputation."""
     results = []
     if not signals:
@@ -795,7 +874,7 @@ def build_presence_field_results(signals: list[dict], checked_at: str, search_me
                                  identity_subject="company", miss_reason="No identity-matched public social result was retained.",
                                  verification_status="not_found", metadata={"lane": "presence_research",
                                      "search_waterfall": _waterfall_metrics(search_metrics or [], search_budget, minimum_identity_score, "duckduckgo")})
-        return fr.dump_results([missing])
+        results.append(missing)
     for signal in signals:
         subject = signal.get("identity_subject", "company")
         results.append(fr.make_result(
@@ -811,6 +890,35 @@ def build_presence_field_results(signals: list[dict], checked_at: str, search_me
             miss_reason="Search result is a candidate public profile/post, not verified identity or reputation."))
     for result in results:
         result.setdefault("metadata", {}).update({"lane": "presence_research", "search_waterfall": _waterfall_metrics(search_metrics or [], search_budget, minimum_identity_score, "duckduckgo")})
+    monitor_row = monitor_row or {}
+    monitor_status = monitor_row.get("presence_comparison_status", "")
+    try:
+        monitor_refs = json.loads(monitor_row.get("presence_change_sources") or "[]")
+        monitor_categories = json.loads(monitor_row.get("presence_change_categories") or "[]")
+    except (ValueError, TypeError):
+        monitor_refs, monitor_categories = [], []
+    signal_by_url = {str(signal.get("url") or ""): signal for signal in signals if isinstance(signal, dict) and signal.get("url")}
+    monitor_candidates = [fr.source_ref(
+        source_type="public_web_search", source_name=f"Monitoring cue: {ref.get('category') or 'source change'}",
+        source_url=str(ref.get("url") or ""),
+        source_record_id=str(signal_by_url.get(str(ref.get("url") or ""), {}).get("id") or ""),
+        value={"change_category": ref.get("category", ""), "url_fingerprint": ref.get("url_fingerprint", "")})
+        for ref in monitor_refs if isinstance(ref, dict) and ref.get("url")]
+    results.append(fr.make_result(
+        field="presence_source_monitoring",
+        value={"status": monitor_status, "action": monitor_row.get("presence_change_action", ""),
+               "evidence": monitor_row.get("presence_change_evidence", ""),
+               "review": _monitor_review_payload(monitor_row.get("presence_change_action"), monitor_row.get("presence_change_evidence"),
+                                                  monitor_categories, monitor_refs,
+                                                  {url: str(signal.get("id") or "") for url, signal in signal_by_url.items()}),
+               "summary": monitor_row.get("presence_change_summary", ""), "categories": monitor_categories,
+               "sources": monitor_refs, "previous_checked_at": monitor_row.get("presence_previous_checked_at", "")},
+        status="candidate" if monitor_status in ("compared", "first_check") or monitor_candidates else "not_found",
+        observed_at=checked_at, source_type="public_web_search", source_name="Presence source monitoring",
+        verification_status="source_snapshot_comparison",
+        verification_method="Links detected monitoring cues to their source URLs. Cue classifications and search comparisons require human review; absence alone is inconclusive.",
+        candidates=monitor_candidates,
+        miss_reason="No source-monitoring comparison was available for this check." if not monitor_status else "No source change category was recorded." if not monitor_candidates else ""))
     return fr.dump_results(results)
 
 
@@ -962,7 +1070,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
     returned_not_retained = {}
     for url in missing_urls:
         source = old_sources_by_url.get(url, {})
-        url_fingerprint = str(source.get("url_fingerprint") or hashlib.sha256(url.strip().encode("utf-8")).hexdigest()[:16])
+        url_fingerprint = _url_fingerprint(source) if source else _url_fingerprint({"url": url})
         if observed_url_rungs.get(url_fingerprint):
             returned_not_retained[url] = list(dict.fromkeys(observed_url_rungs[url_fingerprint]))
     actual_missing_urls = missing_urls - set(returned_not_retained)
@@ -1017,7 +1125,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         prior_fits = {}
         for old_event in previous["signal_events"]:
             if isinstance(old_event, dict) and old_event.get("url") and old_event.get("category"):
-                key = (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)), old_event.get("category"), old_event.get("subject", ""))
+                key = (_url_fingerprint(old_event), old_event.get("category"), old_event.get("subject", ""))
                 prior_fits[key] = old_event.get("path_fit", "")
         for event in events or []:
             if not isinstance(event, dict) or not event.get("url") or not event.get("category"):
@@ -1031,8 +1139,8 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
                               for event in (events or []) if isinstance(event, dict) and event.get("url") and event.get("category")}
         current_source_urls = {_url_fingerprint(signal) for signal in signals if isinstance(signal, dict) and signal.get("url")}
         event_no_longer_detected = [old_event for old_event in previous["signal_events"]
-                                    if isinstance(old_event, dict) and (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)) in current_source_urls)
-                                    and (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)), old_event.get("category"), old_event.get("subject", "")) not in current_event_keys]
+                                    if isinstance(old_event, dict) and _url_fingerprint(old_event) in current_source_urls
+                                    and (_url_fingerprint(old_event), old_event.get("category"), old_event.get("subject", "")) not in current_event_keys]
     change_categories = []
     def add_category(condition: bool, category: str) -> None:
         if condition and category not in change_categories:
@@ -1846,7 +1954,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         row["enrichment_profile"] = json.dumps(profile_record, ensure_ascii=False, separators=(",", ":")) if profile_record else ""
         row.update(comparison)
         row.update(_monitor_action("presence", comparison, signals, previous=prior_snapshot, query_metrics=query_metrics))
-        result_contract = build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score)
+        result_contract = build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score, monitor_row=row)
         result_contract = _attach_profile_results(result_contract, profile_record, signals)
         row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)
         out.append(row)

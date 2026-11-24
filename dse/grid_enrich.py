@@ -17,16 +17,20 @@ from . import gridpush, gridrun
 from .common import LISTS, ROOT
 from . import enrichment_profiles
 
-LANES = {"website", "herald", "presence"}
+LANES = {"website", "herald", "presence", "directors", "tech"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
     "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
     "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "presence_monitor_history"],
+    "directors": ["director_first", "director_last", "director_role", "ch_company", "ch_number", "ch_match"],
+    "tech": ["tech_platform", "tech_booking", "tech_chat", "tech_forms_crm", "tech_analytics", "tech_ads_tracking", "tech_email", "tech_payments", "tech_reviews", "tech_hosting", "tech_mobile_ready", "tech_https", "tech_structured_data", "tech_copyright_year", "tech_gaps", "tech_gap_count", "tech_status", "tech_scanned_on"],
 }
 FULL_OUTPUTS = {
     "website": ["found_email", "email_source", "other_emails", "email_guesses", "email_check", "contact_page_url", "field_results", "enrichment_audit"],
     "herald": ["herald_findings", "herald_sources", "herald_company_sources", "herald_person_sources", "herald_role_candidates", "herald_people_candidates", "research_findings", "research_sources", "research_searched_at", "research_status", "enrichment_search_strategy", "field_results"],
     "presence": ["presence_signals", "field_results", "presence_search_waterfall"],
+    "directors": [],
+    "tech": [],
 }
 
 
@@ -54,7 +58,7 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
               enrichment_profile: str = "", provider_budget: int | None = None,
               brave_cost_per_1000: float | None = None, brave_max_spend: float | None = None,
               announce_cost_ceiling: bool = True, max_provider_spend: float | None = None,
-              allow_unknown_provider_cost: bool = False):
+              allow_unknown_provider_cost: bool = False, company_column: str = "", city_column: str = "", fast_tech: bool = False):
     if lane == "website":
         from . import enrich
         active_waterfall = waterfall_config if provider_budget is None or provider_budget > 0 else ""
@@ -72,15 +76,26 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
             brave_cost_per_1000=brave_cost_per_1000, brave_max_spend=brave_max_spend,
             announce_cost_ceiling=announce_cost_ceiling)
         m = re.search(r"Saved: (\S+\.csv)", report)
-    else:
+    elif lane == "presence":
         from . import signal_enrichment
         report = signal_enrichment.enrich_presence_file(str(source), engine=engine, max_rows=limit,
             search_budget=min(search_budget, 10), minimum_identity_score=minimum_identity_score,
             enrichment_profile=enrichment_profile)
         m = re.search(r"Saved: (\S+\.csv)", report)
-    if not m:
+    elif lane == "directors":
+        from . import chdirectors
+        result_path = source.with_name(f"{source.stem}-directors.csv")
+        chdirectors.file(str(source), company_col=company_column, city_col=city_column, max_rows=limit, out=str(result_path))
+        m = None
+    else:
+        from . import tech
+        result_path = Path(tech.tech_file(str(source), max_rows=limit, render=not fast_tech,
+                                          out=str(source.with_name(f"{source.stem}-tech.csv"))))
+        m = None
+    if lane not in ("directors", "tech") and not m:
         raise RuntimeError("The enrichment finished but did not report its result CSV path.")
-    result_path = ROOT / m.group(1)
+    if lane not in ("directors", "tech"):
+        result_path = ROOT / m.group(1)
     if not result_path.is_file():
         raise RuntimeError("The enrichment result CSV is missing from this PC.")
     headers, rows = _read_result(result_path)
@@ -333,6 +348,7 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
 
 def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
     """Append a compact source snapshot to the shared Ledger row history."""
+    from .signal_enrichment import _url_fingerprint
     if lane == "herald":
         prefix, sources_field = "herald", "herald_sources"
     else:
@@ -368,7 +384,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         return out[:8]
     source_snapshot = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
                        "sources": [{"url": str(source.get("url") or "")[:180],
-                                    "url_fingerprint": hashlib.sha256(str(source.get("url") or "").strip().encode("utf-8")).hexdigest()[:16],
+                                    "url_fingerprint": _url_fingerprint(source),
                                     "title": str(source.get("title") or "")[:80],
                                     "snippet_hash": hashlib.sha256(str(source.get("snippet") or "").encode("utf-8")).hexdigest(),
                                     "publication_date": str(source.get("publication_date") or "")[:24],
@@ -386,19 +402,27 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
             event_doc = {}
         event_items = event_doc.get("events", []) if isinstance(event_doc, dict) else []
         source_snapshot["signal_events"] = [{key: str(event.get(key) or "")[:220 if key == "url" else 100] for key in ("url", "category", "subject", "path_fit", "label")}
-                                             | {"url_fingerprint": hashlib.sha256(str(event.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]}
+                                             | {"url_fingerprint": _url_fingerprint(event)}
                                              for event in event_items[:10] if isinstance(event, dict) and event.get("url") and event.get("category")]
     sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("identity_strength", 16), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
-               | {"url_fingerprint": hashlib.sha256(str(source.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]}
+               | {"url_fingerprint": _url_fingerprint(source)}
                | {"query_rungs": list(dict.fromkeys(item["rung"] for item in query_fingerprints(source)))[:6],
                   "query_fingerprints": query_fingerprints(source)}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
+    retained_record_ids = {str(source.get("url") or ""): str(source.get("id") or "")
+                           for source in raw_sources if isinstance(source, dict) and source.get("url") and source.get("id")}
+    cue_sources = _decode_json(result_row.get(f"{prefix}_change_sources"), [])
+    if isinstance(cue_sources, list):
+        cue_sources = [{**source, "record_id": retained_record_ids.get(str(source.get("url") or ""), "")}
+                       for source in cue_sources if isinstance(source, dict)]
+    else:
+        cue_sources = []
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
               "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
               "review_action": str(result_row.get(f"{prefix}_change_action") or "")[:120],
               "change_categories": [str(item)[:80] for item in _decode_json(result_row.get(f"{prefix}_change_categories"), [])[:10]],
-              "change_sources": _decode_json(result_row.get(f"{prefix}_change_sources"), [])[:12],
+              "change_sources": cue_sources[:12],
               "change_evidence": str(result_row.get(f"{prefix}_change_evidence") or "")[:500],
               "snapshot": source_snapshot,
               "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
@@ -536,8 +560,8 @@ def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enrich
 def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_detail: str = "essentials",
         overwrite: bool = False, start_row: int = 1, batch_size: int = 10, api=None, say=lambda *_: None, **options) -> str:
     if lane not in LANES:
-        raise ValueError("Choose website, herald or presence.")
-    lane_limit = 50 if lane in ("herald", "presence") else 500
+        raise ValueError("Choose one of: " + ", ".join(sorted(LANES)) + ".")
+    lane_limit = 50 if lane in ("herald", "presence") else 200 if lane == "directors" else 500
     if not 1 <= limit <= lane_limit:
         raise ValueError(f"Process 1 to {lane_limit} {lane} grid rows per run.")
     if not isinstance(start_row, int) or start_row < 1:
@@ -548,6 +572,8 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         raise ValueError("output detail must be essentials or full.")
     enrichment_profile = str(options.pop("enrichment_profile", "none") or "none")
     if enrichment_profile == "none":
+        enrichment_profile = ""
+    if lane not in ("website", "herald", "presence"):
         enrichment_profile = ""
     provider_budget = None
     if enrichment_profile:
@@ -686,7 +712,9 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                     batch_options["search_budget"] = 0
                 batch_options["announce_cost_ceiling"] = False
             result_path, batch_headers, enriched_rows = _run_lane(input_path, lane, engine, len(batch_rows), output_detail,
-                enrichment_profile=enrichment_profile, provider_budget=batch_provider_budget, **batch_options)
+                enrichment_profile=enrichment_profile, provider_budget=batch_provider_budget,
+                company_column=str(batch_options.pop("company_column", "") or ""), city_column=str(batch_options.pop("city_column", "") or ""),
+                fast_tech=bool(batch_options.pop("fast_tech", False)), **batch_options)
         except Exception as error:
             raise RuntimeError(f"Grid enrichment stopped after {completed} rows were saved. Resume with --start-row {start_row + completed} using the same lane and settings. {str(error)[:220]}") from error
         finally:
@@ -734,7 +762,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 if isinstance(categories, list):
                     for cue in set(str(item) for item in categories if item):
                         monitor_cue_counts[cue] = monitor_cue_counts.get(cue, 0) + 1
-        if enrichment_profile:
+        if enrichment_profile and lane in ("website", "herald", "presence"):
             profile_record = enrichment_profiles.build_profile(enrichment_profile)
             profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
                                "profile_key": enrichment_profile, "path_key": enrichment_profile, "lane": lane,
@@ -800,6 +828,9 @@ def cli(argv: list[str]) -> int:
     parser.add_argument("--output-detail", choices=["essentials", "full"], default="essentials")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--icp", default="")
+    parser.add_argument("--company-column", default="", help="directors lane: business-name column (auto-detects Company, Business or Name)")
+    parser.add_argument("--city-column", default="", help="directors lane: city column (auto-detects City or Town)")
+    parser.add_argument("--fast-tech", action="store_true", help="tech lane: skip the hidden browser fallback")
     parser.add_argument("--waterfall-config", default="")
     parser.add_argument("--dry-run-providers", action="store_true")
     parser.add_argument("--max-provider-spend", type=float, default=None, help="required approved ceiling for configured known-price provider charges")

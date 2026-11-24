@@ -66,7 +66,9 @@ def validate(s: dict, tools: dict, checker=None) -> list[str]:
     params = s.get("params") or {}
     fields = {f["name"]: f for f in tool.get("fields", [])}
     for k in params:
-        if k not in fields:
+        # Citadel keeps per-schedule location rotation metadata beside tool values.
+        # The queue RPC consumes and removes it before creating the ordinary job.
+        if k not in fields and k != "_schedule_location_rotation":
             p.append(f"the tool has no value called '{k}'")
     if checker:
         for name, f in fields.items():
