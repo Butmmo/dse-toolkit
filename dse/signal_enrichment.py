@@ -36,10 +36,10 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "enrichment_profile", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
-HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
+HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_evidence"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status", "enrichment_profile",
-                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "field_results"]
+                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_evidence", "field_results"]
 PRESENCE_FIELDS.insert(-1, "presence_search_waterfall")
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
 HERALD_HISTORY = ROOT / "data" / "herald-signal-history.json"
@@ -798,6 +798,30 @@ def _load_presence_history() -> dict:
         return {"schema": "dbi.presence-history.v1", "leads": {}}
 
 
+def _ledger_monitor_snapshot(row: dict, lane: str) -> dict | None:
+    """Read the newest complete Ledger-row baseline so any PC can continue its comparison."""
+    try:
+        history = json.loads(row.get(f"{lane}_monitor_history") or "[]")
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(history, list):
+        return None
+    for record in reversed(history):
+        if not isinstance(record, dict) or record.get("status") not in {"first_check", "compared"}:
+            continue
+        snapshot = record.get("snapshot")
+        if isinstance(snapshot, dict) and isinstance(snapshot.get("sources"), list):
+            return snapshot
+        # Earlier Ledger monitor history kept display snippets without fingerprints.
+        # Reuse its URLs and titles, but let the comparator treat missing hashes as unknown.
+        legacy_sources = record.get("sources")
+        if isinstance(legacy_sources, list):
+            return {"checked_at": record.get("checked_at", ""),
+                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "type") if key in source}
+                                for source in legacy_sources if isinstance(source, dict) and source.get("url")]}
+    return None
+
+
 def _presence_comparison(previous: dict | None, signals: list[dict], checked_at: str, search_errors: list[str]) -> dict:
     current = {s.get("url", ""): s for s in signals if s.get("url")}
     old_sources = {s.get("url", ""): s for s in (previous or {}).get("sources", []) if s.get("url")}
@@ -805,7 +829,7 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
     not_returned = sorted(set(old_sources) - set(current)) if previous else []
     changed_urls = sorted(url for url in set(current) & set(old_sources) if (
         current[url].get("title", "") != old_sources[url].get("title", "") or
-        hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash", "") or
+        (old_sources[url].get("snippet_hash") and hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash")) or
         current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
     if search_errors:
         status = "partial_check" if previous else "partial_first_check"
@@ -837,7 +861,7 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
     missing_urls = sorted(set(old_sources) - set(current)) if previous else []
     changed_urls = sorted(url for url in set(current) & set(old_sources) if (
         current[url].get("title", "") != old_sources[url].get("title", "") or
-        hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash", "") or
+        (old_sources[url].get("snippet_hash") and hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash")) or
         current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
     status = "partial_check" if partial and previous else "partial_first_check" if partial else "first_check" if not previous else "compared"
     summary = "First check; no earlier source snapshot" if status == "first_check" else (
@@ -856,6 +880,43 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
                  "publication_date": s.get("publication_date", ""),
                  "category": s.get("type", "")}
                 for s in signals if s.get("url")][:12]}}
+
+
+def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: list[dict] | None = None) -> dict:
+    """Turn a source snapshot diff into a cautious, source-linked review cue; never trigger outreach."""
+    prefix = "herald" if lane == "herald" else "presence"
+    status = str(comparison.get(f"{prefix}_comparison_status", "unknown"))
+    new_urls = {u for u in str(comparison.get(f"{prefix}_new_source_urls") or "").splitlines() if u}
+    changed_urls = {u for u in str(comparison.get(f"{prefix}_changed_source_urls") or "").splitlines() if u}
+    missing_urls = {u for u in str(comparison.get(f"{prefix}_not_returned_urls") or "").splitlines() if u}
+    if status.startswith("partial"):
+        action = "CHECK INCOMPLETE — do not treat missing sources as a signal"
+    elif status in ("first_check",):
+        action = "BASELINE — no earlier complete check to compare"
+    elif new_urls or changed_urls:
+        action = "REVIEW PRIORITY SIGNAL — confirm it at the source" if lane == "herald" and any(
+            event.get("path_fit") == "priority" and event.get("url") in new_urls | changed_urls
+            for event in (events or []) if isinstance(event, dict)
+        ) else "REVIEW SOURCE CHANGE — confirm it at the source"
+    elif missing_urls:
+        action = "RECHECK — previously returned sources were not found"
+    elif status == "compared":
+        action = "NO NEW SOURCE CHANGE"
+    else:
+        action = "NO COMPARISON AVAILABLE"
+    signal_by_url = {str(item.get("url") or ""): item for item in signals if isinstance(item, dict) and item.get("url")}
+    event_by_url = {str(item.get("url") or ""): item for item in (events or []) if isinstance(item, dict) and item.get("url")}
+    details = []
+    for url in sorted(new_urls | changed_urls)[:5]:
+        signal = signal_by_url.get(url, {})
+        event = event_by_url.get(url, {})
+        label = str(event.get("label") or event.get("category") or signal.get("title") or "Source changed")[:90]
+        fit = str(event.get("path_fit") or "public presence")
+        details.append(f"{fit}: {label} — {url[:240]}")
+    if not details and missing_urls and not status.startswith("partial"):
+        details = [f"Not returned on this complete search; existence is unconfirmed: {url[:240]}" for url in sorted(missing_urls)[:3]]
+    return {f"{prefix}_change_action": action,
+            f"{prefix}_change_evidence": "\n".join(details)[:1800]}
 
 
 def _save_signal_history(path: Path, schema: str, history: dict) -> None:
@@ -1346,7 +1407,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         history_key = _presence_history_key(row)
         partial = bool(row_errors) or any(m.get("status") == "skipped_budget" or m.get("errors", 0) for m in query_metrics)
-        comparison = _herald_comparison(prior_history["leads"].get(history_key) if history_key else None,
+        prior_snapshot = _ledger_monitor_snapshot(row, "herald") or (prior_history["leads"].get(history_key) if history_key else None)
+        comparison = _herald_comparison(prior_snapshot,
                                         signals, checked_at, partial)
         snapshot = comparison.pop("_snapshot")
         row.update(comparison)
@@ -1363,6 +1425,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             event["path_fit"] = "priority" if category in path["priority"] else "supporting" if category in path["supporting"] else "general"
             event["path_label"] = path["label"]
             annotated_events.append(event)
+        row.update(_monitor_action("herald", comparison, signals, annotated_events))
         row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "path_focus": {"key": selected_path or "any", "label": path["label"], "method": path["method"], "pain": path["pain"], "buyer": path["buyer"], "revenue_model": path["revenue_model"], "proof_metrics": path["proof_metrics"], "priority_categories": path["priority"], "supporting_categories": path["supporting"]}, "events": annotated_events}, ensure_ascii=False, separators=(",", ":"))
         outcome_plan = path_signals.outcome_plan(selected_path or "any")
         known_source_ids = {signal.get("id"): signal for signal in signals if signal.get("id")}
@@ -1540,7 +1603,8 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         comparison_errors = list(row_errors)
         if any(m.get("status") == "skipped_budget" for m in query_metrics):
             comparison_errors.append("search budget limited this check")
-        comparison = _presence_comparison(previous_history.get(history_key) if history_key else None, signals, checked_at, comparison_errors)
+        prior_snapshot = _ledger_monitor_snapshot(row, "presence") or (previous_history.get(history_key) if history_key else None)
+        comparison = _presence_comparison(prior_snapshot, signals, checked_at, comparison_errors)
         snapshot = comparison.pop("_snapshot")
         if history_key and not comparison_errors:
             next_history[history_key] = snapshot
@@ -1554,6 +1618,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         row["presence_search_waterfall"] = json.dumps(waterfall, ensure_ascii=False, separators=(",", ":"))
         row["enrichment_profile"] = json.dumps(profile_record, ensure_ascii=False, separators=(",", ":")) if profile_record else ""
         row.update(comparison)
+        row.update(_monitor_action("presence", comparison, signals))
         result_contract = build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score)
         result_contract = _attach_profile_results(result_contract, profile_record, signals)
         row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)

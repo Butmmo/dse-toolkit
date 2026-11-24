@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -19,8 +20,8 @@ from . import enrichment_profiles
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
-    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
-    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_monitor_history"],
+    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
+    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_evidence", "presence_monitor_history"],
 }
 FULL_OUTPUTS = {
     "website": ["found_email", "email_source", "other_emails", "email_guesses", "email_check", "contact_page_url", "field_results", "enrichment_audit"],
@@ -350,11 +351,23 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         raw_sources = []
     if not isinstance(raw_sources, list):
         raw_sources = []
+    source_snapshot = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
+                       "sources": [{"url": str(source.get("url") or "")[:180],
+                                    "title": str(source.get("title") or "")[:80],
+                                    "snippet_hash": hashlib.sha256(str(source.get("snippet") or "").encode("utf-8")).hexdigest(),
+                                    "publication_date": str(source.get("publication_date") or "")[:24],
+                                    "freshness_status": str(source.get("freshness_status") or "undated")[:20],
+                                    "identity_subject": str(source.get("identity_subject") or "unknown")[:12],
+                                    "type": str(source.get("type") or "")[:40]}
+                                   for source in raw_sources[:8] if isinstance(source, dict) and source.get("url")]}
     sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
               "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
+              "review_action": str(result_row.get(f"{prefix}_change_action") or "")[:120],
+              "change_evidence": str(result_row.get(f"{prefix}_change_evidence") or "")[:500],
+              "snapshot": source_snapshot,
               "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
               "not_returned_urls": [u[:220] for u in urls("not_returned_urls")[:4]], "sources": sources}
     if not record["checked_at"]:
@@ -367,8 +380,10 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
     if len(value) > 4800:
         history = [{"checked_at": record["checked_at"], "status": record["status"], "summary": record["summary"],
+                    "review_action": record["review_action"], "change_evidence": record["change_evidence"][:260],
                     "new_source_urls": record["new_source_urls"][:2], "changed_source_urls": record["changed_source_urls"][:2],
-                    "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1]}]
+                    "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1],
+                    "snapshot": {"checked_at": source_snapshot["checked_at"], "sources": source_snapshot["sources"][:4]}}]
         value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
     return value
 
@@ -461,7 +476,8 @@ def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enrich
                 if header == "dse_path_ai_advice":
                     cells[key] = ""
                 continue
-            always_refresh = {history_header, advice_history_header, evidence_header, "dse_path_outcome", "dse_path_ai_advice",
+            always_refresh = {history_header, advice_history_header, evidence_header, "herald_change_action", "herald_change_evidence",
+                              "presence_change_action", "presence_change_evidence", "dse_path_outcome", "dse_path_ai_advice",
                               "dse_path_ai_advice_status", f"{lane}_comparison_status", f"{lane}_change_summary",
                               f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls",
                               f"{lane}_previous_checked_at"}
@@ -534,6 +550,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     omitted_columns: list[str] = []
     result_path: Path | None = None
     written = skipped = oversized = completed = 0
+    monitor_action_counts: dict[str, int] = {}
     say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows in batches of {batch_size}, starting at row {start_row}.")
     brave_run = lane == "herald" and str(options.get("search_provider", "duckduckgo")) == "brave"
     brave_requests_used = 0
@@ -650,6 +667,25 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 input_path.unlink(missing_ok=True)
         if len(enriched_rows) != len(batch_rows):
             raise RuntimeError(f"The enrichment returned {len(enriched_rows)} rows for this batch; {completed} earlier rows were saved. Resume with --start-row {start_row + completed}.")
+        if lane in ("herald", "presence"):
+            action_field = f"{lane}_change_action"
+            for enriched_row in enriched_rows:
+                action = str(enriched_row.get(action_field) or "").strip()
+                if action.startswith("REVIEW PRIORITY SIGNAL"):
+                    category = "priority_review"
+                elif action.startswith("REVIEW SOURCE CHANGE"):
+                    category = "source_review"
+                elif action.startswith("RECHECK"):
+                    category = "recheck"
+                elif action.startswith("CHECK INCOMPLETE"):
+                    category = "incomplete"
+                elif action.startswith("BASELINE"):
+                    category = "baseline"
+                elif action.startswith("NO NEW SOURCE CHANGE"):
+                    category = "no_change"
+                else:
+                    category = "other"
+                monitor_action_counts[category] = monitor_action_counts.get(category, 0) + 1
         if enrichment_profile:
             profile_record = enrichment_profiles.build_profile(enrichment_profile)
             profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
@@ -663,12 +699,12 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             output_headers = batch_headers
             new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
             evidence_header = f"{lane}_evidence_decisions"
-            monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
+            monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_change_action", f"{lane}_change_evidence", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
             new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
             remaining = max(0, 60 - len(columns))
             omitted_columns = new_headers[remaining:]
             new_headers = new_headers[:remaining]
-            added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
+            added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", f"{lane}_change_evidence", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
             by_label = {gridpush.norm(c["label"]): c for c in columns}
             for column in added or []:
                 by_label[gridpush.norm(column["label"])] = column
@@ -692,9 +728,14 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         spend_note = f" Brave requests: {brave_requests_used}/{brave_request_cap} run ceiling; {cost_text}.{approval} Usage was added to this PC's provider journal."
         if brave_usage_warnings:
             spend_note += " Usage-record warning: " + " ".join(brave_usage_warnings)
+    monitor_note = ""
+    if monitor_action_counts:
+        labels = ("priority_review", "source_review", "recheck", "incomplete", "baseline", "no_change", "other")
+        summary = ", ".join(f"{label.replace('_', ' ')} {monitor_action_counts[label]}" for label in labels if monitor_action_counts.get(label))
+        monitor_note = f" Signal review summary: {summary}. Open the Ledger rows for source links and details."
     return (f"FINISHED {lane} enrichment: {written} rows updated, {skipped} rows had no new values, {oversized} oversized values omitted. "
             f"Saved {completed} rows starting at row {start_row} in {((completed + batch_size - 1) // batch_size)} batches. "
-            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}\n")
+            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}{monitor_note}\n")
 
 
 def cli(argv: list[str]) -> int:
