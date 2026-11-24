@@ -1963,6 +1963,7 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
 
 def _experiment_provider_run_cost(root: Path, experiment_id: str, field: str) -> dict:
     """Summarize declared provider attempt costs in the receipt-bound A/B source files."""
+    from . import importer
     result = {"status": "unavailable", "approval_id": None, "variants": {},
               "basis": "recorded provider API attempts multiplied by configured cost_per_call; estimate, not invoice"}
     manifest_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-cohort.json"
@@ -2045,6 +2046,8 @@ def _experiment_provider_run_cost(root: Path, experiment_id: str, field: str) ->
         ordered_ids = []
         costs: dict[str, float] = defaultdict(float)
         unknown_names = set()
+        domain_costs: dict[str, dict] = {}
+        unassigned_domain_calls = 0
         attempt_calls = 0
         unknown_calls = 0
         leads_with_attempts = 0
@@ -2103,6 +2106,39 @@ def _experiment_provider_run_cost(root: Path, experiment_id: str, field: str) ->
             if row_attempts:
                 leads_with_attempts += 1
             attempt_calls += row_attempts
+            domain = importer.clean_domain(row.get("website") or row.get("domain") or "")
+            if row_attempts and not domain:
+                unassigned_domain_calls += row_attempts
+            if domain:
+                domain_costs.setdefault(domain, {"calls": 0, "unknown_price_calls": 0, "costs": defaultdict(float)})
+                domain_costs[domain]["calls"] += row_attempts
+                # Sum this row's provider accounting into its normalized company domain.
+                for entry in entries:
+                    if not isinstance(entry, dict) or entry.get("schema") != "dbi.field-result.v1":
+                        continue
+                    metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+                    detail = metadata.get("provider_waterfall_cost")
+                    providers = detail.get("providers") if isinstance(detail, dict) else None
+                    if not isinstance(providers, dict):
+                        continue
+                    for attempt in providers.values():
+                        if not isinstance(attempt, dict):
+                            continue
+                        try:
+                            calls = max(0, int(attempt.get("calls", 0) or 0))
+                        except (TypeError, ValueError):
+                            continue
+                        if not calls:
+                            continue
+                        price, currency = attempt.get("estimated_cost"), attempt.get("currency")
+                        try:
+                            amount = float(price) if price is not None and currency else None
+                        except (TypeError, ValueError):
+                            amount = None
+                        if amount is None or not math.isfinite(amount) or amount < 0:
+                            domain_costs[domain]["unknown_price_calls"] += calls
+                        else:
+                            domain_costs[domain]["costs"][str(currency)] += amount
         expected_cohort = hashlib.sha256(json.dumps(ordered_ids, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
         if (not valid or len(seen_ids) != receipt.get("lead_count")
                 or expected_cohort != receipt.get("cohort_sha256")
@@ -2115,6 +2151,11 @@ def _experiment_provider_run_cost(root: Path, experiment_id: str, field: str) ->
                      "estimated_cost_by_currency": {key: round(value, 8) for key, value in sorted(costs.items())},
                      "unknown_price_calls": unknown_calls, "unknown_price_providers": sorted(unknown_names),
                      "leads_with_provider_attempts": leads_with_attempts,
+                     "_domain_costs": {domain: {"calls": value["calls"],
+                                                  "unknown_price_calls": value["unknown_price_calls"],
+                                                  "costs": dict(value["costs"])}
+                                       for domain, value in domain_costs.items()},
+                     "_unassigned_domain_calls": unassigned_domain_calls,
                      "approved_variant_maximum": receipt_maximums.get(variant)})
         item["known_cost_within_approved_variant_maximum"] = (
             sum(costs.values()) <= float(item["approved_variant_maximum"]) + 1e-7
@@ -2139,7 +2180,7 @@ def _send_outcome_brief(report: dict) -> str:
              f"- Experiment filter: `{report.get('experiment_filter') or 'all tagged experiments'}`",
              f"- Scored at (UTC): {report['scored_at_utc']}", "",
              "These are descriptive observations from explicitly logged Send Desk actions. They do not prove that a variant caused an outcome or that one provider is better.",
-             "Provider spend below is an estimate from recorded calls and configured prices, not a vendor invoice. Both A and B runs cover the full capped cohort; outreach outcomes use one assigned variant per lead, so the report does not present these amounts as cost per win.", ""]
+             "Provider spend below is an estimate from recorded calls and configured prices, not a vendor invoice. The full A+B run cost is shown separately from the assigned-lead cost estimate. Assigned cost is attributed once per normalized company domain; per-outcome figures are estimated enrichment cost divided by the logged unique-lead outcome count, not profit, ROI, or total acquisition cost.", ""]
     for cohort in report["cohorts"]:
         lines.extend([f"## Experiment `{cohort['experiment_id']}` · field `{cohort['field'] or 'unspecified'}`", "",
                       "| Variant | Assigned | Sent | Send coverage | Skipped | Unmarked | Replies | Reply rate (95% interval) | Calls booked | Booked rate (95% interval) | Wins | Win rate (95% interval) | Sample note |",
@@ -2162,6 +2203,18 @@ def _send_outcome_brief(report: dict) -> str:
                 estimated = ", ".join(f"{amount:.4f} {currency}" for currency, amount in run.get("estimated_cost_by_currency", {}).items()) or "no priced attempts recorded"
                 cap_check = run.get("known_cost_within_approved_variant_maximum")
                 lines.append(f"{variant} full-cohort provider attempts: {run.get('attempted_calls', 0)} calls; estimated cost {estimated}; unknown-price calls {run.get('unknown_price_calls', 0)}; approved variant maximum {run.get('approved_variant_maximum', 'unknown')}; known cost within maximum: {cap_check if cap_check is not None else 'not comparable'}.\n")
+            assigned_cost = m.get("assigned_outreach_cost") or {}
+            if assigned_cost:
+                if assigned_cost.get("status") != "verified_in_send_lists":
+                    lines.append(f"{variant} assigned-lead enrichment estimate unavailable: `{assigned_cost.get('reason') or assigned_cost.get('status')}`.\n")
+                    assigned_cost = {}
+            if assigned_cost:
+                amounts = assigned_cost.get("estimated_cost_by_currency", {})
+                ratios = assigned_cost.get("estimated_cost_per_outcome_by_currency", {})
+                summary = ", ".join(f"{amount:.4f} {currency}" for currency, amount in amounts.items()) or "no priced attempts attributed"
+                per_outcome = "; ".join(f"{outcome}: " + (", ".join(f"{amount:.4f} {currency}" for currency, amount in values.items()) if values else "not available")
+                                          for outcome, values in ratios.items()) or "not available"
+                lines.append(f"{variant} assigned-lead enrichment estimate: {summary}; {assigned_cost.get('unique_assigned_domains', 0)} assigned company domains, {assigned_cost.get('domains_with_recorded_provider_attempts', 0)} with recorded calls, {assigned_cost.get('unknown_price_calls', 0)} unknown-price calls, {assigned_cost.get('calls_without_domain', 0)} full-run calls not attributable to a company domain. Estimated cost per logged unique-lead outcome: {per_outcome}. Attribution status: `{assigned_cost.get('status', 'unavailable')}`.\n")
             intervals = m["outcome_rate_95_percent_wilson_intervals"]
             def interval(key: str) -> str:
                 ci = intervals[key]
@@ -2212,6 +2265,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
     """Join experiment-tagged Send Desk rows to explicit taps and summarize unique-lead outcomes."""
     from . import desklog, outcomes
     from .engines import engine_dir, load
+    from . import importer
 
     if not 1 <= maturity_days <= 365:
         raise ValueError("Maturity window must be between 1 and 365 days.")
@@ -2526,6 +2580,69 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
              "send_list_lead_count": observed_total, "send_list_variant_counts": observed,
              "assignment_seed_matches": seed_matches, "status": status})
     audited_cohorts = {(check["experiment_id"], check["experiment_field"]) for check in assignment_audit_checks}
+    for check in assignment_audit_checks:
+        if check.get("status") != "verified_in_send_lists":
+            continue
+        cohort = groups.get((check["experiment_id"], check["experiment_field"]))
+        if not cohort:
+            continue
+        assigned_path = (imports_dir / str(check.get("assigned_csv") or "")).resolve()
+        try:
+            assigned_path.relative_to(imports_dir.resolve())
+            importer._verify_waterfall_assignment_file(engine, assigned_path)
+            _assigned_headers, assigned_rows = importer.read_rows(assigned_path)
+        except (OSError, ValueError):
+            continue
+        domains_by_variant: dict[str, set[str]] = {"A": set(), "B": set()}
+        for row in assigned_rows:
+            variant = (row.get("waterfall_experiment_variant") or "").strip().upper()
+            if variant in domains_by_variant:
+                domain = importer.clean_domain(row.get("website") or row.get("domain") or "")
+                if domain:
+                    domains_by_variant[variant].add(domain)
+        cost_audit = cohort.get("provider_run_cost") or {}
+        for variant, metric in cohort["variants"].items():
+            variant_run = cost_audit.get("variants", {}).get(variant) or {}
+            if cost_audit.get("status") != "verified" or variant_run.get("status") != "verified":
+                metric["assigned_outreach_cost"] = {
+                    "status": "provider_cost_audit_unavailable",
+                    "reason": cost_audit.get("status") or variant_run.get("status") or "provider cost audit did not verify",
+                }
+                continue
+            domain_costs = variant_run.get("_domain_costs", {})
+            costs: dict[str, float] = defaultdict(float)
+            calls = unknown_calls = domains_with_calls = 0
+            for domain in domains_by_variant.get(variant, set()):
+                detail = domain_costs.get(domain)
+                if not detail:
+                    continue
+                domains_with_calls += 1
+                calls += int(detail.get("calls", 0) or 0)
+                unknown_calls += int(detail.get("unknown_price_calls", 0) or 0)
+                for currency, amount in (detail.get("costs") or {}).items():
+                    costs[currency] += float(amount)
+            ratios = {}
+            for outcome_key, count_key in (("sent", "sent_unique_leads"), ("replied", "replied_unique_leads"),
+                                           ("booked", "booked_unique_leads"), ("won", "won_unique_leads")):
+                count = int(metric.get(count_key, 0) or 0)
+                ratios[outcome_key] = ({currency: round(amount / count, 8) for currency, amount in sorted(costs.items())}
+                                       if count else {})
+            metric["assigned_outreach_cost"] = {
+                "status": "verified_in_send_lists",
+                "attribution_basis": "Provider charges from the full variant run attributed once to each normalized company domain represented in this variant's audited assigned CSV.",
+                "assigned_unique_leads": metric.get("assigned_unique_leads", 0),
+                "unique_assigned_domains": len(domains_by_variant.get(variant, set())),
+                "domains_with_recorded_provider_attempts": domains_with_calls,
+                "attempted_calls": calls, "unknown_price_calls": unknown_calls,
+                "calls_without_domain": int(variant_run.get("_unassigned_domain_calls", 0) or 0),
+                "estimated_cost_by_currency": {currency: round(amount, 8) for currency, amount in sorted(costs.items())},
+                "estimated_cost_per_outcome_by_currency": ratios,
+                "outcome_denominators": {"sent": metric.get("sent_unique_leads", 0),
+                                         "replied": metric.get("replied_unique_leads", 0),
+                                         "booked": metric.get("booked_unique_leads", 0),
+                                         "won": metric.get("won_unique_leads", 0)},
+                "not_profit_or_roi": True,
+            }
     for eid, modes in assignment_modes.items():
         if "single_variant_assigned" not in modes or (eid in audited_cohorts):
             continue
@@ -2562,11 +2679,15 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
               "assignment_audit_checks": assignment_audit_checks,
-              "provider_run_cost_basis": "Recorded provider API attempts multiplied by local configured cost_per_call in the receipt-bound variant CSVs; estimated charges, not vendor invoices. A and B each ran over the full capped cohort while outreach outcomes use one assigned variant per lead.",
+              "provider_run_cost_basis": "Recorded provider API attempts multiplied by local configured cost_per_call in receipt-bound variant CSVs; estimates, not vendor invoices. Full A+B run estimates cover both full-cohort variants. Assigned outreach estimates attribute each variant's provider run expense once per normalized company domain appearing in its verified assignment CSV, then divide by logged unique-lead outcome counts. They exclude other acquisition and operating expenses, revenue, and any unpriced calls; they are not profit or ROI.",
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
               "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; explicitly assigned cohorts also require a readable assignment audit and reconciliation of the assigned CSV hash, local cohort record, source evidence, exact lead roster, expected counts, seed, and complete Send Desk-list coverage. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
     output = Path(out) if out else engine_dir(engine) / "data" / (f"waterfall-send-outcomes-{experiment_id}.json" if experiment_id else "waterfall-send-outcomes.json")
+    for cohort in groups.values():
+        for variant_run in (cohort.get("provider_run_cost", {}).get("variants", {}) or {}).values():
+            variant_run.pop("_domain_costs", None)
+            variant_run.pop("_unassigned_domain_calls", None)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Scored {sum(v['assigned_unique_leads'] for g in groups.values() for v in g['variants'].values())} tagged lead-variant records across {len(groups)} experiment-field cohorts: {output}")
