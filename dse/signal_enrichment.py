@@ -736,7 +736,9 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                               for s in monitor_sources if s.get("url") not in seen_monitor_urls)
     results.append(fr.make_result(
         field="signal_source_monitoring",
-        value={"status": monitor_status, "summary": row.get("herald_change_summary", ""),
+        value={"status": monitor_status, "action": row.get("herald_change_action", ""),
+               "evidence": row.get("herald_change_evidence", ""),
+               "summary": row.get("herald_change_summary", ""),
                "new_source_urls": row.get("herald_new_source_urls", ""),
                "changed_source_urls": row.get("herald_changed_source_urls", ""),
                "not_returned_urls": row.get("herald_not_returned_urls", ""),
@@ -871,6 +873,7 @@ def build_presence_field_results(signals: list[dict], checked_at: str, search_me
     results.append(fr.make_result(
         field="presence_source_monitoring",
         value={"status": monitor_status, "action": monitor_row.get("presence_change_action", ""),
+               "evidence": monitor_row.get("presence_change_evidence", ""),
                "summary": monitor_row.get("presence_change_summary", ""), "categories": monitor_categories,
                "sources": monitor_refs, "previous_checked_at": monitor_row.get("presence_previous_checked_at", "")},
         status="candidate" if monitor_status in ("compared", "first_check") or monitor_candidates else "not_found",
