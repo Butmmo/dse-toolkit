@@ -36,10 +36,10 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "enrichment_profile", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
-HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_evidence"]
+HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status", "enrichment_profile",
-                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_evidence", "field_results"]
+                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "field_results"]
 PRESENCE_FIELDS.insert(-1, "presence_search_waterfall")
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
 HERALD_HISTORY = ROOT / "data" / "herald-signal-history.json"
@@ -254,6 +254,34 @@ def _ratio(expected: set[str], observed: set[str]) -> tuple[float, list[str]]:
     return (len(matched) / len(expected) if expected else 0.0), matched
 
 
+def _query_fingerprints(source: dict) -> list[dict]:
+    """Keep search-rung coverage auditable without retaining the searched text in the snapshot."""
+    matches = source.get("query_matches") if isinstance(source.get("query_matches"), list) else []
+    if not matches and source.get("type") and source.get("query"):
+        matches = [{"type": source.get("type"), "query": source.get("query")}]
+    seen, out = set(), []
+    for match in matches:
+        if not isinstance(match, dict) or not match.get("type") or not match.get("query"):
+            continue
+        rung = str(match["type"])[:48]
+        normalized = " ".join(str(match["query"]).split()).casefold()
+        fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+        key = (rung, fingerprint)
+        if key not in seen:
+            seen.add(key)
+            out.append({"rung": rung, "fingerprint": fingerprint})
+    return out[:8]
+
+
+def _url_fingerprint(source: dict) -> str:
+    """Compare compact snapshots by the full URL, even when their display URL is shortened."""
+    supplied = str(source.get("url_fingerprint") or "").strip()
+    if supplied:
+        return supplied
+    url = str(source.get("url") or "").strip()
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16] if url else ""
+
+
 def _publication_date(title: str, snippet: str, date_hint: str = "") -> dict:
     """Extract only an explicit or relative publication date; search time is not publication time."""
     text = html.unescape(f"{date_hint or ''} {title or ''} {snippet or ''}")
@@ -411,7 +439,8 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
     errors = []
     queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role, path_key) + decision_maker_queries_for(row, decision_maker, custom_role)
     for query_index, (kind, query) in enumerate(queries):
-        metric = {"rung": kind, "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
+        metric = {"rung": kind, "query_fingerprint": hashlib.sha256(" ".join(query.split()).casefold().encode("utf-8")).hexdigest()[:16],
+                  "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
                   "duplicates": 0, "identity_rejected": 0, "role_rejected": 0, "score_rejected": 0, "errors": 0,
                   "status": "not_run"}
         if metrics_out is not None:
@@ -425,6 +454,9 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             results = search(query, provider=search_provider, lane="herald_signals", brave_cost_per_1000=brave_cost_per_1000)
             metric["search_calls"] = (BRAVE_SEARCH_REQUESTS - calls_before) if search_provider == "brave" else 1
             metric["results_returned"] = len(results)
+            metric["observed_url_fingerprints"] = list(dict.fromkeys(
+                hashlib.sha256(str(item.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]
+                for item in results if isinstance(item, dict) and item.get("url")))[:30]
         except SearchProviderError as e:
             metric["search_calls"] = BRAVE_SEARCH_REQUESTS - calls_before if search_provider == "brave" else 0
             metric["errors"], metric["status"] = 1, "error"
@@ -506,7 +538,8 @@ def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, min
     checked_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     found, seen, errors = [], set(), []
     for query_index, (kind, query) in enumerate(presence_queries_for(row, path_key)):
-        metric = {"rung": kind, "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
+        metric = {"rung": kind, "query_fingerprint": hashlib.sha256(" ".join(query.split()).casefold().encode("utf-8")).hexdigest()[:16],
+                  "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
                   "duplicates": 0, "identity_rejected": 0, "score_rejected": 0, "errors": 0, "status": "not_run"}
         if metrics_out is not None:
             metrics_out.append(metric)
@@ -517,6 +550,9 @@ def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, min
         try:
             results = search(query)
             metric["search_calls"], metric["results_returned"] = 1, len(results)
+            metric["observed_url_fingerprints"] = list(dict.fromkeys(
+                hashlib.sha256(str(item.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]
+                for item in results if isinstance(item, dict) and item.get("url")))[:30]
         except Exception as e:
             metric["errors"], metric["status"] = 1, "error"
             errors.append(type(e).__name__)
@@ -659,11 +695,13 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                "new_source_urls": row.get("herald_new_source_urls", ""),
                "changed_source_urls": row.get("herald_changed_source_urls", ""),
                "not_returned_urls": row.get("herald_not_returned_urls", ""),
+               "change_categories": row.get("herald_change_categories", "[]"),
+               "change_sources": row.get("herald_change_sources", "[]"),
                "previous_checked_at": row.get("herald_previous_checked_at", "")},
         status="candidate" if monitor_status in ("compared", "first_check") else "not_found",
         observed_at=now, source_type="public_web_search", source_name=search_provider,
         verification_status="source_snapshot_comparison",
-        verification_method="Compares URL, title, snippet fingerprint and publication date across complete searches; absence in a partial search is inconclusive.",
+        verification_method="Compares source URL, title, snippet and publication date. Missing-source checks also compare recorded query-rung fingerprints; partial or changed-query coverage is inconclusive.",
         candidates=[fr.source_ref(source_type="public_web_search", source_name=s.get("provider", search_provider),
                                   source_url=s.get("url", ""), source_record_id=s.get("id", ""),
                                   value={"title": s.get("title", ""), "snippet": s.get("snippet", "")})
@@ -817,20 +855,23 @@ def _ledger_monitor_snapshot(row: dict, lane: str) -> dict | None:
         legacy_sources = record.get("sources")
         if isinstance(legacy_sources, list):
             return {"checked_at": record.get("checked_at", ""),
-                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "type") if key in source}
+                    "sources": [{key: source.get(key) for key in ("url", "url_fingerprint", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "identity_strength", "type", "category", "query_rungs", "query_fingerprints") if key in source}
                                 for source in legacy_sources if isinstance(source, dict) and source.get("url")]}
     return None
 
 
 def _presence_comparison(previous: dict | None, signals: list[dict], checked_at: str, search_errors: list[str]) -> dict:
-    current = {s.get("url", ""): s for s in signals if s.get("url")}
-    old_sources = {s.get("url", ""): s for s in (previous or {}).get("sources", []) if s.get("url")}
-    new_urls = sorted(set(current) - set(old_sources)) if previous else []
-    not_returned = sorted(set(old_sources) - set(current)) if previous else []
-    changed_urls = sorted(url for url in set(current) & set(old_sources) if (
-        current[url].get("title", "") != old_sources[url].get("title", "") or
-        (old_sources[url].get("snippet_hash") and hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash")) or
-        current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
+    current = {_url_fingerprint(s): s for s in signals if s.get("url")}
+    old_sources = {_url_fingerprint(s): s for s in (previous or {}).get("sources", []) if s.get("url")}
+    new_keys = set(current) - set(old_sources) if previous else set()
+    missing_keys = set(old_sources) - set(current) if previous else set()
+    common_keys = set(current) & set(old_sources) if previous else set()
+    new_urls = sorted(str(current[key].get("url") or "") for key in new_keys)
+    not_returned = sorted(str(old_sources[key].get("url") or "") for key in missing_keys)
+    changed_urls = sorted(str(current[key].get("url") or "") for key in common_keys if (
+        current[key].get("title", "") != old_sources[key].get("title", "") or
+        (old_sources[key].get("snippet_hash") and hashlib.sha256(current[key].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[key].get("snippet_hash")) or
+        current[key].get("publication_date", "") != old_sources[key].get("publication_date", "")))
     if search_errors:
         status = "partial_check" if previous else "partial_first_check"
     elif not previous:
@@ -847,22 +888,32 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
             "presence_not_returned_urls": "\n".join(not_returned) if status == "compared" else "",
             "presence_previous_checked_at": (previous or {}).get("checked_at", ""),
             "_snapshot": {"checked_at": checked_at, "sources": [
-                {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"), "title": s.get("title", "")[:240],
+                {"url": s.get("url", ""), "url_fingerprint": _url_fingerprint(s),
+                 "subject": s.get("identity_subject", "company"),
+                 "identity_subject": s.get("identity_subject", "company"), "title": s.get("title", "")[:240],
+                 "identity_strength": s.get("identity_strength", "unknown"),
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
-                 "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated")}
+                 "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
+                 "type": s.get("type", ""),
+                 "query_rungs": list(dict.fromkeys(str(match.get("type") or "")[:48] for match in s.get("query_matches", [])
+                                                    if isinstance(match, dict) and match.get("type")))[:6],
+                 "query_fingerprints": _query_fingerprints(s)}
                 for s in signals if s.get("url")][:8]}}
 
 
 def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: str, partial: bool) -> dict:
     """Compare source-backed Herald observations; absence is meaningful only after a complete search."""
-    current = {s.get("url", ""): s for s in signals if s.get("url")}
-    old_sources = {s.get("url", ""): s for s in (previous or {}).get("sources", []) if s.get("url")}
-    new_urls = sorted(set(current) - set(old_sources)) if previous else []
-    missing_urls = sorted(set(old_sources) - set(current)) if previous else []
-    changed_urls = sorted(url for url in set(current) & set(old_sources) if (
-        current[url].get("title", "") != old_sources[url].get("title", "") or
-        (old_sources[url].get("snippet_hash") and hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash")) or
-        current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
+    current = {_url_fingerprint(s): s for s in signals if s.get("url")}
+    old_sources = {_url_fingerprint(s): s for s in (previous or {}).get("sources", []) if s.get("url")}
+    new_keys = set(current) - set(old_sources) if previous else set()
+    missing_keys = set(old_sources) - set(current) if previous else set()
+    common_keys = set(current) & set(old_sources) if previous else set()
+    new_urls = sorted(str(current[key].get("url") or "") for key in new_keys)
+    missing_urls = sorted(str(old_sources[key].get("url") or "") for key in missing_keys)
+    changed_urls = sorted(str(current[key].get("url") or "") for key in common_keys if (
+        current[key].get("title", "") != old_sources[key].get("title", "") or
+        (old_sources[key].get("snippet_hash") and hashlib.sha256(current[key].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[key].get("snippet_hash")) or
+        current[key].get("publication_date", "") != old_sources[key].get("publication_date", "")))
     status = "partial_check" if partial and previous else "partial_first_check" if partial else "first_check" if not previous else "compared"
     summary = "First check; no earlier source snapshot" if status == "first_check" else (
         f"{len(new_urls)} new source links; {len(changed_urls)} source records changed; {len(missing_urls)} previously seen not returned" if status == "compared" else
@@ -874,31 +925,173 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
             "herald_not_returned_urls": "\n".join(missing_urls) if status == "compared" else "",
             "herald_previous_checked_at": (previous or {}).get("checked_at", ""),
             "_snapshot": {"checked_at": checked_at, "sources": [
-                {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"),
+                {"url": s.get("url", ""), "url_fingerprint": _url_fingerprint(s),
+                 "subject": s.get("identity_subject", "company"),
+                 "identity_subject": s.get("identity_subject", "company"),
+                 "identity_strength": s.get("identity_strength", "unknown"),
                  "title": s.get("title", "")[:240],
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""),
-                 "category": s.get("type", "")}
+                 "freshness_status": s.get("freshness_status", "undated"),
+                 "category": s.get("type", ""), "type": s.get("type", ""),
+                 "query_rungs": list(dict.fromkeys(str(match.get("type") or "")[:48] for match in s.get("query_matches", [])
+                                                    if isinstance(match, dict) and match.get("type")))[:6],
+                 "query_fingerprints": _query_fingerprints(s)}
                 for s in signals if s.get("url")][:12]}}
 
 
-def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: list[dict] | None = None) -> dict:
+def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: list[dict] | None = None,
+                    previous: dict | None = None, query_metrics: list[dict] | None = None) -> dict:
     """Turn a source snapshot diff into a cautious, source-linked review cue; never trigger outreach."""
     prefix = "herald" if lane == "herald" else "presence"
     status = str(comparison.get(f"{prefix}_comparison_status", "unknown"))
     new_urls = {u for u in str(comparison.get(f"{prefix}_new_source_urls") or "").splitlines() if u}
     changed_urls = {u for u in str(comparison.get(f"{prefix}_changed_source_urls") or "").splitlines() if u}
     missing_urls = {u for u in str(comparison.get(f"{prefix}_not_returned_urls") or "").splitlines() if u}
+    metrics_by_query = {(str(metric.get("rung") or ""), str(metric.get("query_fingerprint") or "")): metric
+                        for metric in (query_metrics or []) if isinstance(metric, dict)}
+    metrics_by_rung = {str(metric.get("rung") or ""): metric for metric in (query_metrics or []) if isinstance(metric, dict)}
+    observed_url_rungs = {}
+    for metric in (query_metrics or []):
+        if not isinstance(metric, dict):
+            continue
+        for fingerprint in metric.get("observed_url_fingerprints", []):
+            observed_url_rungs.setdefault(str(fingerprint), []).append(str(metric.get("rung") or "unknown"))
+    old_sources_by_url = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
+                          if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
+    returned_not_retained = {}
+    for url in missing_urls:
+        source = old_sources_by_url.get(url, {})
+        url_fingerprint = str(source.get("url_fingerprint") or hashlib.sha256(url.strip().encode("utf-8")).hexdigest()[:16])
+        if observed_url_rungs.get(url_fingerprint):
+            returned_not_retained[url] = list(dict.fromkeys(observed_url_rungs[url_fingerprint]))
+    actual_missing_urls = missing_urls - set(returned_not_retained)
+    covered_missing, uncovered_missing = {}, {}
+    for url in actual_missing_urls:
+        source = old_sources_by_url.get(url, {})
+        query_fingerprints = source.get("query_fingerprints") if isinstance(source.get("query_fingerprints"), list) else []
+        rungs = source.get("query_rungs") if isinstance(source.get("query_rungs"), list) else []
+        if query_fingerprints:
+            rung_states = {}
+            for item in query_fingerprints:
+                if not isinstance(item, dict) or not item.get("rung") or not item.get("fingerprint"):
+                    continue
+                rung, fingerprint = str(item["rung"]), str(item["fingerprint"])
+                metric = metrics_by_query.get((rung, fingerprint), {})
+                rung_states[f"{rung}#{fingerprint}"] = str(metric.get("status") or "query changed or not repeated")
+        else:
+            if not rungs:
+                fallback_rung = source.get("type") or source.get("category")
+                rungs = [fallback_rung] if fallback_rung else []
+            rung_states = {str(rung): str(metrics_by_rung.get(str(rung), {}).get("status") or "not repeated") for rung in rungs}
+        # If several prior searches found the same source, repeat each known rung
+        # before treating its absence as a meaningful recheck.
+        covered = bool(rung_states) and all(state in ("hit", "miss") for state in rung_states.values())
+        (covered_missing if covered else uncovered_missing)[url] = rung_states
+    freshness_rank = {"recent": 0, "aging": 1, "stale": 2}
+    strength_rank = {"insufficient": 0, "weak": 0, "moderate": 1, "strong": 2}
+    previous_sources = {_url_fingerprint(item): item for item in (previous or {}).get("sources", [])
+                        if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
+    freshness_downgrades = set()
+    identity_changes = {}
+    identity_strength_drops = {}
+    if status == "compared":
+        for signal in signals:
+            url = str(signal.get("url") or "")
+            prior_source = previous_sources.get(_url_fingerprint(signal), {})
+            prior_subject = str(prior_source.get("identity_subject") or prior_source.get("subject") or "")
+            current_subject = str(signal.get("identity_subject") or "")
+            if url and prior_subject in ("company", "person") and current_subject in ("company", "person") and prior_subject != current_subject:
+                identity_changes[url] = (prior_subject, current_subject)
+            prior_strength = str(prior_source.get("identity_strength") or "")
+            current_strength = str(signal.get("identity_strength") or "")
+            if url and strength_rank.get(prior_strength) is not None and strength_rank.get(current_strength) is not None and strength_rank[current_strength] < strength_rank[prior_strength]:
+                identity_strength_drops[url] = (prior_strength, current_strength)
+            before = freshness_rank.get(str(prior_source.get("freshness_status") or ""))
+            after = freshness_rank.get(str(signal.get("freshness_status") or ""))
+            if url and before is not None and after is not None and after > before:
+                freshness_downgrades.add(url)
+    event_deltas = []
+    event_no_longer_detected = []
+    if lane == "herald" and isinstance(previous, dict) and isinstance(previous.get("signal_events"), list):
+        prior_fits = {}
+        for old_event in previous["signal_events"]:
+            if isinstance(old_event, dict) and old_event.get("url") and old_event.get("category"):
+                key = (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)), old_event.get("category"), old_event.get("subject", ""))
+                prior_fits[key] = old_event.get("path_fit", "")
+        for event in events or []:
+            if not isinstance(event, dict) or not event.get("url") or not event.get("category"):
+                continue
+            key = (_url_fingerprint(event), event.get("category"), event.get("subject", ""))
+            if key not in prior_fits:
+                event_deltas.append((event, "new event cue"))
+            elif event.get("path_fit") == "priority" and prior_fits[key] != "priority":
+                event_deltas.append((event, "now priority for this path"))
+        current_event_keys = {(_url_fingerprint(event), event.get("category"), event.get("subject", ""))
+                              for event in (events or []) if isinstance(event, dict) and event.get("url") and event.get("category")}
+        current_source_urls = {_url_fingerprint(signal) for signal in signals if isinstance(signal, dict) and signal.get("url")}
+        event_no_longer_detected = [old_event for old_event in previous["signal_events"]
+                                    if isinstance(old_event, dict) and (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)) in current_source_urls)
+                                    and (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)), old_event.get("category"), old_event.get("subject", "")) not in current_event_keys]
+    change_categories = []
+    def add_category(condition: bool, category: str) -> None:
+        if condition and category not in change_categories:
+            change_categories.append(category)
+    add_category(bool(new_urls), "new_source")
+    add_category(bool(changed_urls), "changed_source")
+    add_category(bool(identity_changes), "identity_subject_changed")
+    add_category(bool(identity_strength_drops), "identity_strength_declined")
+    add_category(bool(event_deltas), "event_cue_added_or_promoted")
+    add_category(bool(event_no_longer_detected), "event_cue_no_longer_detected")
+    add_category(bool(returned_not_retained), "prior_source_returned_but_filtered")
+    add_category(bool(freshness_downgrades), "source_freshness_declined")
+    add_category(bool(covered_missing), "prior_source_not_returned_with_matching_coverage")
+    add_category(bool(uncovered_missing), "prior_source_coverage_incomplete")
+    add_category(status.startswith("partial"), "search_incomplete")
+    add_category(status == "first_check", "baseline_established")
+    change_sources = []
+    seen_change_sources = set()
+    def add_sources(category: str, urls) -> None:
+        for url in urls:
+            url = str(url or "").strip()
+            fingerprint = _url_fingerprint({"url": url}) if url else ""
+            key = (category, fingerprint)
+            if url and key not in seen_change_sources and len(change_sources) < 12:
+                seen_change_sources.add(key)
+                change_sources.append({"category": category, "url": url[:220], "url_fingerprint": fingerprint})
+    add_sources("new_source", new_urls)
+    add_sources("changed_source", changed_urls)
+    add_sources("identity_subject_changed", identity_changes)
+    add_sources("identity_strength_declined", identity_strength_drops)
+    add_sources("event_cue_added_or_promoted", [event.get("url") for event, _reason in event_deltas if isinstance(event, dict)])
+    add_sources("event_cue_no_longer_detected", [event.get("url") for event in event_no_longer_detected if isinstance(event, dict)])
+    add_sources("prior_source_returned_but_filtered", returned_not_retained)
+    add_sources("source_freshness_declined", freshness_downgrades)
+    add_sources("prior_source_not_returned_with_matching_coverage", covered_missing)
+    add_sources("prior_source_coverage_incomplete", uncovered_missing)
+    priority_event_delta = any(event.get("path_fit") == "priority" for event, _reason in event_deltas)
     if status.startswith("partial"):
         action = "CHECK INCOMPLETE — do not treat missing sources as a signal"
     elif status in ("first_check",):
         action = "BASELINE — no earlier complete check to compare"
-    elif new_urls or changed_urls:
-        action = "REVIEW PRIORITY SIGNAL — confirm it at the source" if lane == "herald" and any(
+    elif identity_changes or identity_strength_drops:
+        action = "REVIEW SOURCE IDENTITY — confirm whether this result concerns the same subject"
+    elif lane == "herald" and (priority_event_delta or any(
             event.get("path_fit") == "priority" and event.get("url") in new_urls | changed_urls
             for event in (events or []) if isinstance(event, dict)
-        ) else "REVIEW SOURCE CHANGE — confirm it at the source"
-    elif missing_urls:
+        )):
+        action = "REVIEW PRIORITY SIGNAL — confirm it at the source"
+    elif returned_not_retained:
+        action = "REVIEW SOURCE MATCH — a prior URL appeared in search but was not retained"
+    elif new_urls or changed_urls or event_deltas:
+        action = "REVIEW SOURCE CHANGE — confirm it at the source"
+    elif freshness_downgrades:
+        action = "RECHECK — source evidence has aged; verify it is still current"
+    elif event_no_longer_detected:
+        action = "RECHECK — a prior event cue was not detected in current result text"
+    elif uncovered_missing:
+        action = "CHECK INCOMPLETE — earlier source searches were not all repeated"
+    elif covered_missing:
         action = "RECHECK — previously returned sources were not found"
     elif status == "compared":
         action = "NO NEW SOURCE CHANGE"
@@ -913,10 +1106,44 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         label = str(event.get("label") or event.get("category") or signal.get("title") or "Source changed")[:90]
         fit = str(event.get("path_fit") or "public presence")
         details.append(f"{fit}: {label} — {url[:240]}")
-    if not details and missing_urls and not status.startswith("partial"):
-        details = [f"Not returned on this complete search; existence is unconfirmed: {url[:240]}" for url in sorted(missing_urls)[:3]]
-    return {f"{prefix}_change_action": action,
+    for event, reason in event_deltas[:5]:
+        label = str(event.get("label") or event.get("category") or "new event cue")[:90]
+        fit = str(event.get("path_fit") or "general")
+        detail = f"{fit}: {reason} — {label} — {str(event.get('url') or '')[:240]}"
+        if detail not in details:
+            details.append(detail)
+    for event in event_no_longer_detected[:5]:
+        label = str(event.get("label") or event.get("category") or "prior event cue")[:90]
+        details.append(f"Prior cue not detected in current result text; verify the source before treating it as changed: {label} — {str(event.get('url') or '')[:240]}")
+    for url, rungs in sorted(returned_not_retained.items())[:5]:
+        details.append(f"URL appeared in raw search results on {', '.join(rungs)} but was not retained in this run's signal set; review identity/role/score filtering or output caps: {url[:240]}")
+    for url in sorted(freshness_downgrades)[:5]:
+        signal = signal_by_url.get(url, {})
+        date = str(signal.get("publication_date") or "publication date unavailable")[:24]
+        freshness = str(signal.get("freshness_status") or "unknown")[:20]
+        details.append(f"Source freshness changed to {freshness} ({date}); recheck current evidence — {url[:240]}")
+    for url, (before, after) in sorted(identity_changes.items())[:5]:
+        details.append(f"Source subject changed from {before} to {after}; verify the company/person match — {url[:240]}")
+    for url, (before, after) in sorted(identity_strength_drops.items())[:5]:
+        details.append(f"Identity match strength declined from {before} to {after}; verify the source match — {url[:240]}")
+    if not status.startswith("partial"):
+        details.extend(
+            f"Not returned after repeating recorded rung(s) ({', '.join(f'{rung}={state}' for rung, state in covered_missing[url].items())}); existence is unconfirmed: {url[:240]}"
+            for url in sorted(covered_missing)[:3])
+        details.extend(
+            f"Coverage incomplete ({', '.join(f'{rung}={state}' for rung, state in uncovered_missing[url].items()) or 'no prior rung recorded'}); absence is inconclusive: {url[:240]}"
+            for url in sorted(uncovered_missing)[:3])
+    result = {f"{prefix}_change_action": action,
+            f"{prefix}_change_categories": json.dumps(change_categories, ensure_ascii=False, separators=(",", ":")),
+            f"{prefix}_change_sources": json.dumps(change_sources, ensure_ascii=False, separators=(",", ":")),
             f"{prefix}_change_evidence": "\n".join(details)[:1800]}
+    if status == "compared":
+        result[f"{prefix}_not_returned_urls"] = "\n".join(sorted(actual_missing_urls))
+        result[f"{prefix}_change_summary"] = (
+            f"{len(new_urls)} new source links; {len(changed_urls)} source records changed; "
+            f"{len(actual_missing_urls)} previously seen not returned; "
+            f"{len(returned_not_retained)} prior URLs returned but not retained")
+    return result
 
 
 def _save_signal_history(path: Path, schema: str, history: dict) -> None:
@@ -1425,7 +1652,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             event["path_fit"] = "priority" if category in path["priority"] else "supporting" if category in path["supporting"] else "general"
             event["path_label"] = path["label"]
             annotated_events.append(event)
-        row.update(_monitor_action("herald", comparison, signals, annotated_events))
+        row.update(_monitor_action("herald", comparison, signals, annotated_events, prior_snapshot, query_metrics))
         row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "path_focus": {"key": selected_path or "any", "label": path["label"], "method": path["method"], "pain": path["pain"], "buyer": path["buyer"], "revenue_model": path["revenue_model"], "proof_metrics": path["proof_metrics"], "priority_categories": path["priority"], "supporting_categories": path["supporting"]}, "events": annotated_events}, ensure_ascii=False, separators=(",", ":"))
         outcome_plan = path_signals.outcome_plan(selected_path or "any")
         known_source_ids = {signal.get("id"): signal for signal in signals if signal.get("id")}
@@ -1618,7 +1845,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         row["presence_search_waterfall"] = json.dumps(waterfall, ensure_ascii=False, separators=(",", ":"))
         row["enrichment_profile"] = json.dumps(profile_record, ensure_ascii=False, separators=(",", ":")) if profile_record else ""
         row.update(comparison)
-        row.update(_monitor_action("presence", comparison, signals))
+        row.update(_monitor_action("presence", comparison, signals, previous=prior_snapshot, query_metrics=query_metrics))
         result_contract = build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score)
         result_contract = _attach_profile_results(result_contract, profile_record, signals)
         row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)

@@ -20,8 +20,8 @@ from . import enrichment_profiles
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
-    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
-    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_evidence", "presence_monitor_history"],
+    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
+    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "presence_monitor_history"],
 }
 FULL_OUTPUTS = {
     "website": ["found_email", "email_source", "other_emails", "email_guesses", "email_check", "contact_page_url", "field_results", "enrichment_audit"],
@@ -351,21 +351,54 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         raw_sources = []
     if not isinstance(raw_sources, list):
         raw_sources = []
+    def query_fingerprints(source: dict) -> list[dict]:
+        matches = source.get("query_matches") if isinstance(source.get("query_matches"), list) else []
+        if not matches and source.get("type") and source.get("query"):
+            matches = [{"type": source.get("type"), "query": source.get("query")}]
+        seen, out = set(), []
+        for match in matches:
+            if not isinstance(match, dict) or not match.get("type") or not match.get("query"):
+                continue
+            rung = str(match["type"])[:48]
+            normalized = " ".join(str(match["query"]).split()).casefold()
+            fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+            if (rung, fingerprint) not in seen:
+                seen.add((rung, fingerprint))
+                out.append({"rung": rung, "fingerprint": fingerprint})
+        return out[:8]
     source_snapshot = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
                        "sources": [{"url": str(source.get("url") or "")[:180],
+                                    "url_fingerprint": hashlib.sha256(str(source.get("url") or "").strip().encode("utf-8")).hexdigest()[:16],
                                     "title": str(source.get("title") or "")[:80],
                                     "snippet_hash": hashlib.sha256(str(source.get("snippet") or "").encode("utf-8")).hexdigest(),
                                     "publication_date": str(source.get("publication_date") or "")[:24],
                                     "freshness_status": str(source.get("freshness_status") or "undated")[:20],
                                     "identity_subject": str(source.get("identity_subject") or "unknown")[:12],
-                                    "type": str(source.get("type") or "")[:40]}
+                                    "identity_strength": str(source.get("identity_strength") or "unknown")[:16],
+                                    "type": str(source.get("type") or "")[:40],
+                                    "query_rungs": list(dict.fromkeys(item["rung"] for item in query_fingerprints(source)))[:6],
+                                    "query_fingerprints": query_fingerprints(source)}
                                    for source in raw_sources[:8] if isinstance(source, dict) and source.get("url")]}
-    sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
+    if lane == "herald":
+        try:
+            event_doc = json.loads(result_row.get("herald_signal_events") or "{}")
+        except (ValueError, TypeError):
+            event_doc = {}
+        event_items = event_doc.get("events", []) if isinstance(event_doc, dict) else []
+        source_snapshot["signal_events"] = [{key: str(event.get(key) or "")[:220 if key == "url" else 100] for key in ("url", "category", "subject", "path_fit", "label")}
+                                             | {"url_fingerprint": hashlib.sha256(str(event.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]}
+                                             for event in event_items[:10] if isinstance(event, dict) and event.get("url") and event.get("category")]
+    sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("identity_strength", 16), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
+               | {"url_fingerprint": hashlib.sha256(str(source.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]}
+               | {"query_rungs": list(dict.fromkeys(item["rung"] for item in query_fingerprints(source)))[:6],
+                  "query_fingerprints": query_fingerprints(source)}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
               "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
               "review_action": str(result_row.get(f"{prefix}_change_action") or "")[:120],
+              "change_categories": [str(item)[:80] for item in _decode_json(result_row.get(f"{prefix}_change_categories"), [])[:10]],
+              "change_sources": _decode_json(result_row.get(f"{prefix}_change_sources"), [])[:12],
               "change_evidence": str(result_row.get(f"{prefix}_change_evidence") or "")[:500],
               "snapshot": source_snapshot,
               "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
@@ -381,9 +414,12 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
     if len(value) > 4800:
         history = [{"checked_at": record["checked_at"], "status": record["status"], "summary": record["summary"],
                     "review_action": record["review_action"], "change_evidence": record["change_evidence"][:260],
+                    "change_categories": record["change_categories"][:8],
+                    "change_sources": record["change_sources"][:6],
                     "new_source_urls": record["new_source_urls"][:2], "changed_source_urls": record["changed_source_urls"][:2],
                     "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1],
-                    "snapshot": {"checked_at": source_snapshot["checked_at"], "sources": source_snapshot["sources"][:4]}}]
+                    "snapshot": {"checked_at": source_snapshot["checked_at"], "sources": source_snapshot["sources"][:4],
+                                 **({"signal_events": source_snapshot.get("signal_events", [])[:5]} if lane == "herald" else {})}}]
         value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
     return value
 
@@ -476,8 +512,8 @@ def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enrich
                 if header == "dse_path_ai_advice":
                     cells[key] = ""
                 continue
-            always_refresh = {history_header, advice_history_header, evidence_header, "herald_change_action", "herald_change_evidence",
-                              "presence_change_action", "presence_change_evidence", "dse_path_outcome", "dse_path_ai_advice",
+            always_refresh = {history_header, advice_history_header, evidence_header, "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence",
+                              "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "dse_path_outcome", "dse_path_ai_advice",
                               "dse_path_ai_advice_status", f"{lane}_comparison_status", f"{lane}_change_summary",
                               f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls",
                               f"{lane}_previous_checked_at"}
@@ -551,6 +587,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     result_path: Path | None = None
     written = skipped = oversized = completed = 0
     monitor_action_counts: dict[str, int] = {}
+    monitor_cue_counts: dict[str, int] = {}
     say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows in batches of {batch_size}, starting at row {start_row}.")
     brave_run = lane == "herald" and str(options.get("search_provider", "duckduckgo")) == "brave"
     brave_requests_used = 0
@@ -673,6 +710,10 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 action = str(enriched_row.get(action_field) or "").strip()
                 if action.startswith("REVIEW PRIORITY SIGNAL"):
                     category = "priority_review"
+                elif action.startswith("REVIEW SOURCE IDENTITY"):
+                    category = "identity_review"
+                elif action.startswith("REVIEW SOURCE MATCH"):
+                    category = "match_review"
                 elif action.startswith("REVIEW SOURCE CHANGE"):
                     category = "source_review"
                 elif action.startswith("RECHECK"):
@@ -686,6 +727,13 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 else:
                     category = "other"
                 monitor_action_counts[category] = monitor_action_counts.get(category, 0) + 1
+                try:
+                    categories = json.loads(str(enriched_row.get(f"{lane}_change_categories") or "[]"))
+                except (ValueError, TypeError):
+                    categories = []
+                if isinstance(categories, list):
+                    for cue in set(str(item) for item in categories if item):
+                        monitor_cue_counts[cue] = monitor_cue_counts.get(cue, 0) + 1
         if enrichment_profile:
             profile_record = enrichment_profiles.build_profile(enrichment_profile)
             profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
@@ -699,12 +747,12 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             output_headers = batch_headers
             new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
             evidence_header = f"{lane}_evidence_decisions"
-            monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_change_action", f"{lane}_change_evidence", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
+            monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_change_action", f"{lane}_change_categories", f"{lane}_change_sources", f"{lane}_change_evidence", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
             new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
             remaining = max(0, 60 - len(columns))
             omitted_columns = new_headers[remaining:]
             new_headers = new_headers[:remaining]
-            added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", f"{lane}_change_evidence", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
+            added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", f"{lane}_change_sources", f"{lane}_change_evidence", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
             by_label = {gridpush.norm(c["label"]): c for c in columns}
             for column in added or []:
                 by_label[gridpush.norm(column["label"])] = column
@@ -730,9 +778,12 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             spend_note += " Usage-record warning: " + " ".join(brave_usage_warnings)
     monitor_note = ""
     if monitor_action_counts:
-        labels = ("priority_review", "source_review", "recheck", "incomplete", "baseline", "no_change", "other")
+        labels = ("priority_review", "identity_review", "match_review", "source_review", "recheck", "incomplete", "baseline", "no_change", "other")
         summary = ", ".join(f"{label.replace('_', ' ')} {monitor_action_counts[label]}" for label in labels if monitor_action_counts.get(label))
         monitor_note = f" Signal review summary: {summary}. Open the Ledger rows for source links and details."
+        if monitor_cue_counts:
+            cue_summary = ", ".join(f"{label.replace('_', ' ')} {monitor_cue_counts[label]}" for label in sorted(monitor_cue_counts))
+            monitor_note += f" Cue totals (a row may have several): {cue_summary}."
     return (f"FINISHED {lane} enrichment: {written} rows updated, {skipped} rows had no new values, {oversized} oversized values omitted. "
             f"Saved {completed} rows starting at row {start_row} in {((completed + batch_size - 1) // batch_size)} batches. "
             f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}{monitor_note}\n")
