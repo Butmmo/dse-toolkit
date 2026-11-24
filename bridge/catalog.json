@@ -11012,7 +11012,7 @@
     "dse.grid_enrich": {
       "label": "Ledgers: enrich grid rows live",
       "group": "Grow",
-      "help": "Runs enrichment directly on existing Ledger grid rows. Choose website enrichment, Herald company/person signals, or Presence public professional/social signals. For Herald and Presence, each check compares against the latest complete source snapshot saved in the Ledger row, so another PC can continue the same history. It writes a primary review action, all detected change categories, category-to-source references, and linked evidence into the grid. If a result shifts between company and person identity, or its identity match strength declines, it requests source-identity review. Missing-source coverage is checked against the same query rung and fingerprint; changed or partial searches are inconclusive. A prior source still present in raw results but filtered from the retained signal set gets a separate source-match review. Job results summarize primary actions and per-cue totals; a row can have multiple cues. Compact check history is saved on the row for cross-device review. You can schedule recurring Herald or Presence checks with this tool's Schedule option; the PC runner must be on at the scheduled time. Checks never send outreach or post automatically. The PC reads rows in saved batches, creates or reuses result columns, and preserves original row order and input cells. Use the reported next row to resume after interruption. Existing output cells are preserved unless Replace existing values is checked.",
+      "help": "Runs lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, Presence public social signals, or UK director lookup through the official Companies House register. For director lookup, the grid needs a business-name column; city and address columns improve matching. The PC reads grid rows, runs the selected lane, then creates or reuses result columns and writes results back into those rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. Original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted.",
       "script": "dse.py",
       "args": [
         {
@@ -11029,20 +11029,20 @@
           "field": "lane"
         },
         {
+          "opt": "--company-column",
+          "field": "company_column"
+        },
+        {
+          "opt": "--city-column",
+          "field": "city_column"
+        },
+        {
           "opt": "--engine",
           "field": "engine"
         },
         {
           "opt": "--limit",
           "field": "limit"
-        },
-        {
-          "opt": "--start-row",
-          "field": "start_row"
-        },
-        {
-          "opt": "--batch-size",
-          "field": "batch_size"
         },
         {
           "opt": "--output-detail",
@@ -11075,10 +11075,6 @@
         {
           "opt": "--path",
           "field": "path"
-        },
-        {
-          "opt": "--enrichment-profile",
-          "field": "enrichment_profile"
         },
         {
           "opt": "--profile",
@@ -11151,8 +11147,26 @@
             {
               "value": "presence",
               "label": "Presence: public professional/social signals"
+            },
+            {
+              "value": "directors",
+              "label": "UK: Companies House director lookup"
             }
           ]
+        },
+        {
+          "name": "company_column",
+          "label": "Business-name column for director lookup (optional; auto-detects Company, Business or Name)",
+          "type": "text",
+          "required": false,
+          "max": 60
+        },
+        {
+          "name": "city_column",
+          "label": "City or town column for director matching (optional; auto-detects City or Town)",
+          "type": "text",
+          "required": false,
+          "max": 60
         },
         {
           "name": "engine",
@@ -11169,24 +11183,6 @@
           "min": 1,
           "max": 500,
           "default": 25
-        },
-        {
-          "name": "start_row",
-          "label": "Start at grid row (1-based; use after an interrupted run)",
-          "type": "int",
-          "required": true,
-          "min": 1,
-          "max": 1000000,
-          "default": 1
-        },
-        {
-          "name": "batch_size",
-          "label": "Rows to save at a time",
-          "type": "int",
-          "required": true,
-          "min": 1,
-          "max": 50,
-          "default": 10
         },
         {
           "name": "output_detail",
@@ -11287,55 +11283,6 @@
             {
               "value": "broadcast",
               "label": "The Broadcast Engine"
-            },
-            {
-              "value": "ascent",
-              "label": "The Ascent"
-            }
-          ]
-        },
-        {
-          "name": "enrichment_profile",
-          "label": "Apply this path's profile (caps searches and marks signal freshness)",
-          "type": "choice",
-          "required": false,
-          "default": "none",
-          "choices": [
-            {
-              "value": "none",
-              "label": "No path profile"
-            },
-            {
-              "value": "smb",
-              "label": "SMB Optimisation"
-            },
-            {
-              "value": "search",
-              "label": "Search & AI Visibility"
-            },
-            {
-              "value": "voiceai",
-              "label": "AI Voice Receptionist"
-            },
-            {
-              "value": "automation",
-              "label": "AI Automation Engineering"
-            },
-            {
-              "value": "revenue",
-              "label": "Revenue Recovery"
-            },
-            {
-              "value": "gtm",
-              "label": "Go-to-Market Engineering"
-            },
-            {
-              "value": "authority",
-              "label": "Authority Engine"
-            },
-            {
-              "value": "broadcast",
-              "label": "Broadcast Engine"
             },
             {
               "value": "ascent",
@@ -11537,7 +11484,7 @@
         },
         {
           "name": "no_ai",
-          "label": "Only collect evidence (disable local AI drafts and path advice)",
+          "label": "Only collect evidence (do not draft with local AI)",
           "type": "bool",
           "default": false
         }
@@ -11546,22 +11493,12 @@
       "outputs": [],
       "category": "enrich",
       "source": "The selected Ledger grid and the public sources of the chosen lane",
-      "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances. Brave grid runs require a declared rate and user-approved maximum when searches may run; the estimate is checked before work and the request cap spans saved batches. The estimate is not a provider invoice. Configured website-provider waterfalls require a declared approved ceiling and guard each saved batch; unknown-priced providers require separate acknowledgment.",
+      "cost": "Website reads and local model use run on this PC. Optional providers and Brave use the user's own API keys/allowances. Brave grid runs require a declared rate and user-approved maximum when searches may run; the estimate is checked before work and the request cap spans saved batches. Companies House uses the user's own free API key, stays on this PC and is paced to the service's documented allowance. Estimates are not provider invoices.",
       "outputs_summary": [
         "Enriches existing grid rows in place",
         "Creates/reuses columns for the selected output fields",
         "Preserves original row inputs; existing result cells are kept unless replace is selected",
-        "Website, Herald and Presence lanes",
-        "Retains source URLs and compares repeated complete searches; partial runs never imply a source disappeared.",
-        "Persists a compact source-monitoring timeline on each Ledger row for cross-device review",
-        "Adds a review action and linked evidence when Herald or Presence sources change",
-        "Job result counts priority review, source review, recheck, and incomplete-search rows",
-        "Recurring Herald and Presence checks can run on the PC schedule while the runner is available",
-        "Adds an in-grid evidence review for Website provider selections and alternatives, Herald decisions and citations, and Presence identity, freshness and search waterfall measurements",
-        "Journals Brave usage across saved grid batches and shows a request/spend ceiling when a user-declared rate is supplied",
-        "Shows path-specific customer outcomes, proof metrics, commercial viability checks and next human validation in Ledger evidence review",
-        "Separates existing lead/enrichment observations from prospect-confirmed commercial qualification checks",
-        "Keeps up to six local path-advice snapshots, marking advice as changed, unchanged, or not generated in that run"
+        "Website, Herald, Presence and Companies House director lanes"
       ]
     },
     "dse.enrich_spend_preview": {
@@ -11940,27 +11877,96 @@
       "help": "Check before spending: confirms the matching A/B config pair, reviews local keys and adapter mappings, fingerprints the exact bounded source cohort, and totals both known-price estimates against one combined ceiling. Unknown provider prices require an explicit acknowledgment. If ready, it saves a local approval receipt bound to both configs, the source CSV and cohort cap. The report contains no lead row values and this tool makes no network/provider calls.",
       "script": "dse.py",
       "args": [
-        { "lit": "enrich" },
-        { "flag": "--review-waterfall-experiment", "field": "go" },
-        { "field": "source" },
-        { "opt": "--experiment-config-a", "field": "config_a" },
-        { "opt": "--experiment-config-b", "field": "config_b" },
-        { "opt": "--max", "field": "leads" },
-        { "opt": "--max-combined-provider-spend", "field": "ceiling" },
-        { "flag": "--allow-unknown-experiment-cost", "field": "allow_unknown" }
+        {
+          "lit": "enrich"
+        },
+        {
+          "flag": "--review-waterfall-experiment",
+          "field": "go"
+        },
+        {
+          "field": "source"
+        },
+        {
+          "opt": "--experiment-config-a",
+          "field": "config_a"
+        },
+        {
+          "opt": "--experiment-config-b",
+          "field": "config_b"
+        },
+        {
+          "opt": "--max",
+          "field": "leads"
+        },
+        {
+          "opt": "--max-combined-provider-spend",
+          "field": "ceiling"
+        },
+        {
+          "flag": "--allow-unknown-experiment-cost",
+          "field": "allow_unknown"
+        }
       ],
       "fields": [
-        { "name": "go", "label": "Review only", "type": "bool", "default": true },
-        { "name": "source", "label": "Exact local source CSV for both variants", "type": "file", "required": true, "glob": "my-lists/*.csv", "exclude": "wfexp-,paired" },
-        { "name": "config_a", "label": "Matching experiment config A", "type": "file", "required": true, "glob": "enrich-waterfalls/*-experiment-*-a.json" },
-        { "name": "config_b", "label": "Matching experiment config B", "type": "file", "required": true, "glob": "enrich-waterfalls/*-experiment-*-b.json" },
-        { "name": "leads", "label": "Bounded cohort size (same cap for both runs)", "type": "int", "required": true, "min": 1, "max": 2000, "default": 50 },
-        { "name": "ceiling", "label": "Approved maximum spend for A and B combined", "type": "number", "required": true, "min": 0 },
-        { "name": "allow_unknown", "label": "Acknowledge provider prices that are unknown", "type": "bool", "default": false }
+        {
+          "name": "go",
+          "label": "Review only",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "source",
+          "label": "Exact local source CSV for both variants",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*.csv",
+          "exclude": "wfexp-,paired"
+        },
+        {
+          "name": "config_a",
+          "label": "Matching experiment config A",
+          "type": "file",
+          "required": true,
+          "glob": "enrich-waterfalls/*-experiment-*-a.json"
+        },
+        {
+          "name": "config_b",
+          "label": "Matching experiment config B",
+          "type": "file",
+          "required": true,
+          "glob": "enrich-waterfalls/*-experiment-*-b.json"
+        },
+        {
+          "name": "leads",
+          "label": "Bounded cohort size (same cap for both runs)",
+          "type": "int",
+          "required": true,
+          "min": 1,
+          "max": 2000,
+          "default": 50
+        },
+        {
+          "name": "ceiling",
+          "label": "Approved maximum spend for A and B combined",
+          "type": "number",
+          "required": true,
+          "min": 0
+        },
+        {
+          "name": "allow_unknown",
+          "label": "Acknowledge provider prices that are unknown",
+          "type": "bool",
+          "default": false
+        }
       ],
       "timeout_min": 2,
       "outputs": [
-        { "glob": "my-lists/waterfall-experiment-*-approval-*.json", "upload": false, "label": "Local paired-run approval receipt" }
+        {
+          "glob": "my-lists/waterfall-experiment-*-approval-*.json",
+          "upload": false,
+          "label": "Local paired-run approval receipt"
+        }
       ],
       "category": "source",
       "source": "Local source CSV and local waterfall configs",
