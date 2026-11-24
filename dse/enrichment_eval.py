@@ -2175,6 +2175,11 @@ def _send_outcome_brief(report: dict) -> str:
         if run_cost:
             combined = ", ".join(f"{amount:.4f} {currency}" for currency, amount in run_cost.get("combined_observed_estimated_cost_by_currency", {}).items()) or "no priced attempts recorded"
             lines.append(f"Preflight receipt: `{run_cost.get('approval_id') or 'unavailable'}`; approved combined ceiling: {run_cost.get('approved_combined_maximum', 'unknown')} {run_cost.get('currency') or ''}; observed A+B provider attempt estimate: {combined}; unknown-price calls: {run_cost.get('combined_unknown_price_calls', 0)}. Cost audit: `{run_cost.get('status', 'unavailable')}`.\n")
+            reconciliation = run_cost.get("allocation_reconciliation") or {}
+            if reconciliation:
+                allocated = ", ".join(f"{amount:.4f} {currency}" for currency, amount in reconciliation.get("assigned_outreach_allocated_by_currency", {}).items()) or "none"
+                remainder = ", ".join(f"{amount:.4f} {currency}" for currency, amount in reconciliation.get("unallocated_known_run_cost_by_currency", {}).items()) or "none"
+                lines.append(f"Known-price cost reconciliation: verified A+B run estimate {combined}; allocated to verified assigned leads {allocated}; unallocated known-price run estimate {remainder}. Reconciliation: `{reconciliation.get('status', 'unavailable')}`.\n")
         for variant in ("A", "B"):
             m = cohort["variants"].get(variant)
             if not m:
@@ -2641,6 +2646,35 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
                                          "won": metric.get("won_unique_leads", 0)},
                 "not_profit_or_roi": True,
             }
+        if cost_audit.get("status") == "verified" and all(
+                cohort["variants"].get(variant, {}).get("assigned_outreach_cost", {}).get("status") == "verified_in_send_lists"
+                for variant in ("A", "B")):
+            total_known: dict[str, float] = defaultdict(float)
+            allocated_known: dict[str, float] = defaultdict(float)
+            for currency, amount in cost_audit.get("combined_observed_estimated_cost_by_currency", {}).items():
+                total_known[currency] += float(amount)
+            for metric in cohort["variants"].values():
+                assigned = metric.get("assigned_outreach_cost") or {}
+                for currency, amount in assigned.get("estimated_cost_by_currency", {}).items():
+                    allocated_known[currency] += float(amount)
+            currencies = sorted(set(total_known) | set(allocated_known))
+            remainder = {currency: round(total_known.get(currency, 0.0) - allocated_known.get(currency, 0.0), 8)
+                         for currency in currencies}
+            overallocated = any(amount < -1e-7 for amount in remainder.values())
+            cost_audit["allocation_reconciliation"] = {
+                "status": "allocation_exceeds_verified_run_cost" if overallocated else "verified",
+                "basis": "Known-price, domain-attributed A+B run estimates only; excludes unknown-price and domainless provider costs.",
+                "verified_full_run_cost_by_currency": {currency: round(total_known.get(currency, 0.0), 8) for currency in currencies},
+                "assigned_outreach_allocated_by_currency": {currency: round(allocated_known.get(currency, 0.0), 8) for currency in currencies},
+                "unallocated_known_run_cost_by_currency": {currency: max(0.0, amount) for currency, amount in remainder.items()},
+                "unknown_price_calls_excluded": cost_audit.get("combined_unknown_price_calls", 0),
+                "domainless_cost_excluded": True,
+            }
+        else:
+            cost_audit["allocation_reconciliation"] = {
+                "status": "assignment_or_cost_audit_unavailable",
+                "reason": "Both variant costs and both assigned lead rosters must pass their integrity audits before reconciliation.",
+            }
     for eid, modes in assignment_modes.items():
         if "single_variant_assigned" not in modes or (eid in audited_cohorts):
             continue
@@ -2677,7 +2711,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
               "assignment_audit_checks": assignment_audit_checks,
-              "provider_run_cost_basis": "Recorded provider API attempts multiplied by local configured cost_per_call in receipt-bound variant CSVs; estimates, not vendor invoices. Full A+B estimates cover both full-cohort variants. For assigned outreach, each normalized domain's variant cost is prorated by the share of source leads for that domain assigned to the variant; the allocated estimate is divided by logged unique-lead outcome counts. Call counts and unknown-price calls are shown as full-run context and are not prorated. Unpriced amounts and domainless costs are excluded. These figures exclude other acquisition and operating expenses and revenue; they are not profit or ROI.",
+              "provider_run_cost_basis": "Recorded provider API attempts multiplied by local configured cost_per_call in receipt-bound variant CSVs; estimates, not vendor invoices. Full A+B estimates cover both full-cohort variants. For assigned outreach, each normalized domain's variant cost is prorated by the share of source leads for that domain assigned to the variant; the allocated estimate is divided by logged unique-lead outcome counts. A verified reconciliation shows known-price full-run cost, assigned allocation, and remaining known-price run cost only when both A/B assignment and provider-cost audits pass. Call counts and unknown-price calls are full-run context and are not prorated. Unpriced amounts and domainless costs are excluded. These figures exclude other acquisition and operating expenses and revenue; they are not profit or ROI.",
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
               "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; explicitly assigned cohorts also require a readable assignment audit and reconciliation of the assigned CSV hash, local cohort record, source evidence, exact lead roster, expected counts, seed, and complete Send Desk-list coverage. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
