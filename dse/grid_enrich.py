@@ -550,6 +550,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     omitted_columns: list[str] = []
     result_path: Path | None = None
     written = skipped = oversized = completed = 0
+    monitor_action_counts: dict[str, int] = {}
     say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows in batches of {batch_size}, starting at row {start_row}.")
     brave_run = lane == "herald" and str(options.get("search_provider", "duckduckgo")) == "brave"
     brave_requests_used = 0
@@ -666,6 +667,25 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 input_path.unlink(missing_ok=True)
         if len(enriched_rows) != len(batch_rows):
             raise RuntimeError(f"The enrichment returned {len(enriched_rows)} rows for this batch; {completed} earlier rows were saved. Resume with --start-row {start_row + completed}.")
+        if lane in ("herald", "presence"):
+            action_field = f"{lane}_change_action"
+            for enriched_row in enriched_rows:
+                action = str(enriched_row.get(action_field) or "").strip()
+                if action.startswith("REVIEW PRIORITY SIGNAL"):
+                    category = "priority_review"
+                elif action.startswith("REVIEW SOURCE CHANGE"):
+                    category = "source_review"
+                elif action.startswith("RECHECK"):
+                    category = "recheck"
+                elif action.startswith("CHECK INCOMPLETE"):
+                    category = "incomplete"
+                elif action.startswith("BASELINE"):
+                    category = "baseline"
+                elif action.startswith("NO NEW SOURCE CHANGE"):
+                    category = "no_change"
+                else:
+                    category = "other"
+                monitor_action_counts[category] = monitor_action_counts.get(category, 0) + 1
         if enrichment_profile:
             profile_record = enrichment_profiles.build_profile(enrichment_profile)
             profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
@@ -708,9 +728,14 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         spend_note = f" Brave requests: {brave_requests_used}/{brave_request_cap} run ceiling; {cost_text}.{approval} Usage was added to this PC's provider journal."
         if brave_usage_warnings:
             spend_note += " Usage-record warning: " + " ".join(brave_usage_warnings)
+    monitor_note = ""
+    if monitor_action_counts:
+        labels = ("priority_review", "source_review", "recheck", "incomplete", "baseline", "no_change", "other")
+        summary = ", ".join(f"{label.replace('_', ' ')} {monitor_action_counts[label]}" for label in labels if monitor_action_counts.get(label))
+        monitor_note = f" Signal review summary: {summary}. Open the Ledger rows for source links and details."
     return (f"FINISHED {lane} enrichment: {written} rows updated, {skipped} rows had no new values, {oversized} oversized values omitted. "
             f"Saved {completed} rows starting at row {start_row} in {((completed + batch_size - 1) // batch_size)} batches. "
-            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}\n")
+            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}{monitor_note}\n")
 
 
 def cli(argv: list[str]) -> int:
