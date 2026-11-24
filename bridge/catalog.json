@@ -230,6 +230,7 @@
           "max": 2,
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
+            "CA",
             "GB",
             "DE",
             "FR",
@@ -641,6 +642,7 @@
           "max": 2,
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
+            "CA",
             "GB",
             "DE",
             "FR",
@@ -827,6 +829,7 @@
             "eu",
             "gulf",
             "uk",
+            "CA",
             "GB",
             "DE",
             "FR",
@@ -9153,6 +9156,7 @@
           "max": 2,
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
+            "CA",
             "GB",
             "DE",
             "FR",
@@ -9573,6 +9577,7 @@
           "max": 2,
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
+            "CA",
             "GB",
             "DE",
             "FR",
@@ -9723,6 +9728,7 @@
           "max": 2,
           "pattern": "^[A-Za-z]{2}$",
           "suggestions": [
+            "CA",
             "GB",
             "DE",
             "FR",
