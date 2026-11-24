@@ -817,7 +817,7 @@ def _ledger_monitor_snapshot(row: dict, lane: str) -> dict | None:
         legacy_sources = record.get("sources")
         if isinstance(legacy_sources, list):
             return {"checked_at": record.get("checked_at", ""),
-                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "type", "category", "query_rungs") if key in source}
+                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "identity_strength", "type", "category", "query_rungs") if key in source}
                                 for source in legacy_sources if isinstance(source, dict) and source.get("url")]}
     return None
 
@@ -849,6 +849,7 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
             "_snapshot": {"checked_at": checked_at, "sources": [
                 {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"),
                  "identity_subject": s.get("identity_subject", "company"), "title": s.get("title", "")[:240],
+                 "identity_strength": s.get("identity_strength", "unknown"),
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
                  "type": s.get("type", ""),
@@ -880,6 +881,7 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
             "_snapshot": {"checked_at": checked_at, "sources": [
                 {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"),
                  "identity_subject": s.get("identity_subject", "company"),
+                 "identity_strength": s.get("identity_strength", "unknown"),
                  "title": s.get("title", "")[:240],
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""),
@@ -914,10 +916,12 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         covered = bool(rung_states) and all(state in ("hit", "miss") for state in rung_states.values())
         (covered_missing if covered else uncovered_missing)[url] = rung_states
     freshness_rank = {"recent": 0, "aging": 1, "stale": 2}
+    strength_rank = {"insufficient": 0, "weak": 0, "moderate": 1, "strong": 2}
     previous_sources = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
                         if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
     freshness_downgrades = set()
     identity_changes = {}
+    identity_strength_drops = {}
     if status == "compared":
         for signal in signals:
             url = str(signal.get("url") or "")
@@ -925,6 +929,10 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
             current_subject = str(signal.get("identity_subject") or "")
             if url and prior_subject in ("company", "person") and current_subject in ("company", "person") and prior_subject != current_subject:
                 identity_changes[url] = (prior_subject, current_subject)
+            prior_strength = str(previous_sources.get(url, {}).get("identity_strength") or "")
+            current_strength = str(signal.get("identity_strength") or "")
+            if url and strength_rank.get(prior_strength) is not None and strength_rank.get(current_strength) is not None and strength_rank[current_strength] < strength_rank[prior_strength]:
+                identity_strength_drops[url] = (prior_strength, current_strength)
             before = freshness_rank.get(str(previous_sources.get(url, {}).get("freshness_status") or ""))
             after = freshness_rank.get(str(signal.get("freshness_status") or ""))
             if url and before is not None and after is not None and after > before:
@@ -956,7 +964,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         action = "CHECK INCOMPLETE — do not treat missing sources as a signal"
     elif status in ("first_check",):
         action = "BASELINE — no earlier complete check to compare"
-    elif identity_changes:
+    elif identity_changes or identity_strength_drops:
         action = "REVIEW SOURCE IDENTITY — confirm whether this result concerns the same subject"
     elif new_urls or changed_urls or event_deltas:
         action = "REVIEW PRIORITY SIGNAL — confirm it at the source" if lane == "herald" and (priority_event_delta or any(
@@ -1000,6 +1008,8 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         details.append(f"Source freshness changed to {freshness} ({date}); recheck current evidence — {url[:240]}")
     for url, (before, after) in sorted(identity_changes.items())[:5]:
         details.append(f"Source subject changed from {before} to {after}; verify the company/person match — {url[:240]}")
+    for url, (before, after) in sorted(identity_strength_drops.items())[:5]:
+        details.append(f"Identity match strength declined from {before} to {after}; verify the source match — {url[:240]}")
     if not status.startswith("partial"):
         details.extend(
             f"Not returned after repeating recorded rung(s) ({', '.join(f'{rung}={state}' for rung, state in covered_missing[url].items())}); existence is unconfirmed: {url[:240]}"

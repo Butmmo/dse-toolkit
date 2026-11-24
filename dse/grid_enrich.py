@@ -358,6 +358,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
                                     "publication_date": str(source.get("publication_date") or "")[:24],
                                     "freshness_status": str(source.get("freshness_status") or "undated")[:20],
                                     "identity_subject": str(source.get("identity_subject") or "unknown")[:12],
+                                    "identity_strength": str(source.get("identity_strength") or "unknown")[:16],
                                     "type": str(source.get("type") or "")[:40],
                                     "query_rungs": list(dict.fromkeys(
                                         str(match.get("type") or "")[:48] for match in source.get("query_matches", [])
@@ -371,7 +372,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         event_items = event_doc.get("events", []) if isinstance(event_doc, dict) else []
         source_snapshot["signal_events"] = [{key: str(event.get(key) or "")[:100] for key in ("url", "category", "subject", "path_fit", "label")}
                                              for event in event_items[:10] if isinstance(event, dict) and event.get("url") and event.get("category")]
-    sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
+    sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("identity_strength", 16), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
                | {"query_rungs": list(dict.fromkeys(
                     str(match.get("type") or "")[:48] for match in source.get("query_matches", [])
                     if isinstance(match, dict) and match.get("type")))[:6]}
