@@ -11012,7 +11012,7 @@
     "dse.grid_enrich": {
       "label": "Ledgers: enrich grid rows live",
       "group": "Grow",
-      "help": "Runs lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, Herald company/person signals and draft, Presence public social signals, or UK director lookup through the official Companies House register. For director lookup, the grid needs a business-name column; city and address columns improve matching. The PC reads grid rows, runs the selected lane, then creates or reuses result columns and writes results back into those rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. Original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted.",
+      "help": "Runs lead enrichment directly on rows already in this Ledger grid. Choose website enrichment, technology and website-gap checks, Herald company/person signals and draft, Presence public social signals, or UK director lookup through the official Companies House register. Tech checks read each row's website and respect robots.txt. For director lookup, the grid needs a business-name column; city and address columns improve matching. The PC reads grid rows, runs the selected lane, then creates or reuses result columns and writes results back into those rows. Existing non-empty output cells stay as they are unless Replace existing values is checked. Original row order and input cells are preserved. No new leads are added and nothing is sent to Herald or posted.",
       "script": "dse.py",
       "args": [
         {
@@ -11035,6 +11035,10 @@
         {
           "opt": "--city-column",
           "field": "city_column"
+        },
+        {
+          "flag": "--fast-tech",
+          "field": "fast_tech"
         },
         {
           "opt": "--engine",
@@ -11141,6 +11145,10 @@
               "label": "Website enrichment: contacts and company details"
             },
             {
+              "value": "tech",
+              "label": "Website technology and gaps"
+            },
+            {
               "value": "herald",
               "label": "Herald: company/person signals and email draft"
             },
@@ -11167,6 +11175,12 @@
           "type": "text",
           "required": false,
           "max": 60
+        },
+        {
+          "name": "fast_tech",
+          "label": "Skip the hidden browser fallback for technology scans",
+          "type": "bool",
+          "default": false
         },
         {
           "name": "engine",
@@ -11498,7 +11512,7 @@
         "Enriches existing grid rows in place",
         "Creates/reuses columns for the selected output fields",
         "Preserves original row inputs; existing result cells are kept unless replace is selected",
-        "Website, Herald, Presence and Companies House director lanes"
+        "Website, technology, Herald, Presence and Companies House director lanes"
       ]
     },
     "dse.enrich_spend_preview": {

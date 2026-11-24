@@ -17,18 +17,20 @@ from . import gridpush, gridrun
 from .common import LISTS, ROOT
 from . import enrichment_profiles
 
-LANES = {"website", "herald", "presence", "directors"}
+LANES = {"website", "herald", "presence", "directors", "tech"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
     "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
     "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "presence_monitor_history"],
     "directors": ["director_first", "director_last", "director_role", "ch_company", "ch_number", "ch_match"],
+    "tech": ["tech_platform", "tech_booking", "tech_chat", "tech_forms_crm", "tech_analytics", "tech_ads_tracking", "tech_email", "tech_payments", "tech_reviews", "tech_hosting", "tech_mobile_ready", "tech_https", "tech_structured_data", "tech_copyright_year", "tech_gaps", "tech_gap_count", "tech_status", "tech_scanned_on"],
 }
 FULL_OUTPUTS = {
     "website": ["found_email", "email_source", "other_emails", "email_guesses", "email_check", "contact_page_url", "field_results", "enrichment_audit"],
     "herald": ["herald_findings", "herald_sources", "herald_company_sources", "herald_person_sources", "herald_role_candidates", "herald_people_candidates", "research_findings", "research_sources", "research_searched_at", "research_status", "enrichment_search_strategy", "field_results"],
     "presence": ["presence_signals", "field_results", "presence_search_waterfall"],
     "directors": [],
+    "tech": [],
 }
 
 
@@ -56,7 +58,7 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
               enrichment_profile: str = "", provider_budget: int | None = None,
               brave_cost_per_1000: float | None = None, brave_max_spend: float | None = None,
               announce_cost_ceiling: bool = True, max_provider_spend: float | None = None,
-              allow_unknown_provider_cost: bool = False, company_column: str = "", city_column: str = ""):
+              allow_unknown_provider_cost: bool = False, company_column: str = "", city_column: str = "", fast_tech: bool = False):
     if lane == "website":
         from . import enrich
         active_waterfall = waterfall_config if provider_budget is None or provider_budget > 0 else ""
@@ -80,14 +82,19 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
             search_budget=min(search_budget, 10), minimum_identity_score=minimum_identity_score,
             enrichment_profile=enrichment_profile)
         m = re.search(r"Saved: (\S+\.csv)", report)
-    else:
+    elif lane == "directors":
         from . import chdirectors
         result_path = source.with_name(f"{source.stem}-directors.csv")
         chdirectors.file(str(source), company_col=company_column, city_col=city_column, max_rows=limit, out=str(result_path))
         m = None
-    if lane != "directors" and not m:
+    else:
+        from . import tech
+        result_path = Path(tech.tech_file(str(source), max_rows=limit, render=not fast_tech,
+                                          out=str(source.with_name(f"{source.stem}-tech.csv"))))
+        m = None
+    if lane not in ("directors", "tech") and not m:
         raise RuntimeError("The enrichment finished but did not report its result CSV path.")
-    if lane != "directors":
+    if lane not in ("directors", "tech"):
         result_path = ROOT / m.group(1)
     if not result_path.is_file():
         raise RuntimeError("The enrichment result CSV is missing from this PC.")
@@ -566,6 +573,8 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     enrichment_profile = str(options.pop("enrichment_profile", "none") or "none")
     if enrichment_profile == "none":
         enrichment_profile = ""
+    if lane not in ("website", "herald", "presence"):
+        enrichment_profile = ""
     provider_budget = None
     if enrichment_profile:
         plan = enrichment_profiles.build_profile(enrichment_profile)
@@ -704,7 +713,8 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 batch_options["announce_cost_ceiling"] = False
             result_path, batch_headers, enriched_rows = _run_lane(input_path, lane, engine, len(batch_rows), output_detail,
                 enrichment_profile=enrichment_profile, provider_budget=batch_provider_budget,
-                company_column=str(batch_options.pop("company_column", "") or ""), city_column=str(batch_options.pop("city_column", "") or ""), **batch_options)
+                company_column=str(batch_options.pop("company_column", "") or ""), city_column=str(batch_options.pop("city_column", "") or ""),
+                fast_tech=bool(batch_options.pop("fast_tech", False)), **batch_options)
         except Exception as error:
             raise RuntimeError(f"Grid enrichment stopped after {completed} rows were saved. Resume with --start-row {start_row + completed} using the same lane and settings. {str(error)[:220]}") from error
         finally:
@@ -752,7 +762,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 if isinstance(categories, list):
                     for cue in set(str(item) for item in categories if item):
                         monitor_cue_counts[cue] = monitor_cue_counts.get(cue, 0) + 1
-        if enrichment_profile:
+        if enrichment_profile and lane in ("website", "herald", "presence"):
             profile_record = enrichment_profiles.build_profile(enrichment_profile)
             profile_summary = {"schema": profile_record["schema"], "profile_version": profile_record["profile_version"],
                                "profile_key": enrichment_profile, "path_key": enrichment_profile, "lane": lane,
@@ -820,6 +830,7 @@ def cli(argv: list[str]) -> int:
     parser.add_argument("--icp", default="")
     parser.add_argument("--company-column", default="", help="directors lane: business-name column (auto-detects Company, Business or Name)")
     parser.add_argument("--city-column", default="", help="directors lane: city column (auto-detects City or Town)")
+    parser.add_argument("--fast-tech", action="store_true", help="tech lane: skip the hidden browser fallback")
     parser.add_argument("--waterfall-config", default="")
     parser.add_argument("--dry-run-providers", action="store_true")
     parser.add_argument("--max-provider-spend", type=float, default=None, help="required approved ceiling for configured known-price provider charges")
