@@ -878,6 +878,7 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
                  "title": s.get("title", "")[:240],
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""),
+                 "freshness_status": s.get("freshness_status", "undated"),
                  "category": s.get("type", "")}
                 for s in signals if s.get("url")][:12]}}
 
@@ -890,6 +891,17 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
     new_urls = {u for u in str(comparison.get(f"{prefix}_new_source_urls") or "").splitlines() if u}
     changed_urls = {u for u in str(comparison.get(f"{prefix}_changed_source_urls") or "").splitlines() if u}
     missing_urls = {u for u in str(comparison.get(f"{prefix}_not_returned_urls") or "").splitlines() if u}
+    freshness_rank = {"recent": 0, "aging": 1, "stale": 2}
+    previous_sources = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
+                        if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
+    freshness_downgrades = set()
+    if status == "compared":
+        for signal in signals:
+            url = str(signal.get("url") or "")
+            before = freshness_rank.get(str(previous_sources.get(url, {}).get("freshness_status") or ""))
+            after = freshness_rank.get(str(signal.get("freshness_status") or ""))
+            if url and before is not None and after is not None and after > before:
+                freshness_downgrades.add(url)
     event_deltas = []
     if lane == "herald" and isinstance(previous, dict) and isinstance(previous.get("signal_events"), list):
         prior_fits = {}
@@ -915,6 +927,8 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
             event.get("path_fit") == "priority" and event.get("url") in new_urls | changed_urls
             for event in (events or []) if isinstance(event, dict)
         )) else "REVIEW SOURCE CHANGE — confirm it at the source"
+    elif freshness_downgrades:
+        action = "RECHECK — source evidence has aged; verify it is still current"
     elif missing_urls:
         action = "RECHECK — previously returned sources were not found"
     elif status == "compared":
@@ -936,6 +950,11 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         detail = f"{fit}: {reason} — {label} — {str(event.get('url') or '')[:240]}"
         if detail not in details:
             details.append(detail)
+    for url in sorted(freshness_downgrades)[:5]:
+        signal = signal_by_url.get(url, {})
+        date = str(signal.get("publication_date") or "publication date unavailable")[:24]
+        freshness = str(signal.get("freshness_status") or "unknown")[:20]
+        details.append(f"Source freshness changed to {freshness} ({date}); recheck current evidence — {url[:240]}")
     if not details and missing_urls and not status.startswith("partial"):
         details = [f"Not returned on this complete search; existence is unconfirmed: {url[:240]}" for url in sorted(missing_urls)[:3]]
     return {f"{prefix}_change_action": action,
