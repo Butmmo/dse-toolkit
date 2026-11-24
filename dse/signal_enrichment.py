@@ -798,6 +798,30 @@ def _load_presence_history() -> dict:
         return {"schema": "dbi.presence-history.v1", "leads": {}}
 
 
+def _ledger_monitor_snapshot(row: dict, lane: str) -> dict | None:
+    """Read the newest complete Ledger-row baseline so any PC can continue its comparison."""
+    try:
+        history = json.loads(row.get(f"{lane}_monitor_history") or "[]")
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(history, list):
+        return None
+    for record in reversed(history):
+        if not isinstance(record, dict) or record.get("status") not in {"first_check", "compared"}:
+            continue
+        snapshot = record.get("snapshot")
+        if isinstance(snapshot, dict) and isinstance(snapshot.get("sources"), list):
+            return snapshot
+        # Earlier Ledger monitor history kept display snippets without fingerprints.
+        # Reuse its URLs and titles, but let the comparator treat missing hashes as unknown.
+        legacy_sources = record.get("sources")
+        if isinstance(legacy_sources, list):
+            return {"checked_at": record.get("checked_at", ""),
+                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "type") if key in source}
+                                for source in legacy_sources if isinstance(source, dict) and source.get("url")]}
+    return None
+
+
 def _presence_comparison(previous: dict | None, signals: list[dict], checked_at: str, search_errors: list[str]) -> dict:
     current = {s.get("url", ""): s for s in signals if s.get("url")}
     old_sources = {s.get("url", ""): s for s in (previous or {}).get("sources", []) if s.get("url")}
@@ -805,7 +829,7 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
     not_returned = sorted(set(old_sources) - set(current)) if previous else []
     changed_urls = sorted(url for url in set(current) & set(old_sources) if (
         current[url].get("title", "") != old_sources[url].get("title", "") or
-        hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash", "") or
+        (old_sources[url].get("snippet_hash") and hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash")) or
         current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
     if search_errors:
         status = "partial_check" if previous else "partial_first_check"
@@ -837,7 +861,7 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
     missing_urls = sorted(set(old_sources) - set(current)) if previous else []
     changed_urls = sorted(url for url in set(current) & set(old_sources) if (
         current[url].get("title", "") != old_sources[url].get("title", "") or
-        hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash", "") or
+        (old_sources[url].get("snippet_hash") and hashlib.sha256(current[url].get("snippet", "").encode("utf-8")).hexdigest() != old_sources[url].get("snippet_hash")) or
         current[url].get("publication_date", "") != old_sources[url].get("publication_date", ""))) if previous else []
     status = "partial_check" if partial and previous else "partial_first_check" if partial else "first_check" if not previous else "compared"
     summary = "First check; no earlier source snapshot" if status == "first_check" else (
@@ -1383,7 +1407,8 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
         checked_at = signals[0]["retrieved_at"] if signals else dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         history_key = _presence_history_key(row)
         partial = bool(row_errors) or any(m.get("status") == "skipped_budget" or m.get("errors", 0) for m in query_metrics)
-        comparison = _herald_comparison(prior_history["leads"].get(history_key) if history_key else None,
+        prior_snapshot = _ledger_monitor_snapshot(row, "herald") or (prior_history["leads"].get(history_key) if history_key else None)
+        comparison = _herald_comparison(prior_snapshot,
                                         signals, checked_at, partial)
         snapshot = comparison.pop("_snapshot")
         row.update(comparison)
@@ -1578,7 +1603,8 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         comparison_errors = list(row_errors)
         if any(m.get("status") == "skipped_budget" for m in query_metrics):
             comparison_errors.append("search budget limited this check")
-        comparison = _presence_comparison(previous_history.get(history_key) if history_key else None, signals, checked_at, comparison_errors)
+        prior_snapshot = _ledger_monitor_snapshot(row, "presence") or (previous_history.get(history_key) if history_key else None)
+        comparison = _presence_comparison(prior_snapshot, signals, checked_at, comparison_errors)
         snapshot = comparison.pop("_snapshot")
         if history_key and not comparison_errors:
             next_history[history_key] = snapshot

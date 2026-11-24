@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -350,6 +351,15 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         raw_sources = []
     if not isinstance(raw_sources, list):
         raw_sources = []
+    source_snapshot = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
+                       "sources": [{"url": str(source.get("url") or "")[:180],
+                                    "title": str(source.get("title") or "")[:80],
+                                    "snippet_hash": hashlib.sha256(str(source.get("snippet") or "").encode("utf-8")).hexdigest(),
+                                    "publication_date": str(source.get("publication_date") or "")[:24],
+                                    "freshness_status": str(source.get("freshness_status") or "undated")[:20],
+                                    "identity_subject": str(source.get("identity_subject") or "unknown")[:12],
+                                    "type": str(source.get("type") or "")[:40]}
+                                   for source in raw_sources[:8] if isinstance(source, dict) and source.get("url")]}
     sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
@@ -357,6 +367,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
               "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
               "review_action": str(result_row.get(f"{prefix}_change_action") or "")[:120],
               "change_evidence": str(result_row.get(f"{prefix}_change_evidence") or "")[:500],
+              "snapshot": source_snapshot,
               "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
               "not_returned_urls": [u[:220] for u in urls("not_returned_urls")[:4]], "sources": sources}
     if not record["checked_at"]:
@@ -371,7 +382,8 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         history = [{"checked_at": record["checked_at"], "status": record["status"], "summary": record["summary"],
                     "review_action": record["review_action"], "change_evidence": record["change_evidence"][:260],
                     "new_source_urls": record["new_source_urls"][:2], "changed_source_urls": record["changed_source_urls"][:2],
-                    "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1]}]
+                    "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1],
+                    "snapshot": {"checked_at": source_snapshot["checked_at"], "sources": source_snapshot["sources"][:4]}}]
         value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
     return value
 
