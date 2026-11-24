@@ -358,7 +358,10 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
                                     "publication_date": str(source.get("publication_date") or "")[:24],
                                     "freshness_status": str(source.get("freshness_status") or "undated")[:20],
                                     "identity_subject": str(source.get("identity_subject") or "unknown")[:12],
-                                    "type": str(source.get("type") or "")[:40]}
+                                    "type": str(source.get("type") or "")[:40],
+                                    "query_rungs": list(dict.fromkeys(
+                                        str(match.get("type") or "")[:48] for match in source.get("query_matches", [])
+                                        if isinstance(match, dict) and match.get("type")))[:6]}
                                    for source in raw_sources[:8] if isinstance(source, dict) and source.get("url")]}
     if lane == "herald":
         try:
@@ -369,6 +372,9 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         source_snapshot["signal_events"] = [{key: str(event.get(key) or "")[:100] for key in ("url", "category", "subject", "path_fit", "label")}
                                              for event in event_items[:10] if isinstance(event, dict) and event.get("url") and event.get("category")]
     sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
+               | {"query_rungs": list(dict.fromkeys(
+                    str(match.get("type") or "")[:48] for match in source.get("query_matches", [])
+                    if isinstance(match, dict) and match.get("type")))[:6]}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",

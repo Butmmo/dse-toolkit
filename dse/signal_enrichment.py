@@ -817,7 +817,7 @@ def _ledger_monitor_snapshot(row: dict, lane: str) -> dict | None:
         legacy_sources = record.get("sources")
         if isinstance(legacy_sources, list):
             return {"checked_at": record.get("checked_at", ""),
-                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "type") if key in source}
+                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "type", "category", "query_rungs") if key in source}
                                 for source in legacy_sources if isinstance(source, dict) and source.get("url")]}
     return None
 
@@ -849,7 +849,10 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
             "_snapshot": {"checked_at": checked_at, "sources": [
                 {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"), "title": s.get("title", "")[:240],
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
-                 "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated")}
+                 "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
+                 "type": s.get("type", ""),
+                 "query_rungs": list(dict.fromkeys(str(match.get("type") or "")[:48] for match in s.get("query_matches", [])
+                                                    if isinstance(match, dict) and match.get("type")))[:6]}
                 for s in signals if s.get("url")][:8]}}
 
 
@@ -879,18 +882,34 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""),
                  "freshness_status": s.get("freshness_status", "undated"),
-                 "category": s.get("type", "")}
+                 "category": s.get("type", ""), "type": s.get("type", ""),
+                 "query_rungs": list(dict.fromkeys(str(match.get("type") or "")[:48] for match in s.get("query_matches", [])
+                                                    if isinstance(match, dict) and match.get("type")))[:6]}
                 for s in signals if s.get("url")][:12]}}
 
 
 def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: list[dict] | None = None,
-                    previous: dict | None = None) -> dict:
+                    previous: dict | None = None, query_metrics: list[dict] | None = None) -> dict:
     """Turn a source snapshot diff into a cautious, source-linked review cue; never trigger outreach."""
     prefix = "herald" if lane == "herald" else "presence"
     status = str(comparison.get(f"{prefix}_comparison_status", "unknown"))
     new_urls = {u for u in str(comparison.get(f"{prefix}_new_source_urls") or "").splitlines() if u}
     changed_urls = {u for u in str(comparison.get(f"{prefix}_changed_source_urls") or "").splitlines() if u}
     missing_urls = {u for u in str(comparison.get(f"{prefix}_not_returned_urls") or "").splitlines() if u}
+    metrics_by_rung = {str(metric.get("rung") or ""): metric for metric in (query_metrics or []) if isinstance(metric, dict)}
+    old_sources_by_url = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
+                          if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
+    covered_missing, uncovered_missing = set(), set()
+    for url in missing_urls:
+        source = old_sources_by_url.get(url, {})
+        rungs = source.get("query_rungs") if isinstance(source.get("query_rungs"), list) else []
+        if not rungs:
+            fallback_rung = source.get("type") or source.get("category")
+            rungs = [fallback_rung] if fallback_rung else []
+        # If several prior searches found the same source, repeat each known rung
+        # before treating its absence as a meaningful recheck.
+        covered = bool(rungs) and all(metrics_by_rung.get(str(rung), {}).get("status") in ("hit", "miss") for rung in rungs)
+        (covered_missing if covered else uncovered_missing).add(url)
     freshness_rank = {"recent": 0, "aging": 1, "stale": 2}
     previous_sources = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
                         if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
@@ -929,7 +948,9 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         )) else "REVIEW SOURCE CHANGE — confirm it at the source"
     elif freshness_downgrades:
         action = "RECHECK — source evidence has aged; verify it is still current"
-    elif missing_urls:
+    elif uncovered_missing:
+        action = "CHECK INCOMPLETE — earlier source searches were not all repeated"
+    elif covered_missing:
         action = "RECHECK — previously returned sources were not found"
     elif status == "compared":
         action = "NO NEW SOURCE CHANGE"
@@ -955,8 +976,11 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         date = str(signal.get("publication_date") or "publication date unavailable")[:24]
         freshness = str(signal.get("freshness_status") or "unknown")[:20]
         details.append(f"Source freshness changed to {freshness} ({date}); recheck current evidence — {url[:240]}")
-    if not details and missing_urls and not status.startswith("partial"):
-        details = [f"Not returned on this complete search; existence is unconfirmed: {url[:240]}" for url in sorted(missing_urls)[:3]]
+    if not status.startswith("partial"):
+        details.extend(f"Previously returned source not found after repeating its recorded search rung(s); existence is unconfirmed: {url[:240]}"
+                       for url in sorted(covered_missing)[:3])
+        details.extend(f"Coverage not repeated for this prior source; absence is inconclusive: {url[:240]}"
+                       for url in sorted(uncovered_missing)[:3])
     return {f"{prefix}_change_action": action,
             f"{prefix}_change_evidence": "\n".join(details)[:1800]}
 
@@ -1467,7 +1491,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             event["path_fit"] = "priority" if category in path["priority"] else "supporting" if category in path["supporting"] else "general"
             event["path_label"] = path["label"]
             annotated_events.append(event)
-        row.update(_monitor_action("herald", comparison, signals, annotated_events, prior_snapshot))
+        row.update(_monitor_action("herald", comparison, signals, annotated_events, prior_snapshot, query_metrics))
         row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "path_focus": {"key": selected_path or "any", "label": path["label"], "method": path["method"], "pain": path["pain"], "buyer": path["buyer"], "revenue_model": path["revenue_model"], "proof_metrics": path["proof_metrics"], "priority_categories": path["priority"], "supporting_categories": path["supporting"]}, "events": annotated_events}, ensure_ascii=False, separators=(",", ":"))
         outcome_plan = path_signals.outcome_plan(selected_path or "any")
         known_source_ids = {signal.get("id"): signal for signal in signals if signal.get("id")}
@@ -1660,7 +1684,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         row["presence_search_waterfall"] = json.dumps(waterfall, ensure_ascii=False, separators=(",", ":"))
         row["enrichment_profile"] = json.dumps(profile_record, ensure_ascii=False, separators=(",", ":")) if profile_record else ""
         row.update(comparison)
-        row.update(_monitor_action("presence", comparison, signals))
+        row.update(_monitor_action("presence", comparison, signals, previous=prior_snapshot, query_metrics=query_metrics))
         result_contract = build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score)
         result_contract = _attach_profile_results(result_contract, profile_record, signals)
         row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)
