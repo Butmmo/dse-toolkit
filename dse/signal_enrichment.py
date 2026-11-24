@@ -273,13 +273,42 @@ def _query_fingerprints(source: dict) -> list[dict]:
     return out[:8]
 
 
+_TRACKING_QUERY_KEYS = {"fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "igshid", "vero_id"}
+
+
+def _canonical_monitor_url(url: str) -> str:
+    """Normalize tracking-only URL differences for monitoring identity, not for display/open links."""
+    raw = str(url or "").strip()
+    try:
+        parsed = urllib.parse.urlsplit(raw)
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            return raw
+        scheme = parsed.scheme.lower()
+        host = parsed.hostname.lower()
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = parsed.port
+        netloc = host
+        if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+            netloc = f"{netloc}:{port}"
+        query = [(key, value) for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+                 if not key.casefold().startswith("utm_") and key.casefold() not in _TRACKING_QUERY_KEYS]
+        query.sort(key=lambda item: (item[0].casefold(), item[0], item[1]))
+        return urllib.parse.urlunsplit((scheme, netloc, parsed.path or "/", urllib.parse.urlencode(query, doseq=True), ""))
+    except (ValueError, UnicodeError):
+        return raw
+
+
 def _url_fingerprint(source: dict) -> str:
-    """Compare compact snapshots by the full URL, even when their display URL is shortened."""
+    """Compare URLs after removing fragments and common tracking parameters."""
     supplied = str(source.get("url_fingerprint") or "").strip()
-    if supplied:
+    if supplied.startswith("u2:"):
         return supplied
     url = str(source.get("url") or "").strip()
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16] if url else ""
+    if not url and supplied:
+        return supplied
+    canonical = _canonical_monitor_url(url)
+    return "u2:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16] if canonical else ""
 
 
 def _publication_date(title: str, snippet: str, date_hint: str = "") -> dict:
@@ -455,7 +484,7 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
             metric["search_calls"] = (BRAVE_SEARCH_REQUESTS - calls_before) if search_provider == "brave" else 1
             metric["results_returned"] = len(results)
             metric["observed_url_fingerprints"] = list(dict.fromkeys(
-                hashlib.sha256(str(item.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]
+                _url_fingerprint(item)
                 for item in results if isinstance(item, dict) and item.get("url")))[:30]
         except SearchProviderError as e:
             metric["search_calls"] = BRAVE_SEARCH_REQUESTS - calls_before if search_provider == "brave" else 0
@@ -551,7 +580,7 @@ def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, min
             results = search(query)
             metric["search_calls"], metric["results_returned"] = 1, len(results)
             metric["observed_url_fingerprints"] = list(dict.fromkeys(
-                hashlib.sha256(str(item.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]
+                _url_fingerprint(item)
                 for item in results if isinstance(item, dict) and item.get("url")))[:30]
         except Exception as e:
             metric["errors"], metric["status"] = 1, "error"
@@ -1001,7 +1030,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
     returned_not_retained = {}
     for url in missing_urls:
         source = old_sources_by_url.get(url, {})
-        url_fingerprint = str(source.get("url_fingerprint") or hashlib.sha256(url.strip().encode("utf-8")).hexdigest()[:16])
+        url_fingerprint = _url_fingerprint(source) if source else _url_fingerprint({"url": url})
         if observed_url_rungs.get(url_fingerprint):
             returned_not_retained[url] = list(dict.fromkeys(observed_url_rungs[url_fingerprint]))
     actual_missing_urls = missing_urls - set(returned_not_retained)
@@ -1056,7 +1085,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         prior_fits = {}
         for old_event in previous["signal_events"]:
             if isinstance(old_event, dict) and old_event.get("url") and old_event.get("category"):
-                key = (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)), old_event.get("category"), old_event.get("subject", ""))
+                key = (_url_fingerprint(old_event), old_event.get("category"), old_event.get("subject", ""))
                 prior_fits[key] = old_event.get("path_fit", "")
         for event in events or []:
             if not isinstance(event, dict) or not event.get("url") or not event.get("category"):
@@ -1070,8 +1099,8 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
                               for event in (events or []) if isinstance(event, dict) and event.get("url") and event.get("category")}
         current_source_urls = {_url_fingerprint(signal) for signal in signals if isinstance(signal, dict) and signal.get("url")}
         event_no_longer_detected = [old_event for old_event in previous["signal_events"]
-                                    if isinstance(old_event, dict) and (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)) in current_source_urls)
-                                    and (str(old_event.get("url_fingerprint") or _url_fingerprint(old_event)), old_event.get("category"), old_event.get("subject", "")) not in current_event_keys]
+                                    if isinstance(old_event, dict) and _url_fingerprint(old_event) in current_source_urls
+                                    and (_url_fingerprint(old_event), old_event.get("category"), old_event.get("subject", "")) not in current_event_keys]
     change_categories = []
     def add_category(condition: bool, category: str) -> None:
         if condition and category not in change_categories:

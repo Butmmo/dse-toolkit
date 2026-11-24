@@ -333,6 +333,7 @@ def _evidence_decisions(row: dict, lane: str = "herald") -> str:
 
 def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
     """Append a compact source snapshot to the shared Ledger row history."""
+    from .signal_enrichment import _url_fingerprint
     if lane == "herald":
         prefix, sources_field = "herald", "herald_sources"
     else:
@@ -368,7 +369,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         return out[:8]
     source_snapshot = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
                        "sources": [{"url": str(source.get("url") or "")[:180],
-                                    "url_fingerprint": hashlib.sha256(str(source.get("url") or "").strip().encode("utf-8")).hexdigest()[:16],
+                                    "url_fingerprint": _url_fingerprint(source),
                                     "title": str(source.get("title") or "")[:80],
                                     "snippet_hash": hashlib.sha256(str(source.get("snippet") or "").encode("utf-8")).hexdigest(),
                                     "publication_date": str(source.get("publication_date") or "")[:24],
@@ -386,10 +387,10 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
             event_doc = {}
         event_items = event_doc.get("events", []) if isinstance(event_doc, dict) else []
         source_snapshot["signal_events"] = [{key: str(event.get(key) or "")[:220 if key == "url" else 100] for key in ("url", "category", "subject", "path_fit", "label")}
-                                             | {"url_fingerprint": hashlib.sha256(str(event.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]}
+                                             | {"url_fingerprint": _url_fingerprint(event)}
                                              for event in event_items[:10] if isinstance(event, dict) and event.get("url") and event.get("category")]
     sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("identity_strength", 16), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
-               | {"url_fingerprint": hashlib.sha256(str(source.get("url") or "").strip().encode("utf-8")).hexdigest()[:16]}
+               | {"url_fingerprint": _url_fingerprint(source)}
                | {"query_rungs": list(dict.fromkeys(item["rung"] for item in query_fingerprints(source)))[:6],
                   "query_fingerprints": query_fingerprints(source)}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
