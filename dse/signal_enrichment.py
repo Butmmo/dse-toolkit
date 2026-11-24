@@ -683,6 +683,24 @@ def _attach_profile_results(encoded: str, profile_record: dict, signals: list[di
     return json.dumps(results, ensure_ascii=False, separators=(",", ":"))
 
 
+def _monitor_review_payload(action: object, evidence: object, categories: object, sources: object) -> dict:
+    """Return a stable, structured review cue shared by Herald and Presence."""
+    def as_list(value: object) -> list:
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                return []
+        return [item for item in value if isinstance(item, (dict, str))] if isinstance(value, list) else []
+
+    return {
+        "action": str(action or ""),
+        "evidence": str(evidence or ""),
+        "categories": as_list(categories),
+        "sources": [item for item in as_list(sources) if isinstance(item, dict)],
+    }
+
+
 def build_herald_field_results(row: dict, signals: list[dict], search_provider: str, search_metrics: list[dict] | None = None,
                                search_budget: int = 12, minimum_identity_score: float = 0.0,
                                brave_cost_per_1000: float | None = None) -> str:
@@ -738,6 +756,8 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
         field="signal_source_monitoring",
         value={"status": monitor_status, "action": row.get("herald_change_action", ""),
                "evidence": row.get("herald_change_evidence", ""),
+               "review": _monitor_review_payload(row.get("herald_change_action"), row.get("herald_change_evidence"),
+                                                  row.get("herald_change_categories"), row.get("herald_change_sources")),
                "summary": row.get("herald_change_summary", ""),
                "new_source_urls": row.get("herald_new_source_urls", ""),
                "changed_source_urls": row.get("herald_changed_source_urls", ""),
@@ -874,6 +894,8 @@ def build_presence_field_results(signals: list[dict], checked_at: str, search_me
         field="presence_source_monitoring",
         value={"status": monitor_status, "action": monitor_row.get("presence_change_action", ""),
                "evidence": monitor_row.get("presence_change_evidence", ""),
+               "review": _monitor_review_payload(monitor_row.get("presence_change_action"), monitor_row.get("presence_change_evidence"),
+                                                  monitor_categories, monitor_refs),
                "summary": monitor_row.get("presence_change_summary", ""), "categories": monitor_categories,
                "sources": monitor_refs, "previous_checked_at": monitor_row.get("presence_previous_checked_at", "")},
         status="candidate" if monitor_status in ("compared", "first_check") or monitor_candidates else "not_found",
