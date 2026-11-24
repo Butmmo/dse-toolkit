@@ -254,6 +254,25 @@ def _ratio(expected: set[str], observed: set[str]) -> tuple[float, list[str]]:
     return (len(matched) / len(expected) if expected else 0.0), matched
 
 
+def _query_fingerprints(source: dict) -> list[dict]:
+    """Keep search-rung coverage auditable without retaining the searched text in the snapshot."""
+    matches = source.get("query_matches") if isinstance(source.get("query_matches"), list) else []
+    if not matches and source.get("type") and source.get("query"):
+        matches = [{"type": source.get("type"), "query": source.get("query")}]
+    seen, out = set(), []
+    for match in matches:
+        if not isinstance(match, dict) or not match.get("type") or not match.get("query"):
+            continue
+        rung = str(match["type"])[:48]
+        normalized = " ".join(str(match["query"]).split()).casefold()
+        fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+        key = (rung, fingerprint)
+        if key not in seen:
+            seen.add(key)
+            out.append({"rung": rung, "fingerprint": fingerprint})
+    return out[:8]
+
+
 def _publication_date(title: str, snippet: str, date_hint: str = "") -> dict:
     """Extract only an explicit or relative publication date; search time is not publication time."""
     text = html.unescape(f"{date_hint or ''} {title or ''} {snippet or ''}")
@@ -411,7 +430,8 @@ def gather(row: dict, max_signals: int = 6, business_profile: str = "any", decis
     errors = []
     queries = queries_for(row, business_profile, decision_maker, legal_form, decision_role, custom_role, path_key) + decision_maker_queries_for(row, decision_maker, custom_role)
     for query_index, (kind, query) in enumerate(queries):
-        metric = {"rung": kind, "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
+        metric = {"rung": kind, "query_fingerprint": hashlib.sha256(" ".join(query.split()).casefold().encode("utf-8")).hexdigest()[:16],
+                  "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
                   "duplicates": 0, "identity_rejected": 0, "role_rejected": 0, "score_rejected": 0, "errors": 0,
                   "status": "not_run"}
         if metrics_out is not None:
@@ -506,7 +526,8 @@ def gather_presence(row: dict, max_signals: int = 8, search_budget: int = 3, min
     checked_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     found, seen, errors = [], set(), []
     for query_index, (kind, query) in enumerate(presence_queries_for(row, path_key)):
-        metric = {"rung": kind, "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
+        metric = {"rung": kind, "query_fingerprint": hashlib.sha256(" ".join(query.split()).casefold().encode("utf-8")).hexdigest()[:16],
+                  "attempted": 0, "search_calls": 0, "results_returned": 0, "retained": 0,
                   "duplicates": 0, "identity_rejected": 0, "score_rejected": 0, "errors": 0, "status": "not_run"}
         if metrics_out is not None:
             metrics_out.append(metric)
@@ -663,7 +684,7 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
         status="candidate" if monitor_status in ("compared", "first_check") else "not_found",
         observed_at=now, source_type="public_web_search", source_name=search_provider,
         verification_status="source_snapshot_comparison",
-        verification_method="Compares URL, title, snippet fingerprint and publication date across complete searches; absence in a partial search is inconclusive.",
+        verification_method="Compares source URL, title, snippet and publication date. Missing-source checks also compare recorded query-rung fingerprints; partial or changed-query coverage is inconclusive.",
         candidates=[fr.source_ref(source_type="public_web_search", source_name=s.get("provider", search_provider),
                                   source_url=s.get("url", ""), source_record_id=s.get("id", ""),
                                   value={"title": s.get("title", ""), "snippet": s.get("snippet", "")})
@@ -817,7 +838,7 @@ def _ledger_monitor_snapshot(row: dict, lane: str) -> dict | None:
         legacy_sources = record.get("sources")
         if isinstance(legacy_sources, list):
             return {"checked_at": record.get("checked_at", ""),
-                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "identity_strength", "type", "category", "query_rungs") if key in source}
+                    "sources": [{key: source.get(key) for key in ("url", "title", "snippet_hash", "publication_date", "freshness_status", "identity_subject", "identity_strength", "type", "category", "query_rungs", "query_fingerprints") if key in source}
                                 for source in legacy_sources if isinstance(source, dict) and source.get("url")]}
     return None
 
@@ -854,7 +875,8 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
                  "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
                  "type": s.get("type", ""),
                  "query_rungs": list(dict.fromkeys(str(match.get("type") or "")[:48] for match in s.get("query_matches", [])
-                                                    if isinstance(match, dict) and match.get("type")))[:6]}
+                                                    if isinstance(match, dict) and match.get("type")))[:6],
+                 "query_fingerprints": _query_fingerprints(s)}
                 for s in signals if s.get("url")][:8]}}
 
 
@@ -888,7 +910,8 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
                  "freshness_status": s.get("freshness_status", "undated"),
                  "category": s.get("type", ""), "type": s.get("type", ""),
                  "query_rungs": list(dict.fromkeys(str(match.get("type") or "")[:48] for match in s.get("query_matches", [])
-                                                    if isinstance(match, dict) and match.get("type")))[:6]}
+                                                    if isinstance(match, dict) and match.get("type")))[:6],
+                 "query_fingerprints": _query_fingerprints(s)}
                 for s in signals if s.get("url")][:12]}}
 
 
@@ -900,19 +923,31 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
     new_urls = {u for u in str(comparison.get(f"{prefix}_new_source_urls") or "").splitlines() if u}
     changed_urls = {u for u in str(comparison.get(f"{prefix}_changed_source_urls") or "").splitlines() if u}
     missing_urls = {u for u in str(comparison.get(f"{prefix}_not_returned_urls") or "").splitlines() if u}
+    metrics_by_query = {(str(metric.get("rung") or ""), str(metric.get("query_fingerprint") or "")): metric
+                        for metric in (query_metrics or []) if isinstance(metric, dict)}
     metrics_by_rung = {str(metric.get("rung") or ""): metric for metric in (query_metrics or []) if isinstance(metric, dict)}
     old_sources_by_url = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
                           if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
     covered_missing, uncovered_missing = {}, {}
     for url in missing_urls:
         source = old_sources_by_url.get(url, {})
+        query_fingerprints = source.get("query_fingerprints") if isinstance(source.get("query_fingerprints"), list) else []
         rungs = source.get("query_rungs") if isinstance(source.get("query_rungs"), list) else []
-        if not rungs:
-            fallback_rung = source.get("type") or source.get("category")
-            rungs = [fallback_rung] if fallback_rung else []
+        if query_fingerprints:
+            rung_states = {}
+            for item in query_fingerprints:
+                if not isinstance(item, dict) or not item.get("rung") or not item.get("fingerprint"):
+                    continue
+                rung, fingerprint = str(item["rung"]), str(item["fingerprint"])
+                metric = metrics_by_query.get((rung, fingerprint), {})
+                rung_states[f"{rung}#{fingerprint}"] = str(metric.get("status") or "query changed or not repeated")
+        else:
+            if not rungs:
+                fallback_rung = source.get("type") or source.get("category")
+                rungs = [fallback_rung] if fallback_rung else []
+            rung_states = {str(rung): str(metrics_by_rung.get(str(rung), {}).get("status") or "not repeated") for rung in rungs}
         # If several prior searches found the same source, repeat each known rung
         # before treating its absence as a meaningful recheck.
-        rung_states = {str(rung): str(metrics_by_rung.get(str(rung), {}).get("status") or "not repeated") for rung in rungs}
         covered = bool(rung_states) and all(state in ("hit", "miss") for state in rung_states.values())
         (covered_missing if covered else uncovered_missing)[url] = rung_states
     freshness_rank = {"recent": 0, "aging": 1, "stale": 2}

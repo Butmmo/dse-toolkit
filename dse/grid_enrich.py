@@ -351,6 +351,21 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         raw_sources = []
     if not isinstance(raw_sources, list):
         raw_sources = []
+    def query_fingerprints(source: dict) -> list[dict]:
+        matches = source.get("query_matches") if isinstance(source.get("query_matches"), list) else []
+        if not matches and source.get("type") and source.get("query"):
+            matches = [{"type": source.get("type"), "query": source.get("query")}]
+        seen, out = set(), []
+        for match in matches:
+            if not isinstance(match, dict) or not match.get("type") or not match.get("query"):
+                continue
+            rung = str(match["type"])[:48]
+            normalized = " ".join(str(match["query"]).split()).casefold()
+            fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+            if (rung, fingerprint) not in seen:
+                seen.add((rung, fingerprint))
+                out.append({"rung": rung, "fingerprint": fingerprint})
+        return out[:8]
     source_snapshot = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
                        "sources": [{"url": str(source.get("url") or "")[:180],
                                     "title": str(source.get("title") or "")[:80],
@@ -360,9 +375,8 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
                                     "identity_subject": str(source.get("identity_subject") or "unknown")[:12],
                                     "identity_strength": str(source.get("identity_strength") or "unknown")[:16],
                                     "type": str(source.get("type") or "")[:40],
-                                    "query_rungs": list(dict.fromkeys(
-                                        str(match.get("type") or "")[:48] for match in source.get("query_matches", [])
-                                        if isinstance(match, dict) and match.get("type")))[:6]}
+                                    "query_rungs": list(dict.fromkeys(item["rung"] for item in query_fingerprints(source)))[:6],
+                                    "query_fingerprints": query_fingerprints(source)}
                                    for source in raw_sources[:8] if isinstance(source, dict) and source.get("url")]}
     if lane == "herald":
         try:
@@ -373,9 +387,8 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         source_snapshot["signal_events"] = [{key: str(event.get(key) or "")[:100] for key in ("url", "category", "subject", "path_fit", "label")}
                                              for event in event_items[:10] if isinstance(event, dict) and event.get("url") and event.get("category")]
     sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("identity_strength", 16), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
-               | {"query_rungs": list(dict.fromkeys(
-                    str(match.get("type") or "")[:48] for match in source.get("query_matches", [])
-                    if isinstance(match, dict) and match.get("type")))[:6]}
+               | {"query_rungs": list(dict.fromkeys(item["rung"] for item in query_fingerprints(source)))[:6],
+                  "query_fingerprints": query_fingerprints(source)}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
