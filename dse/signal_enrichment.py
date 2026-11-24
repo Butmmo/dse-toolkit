@@ -36,10 +36,10 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "enrichment_profile", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
-HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_evidence"]
+HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status", "enrichment_profile",
-                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_evidence", "field_results"]
+                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "field_results"]
 PRESENCE_FIELDS.insert(-1, "presence_search_waterfall")
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
 HERALD_HISTORY = ROOT / "data" / "herald-signal-history.json"
@@ -696,6 +696,7 @@ def build_herald_field_results(row: dict, signals: list[dict], search_provider: 
                "changed_source_urls": row.get("herald_changed_source_urls", ""),
                "not_returned_urls": row.get("herald_not_returned_urls", ""),
                "change_categories": row.get("herald_change_categories", "[]"),
+               "change_sources": row.get("herald_change_sources", "[]"),
                "previous_checked_at": row.get("herald_previous_checked_at", "")},
         status="candidate" if monitor_status in ("compared", "first_check") else "not_found",
         observed_at=now, source_type="public_web_search", source_name=search_provider,
@@ -1048,6 +1049,26 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
     add_category(bool(uncovered_missing), "prior_source_coverage_incomplete")
     add_category(status.startswith("partial"), "search_incomplete")
     add_category(status == "first_check", "baseline_established")
+    change_sources = []
+    seen_change_sources = set()
+    def add_sources(category: str, urls) -> None:
+        for url in urls:
+            url = str(url or "").strip()
+            fingerprint = _url_fingerprint({"url": url}) if url else ""
+            key = (category, fingerprint)
+            if url and key not in seen_change_sources and len(change_sources) < 12:
+                seen_change_sources.add(key)
+                change_sources.append({"category": category, "url": url[:220], "url_fingerprint": fingerprint})
+    add_sources("new_source", new_urls)
+    add_sources("changed_source", changed_urls)
+    add_sources("identity_subject_changed", identity_changes)
+    add_sources("identity_strength_declined", identity_strength_drops)
+    add_sources("event_cue_added_or_promoted", [event.get("url") for event, _reason in event_deltas if isinstance(event, dict)])
+    add_sources("event_cue_no_longer_detected", [event.get("url") for event in event_no_longer_detected if isinstance(event, dict)])
+    add_sources("prior_source_returned_but_filtered", returned_not_retained)
+    add_sources("source_freshness_declined", freshness_downgrades)
+    add_sources("prior_source_not_returned_with_matching_coverage", covered_missing)
+    add_sources("prior_source_coverage_incomplete", uncovered_missing)
     priority_event_delta = any(event.get("path_fit") == "priority" for event, _reason in event_deltas)
     if status.startswith("partial"):
         action = "CHECK INCOMPLETE — do not treat missing sources as a signal"
@@ -1114,6 +1135,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
             for url in sorted(uncovered_missing)[:3])
     result = {f"{prefix}_change_action": action,
             f"{prefix}_change_categories": json.dumps(change_categories, ensure_ascii=False, separators=(",", ":")),
+            f"{prefix}_change_sources": json.dumps(change_sources, ensure_ascii=False, separators=(",", ":")),
             f"{prefix}_change_evidence": "\n".join(details)[:1800]}
     if status == "compared":
         result[f"{prefix}_not_returned_urls"] = "\n".join(sorted(actual_missing_urls))
