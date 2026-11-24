@@ -360,6 +360,14 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
                                     "identity_subject": str(source.get("identity_subject") or "unknown")[:12],
                                     "type": str(source.get("type") or "")[:40]}
                                    for source in raw_sources[:8] if isinstance(source, dict) and source.get("url")]}
+    if lane == "herald":
+        try:
+            event_doc = json.loads(result_row.get("herald_signal_events") or "{}")
+        except (ValueError, TypeError):
+            event_doc = {}
+        event_items = event_doc.get("events", []) if isinstance(event_doc, dict) else []
+        source_snapshot["signal_events"] = [{key: str(event.get(key) or "")[:100] for key in ("url", "category", "subject", "path_fit", "label")}
+                                             for event in event_items[:10] if isinstance(event, dict) and event.get("url") and event.get("category")]
     sources = [{k: str(source.get(k) or "")[:limit] for k, limit in (("url", 220), ("title", 100), ("snippet", 80), ("identity_subject", 12), ("publication_date", 24), ("freshness_status", 20), ("type", 48))}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
@@ -383,7 +391,8 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
                     "review_action": record["review_action"], "change_evidence": record["change_evidence"][:260],
                     "new_source_urls": record["new_source_urls"][:2], "changed_source_urls": record["changed_source_urls"][:2],
                     "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1],
-                    "snapshot": {"checked_at": source_snapshot["checked_at"], "sources": source_snapshot["sources"][:4]}}]
+                    "snapshot": {"checked_at": source_snapshot["checked_at"], "sources": source_snapshot["sources"][:4],
+                                 **({"signal_events": source_snapshot.get("signal_events", [])[:5]} if lane == "herald" else {})}}]
         value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
     return value
 
