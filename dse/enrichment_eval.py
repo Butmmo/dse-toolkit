@@ -1961,6 +1961,176 @@ def score_ledger(source: str, out: str = "", min_decided: int = 10) -> tuple[dic
     return report, output
 
 
+def _experiment_provider_run_cost(root: Path, experiment_id: str, field: str) -> dict:
+    """Summarize declared provider attempt costs in the receipt-bound A/B source files."""
+    result = {"status": "unavailable", "approval_id": None, "variants": {},
+              "basis": "recorded provider API attempts multiplied by configured cost_per_call; estimate, not invoice"}
+    manifest_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-cohort.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        result["status"] = "cohort_record_missing"
+        return result
+    if not isinstance(manifest, dict):
+        result["status"] = "cohort_record_invalid"
+        return result
+    approval_id = str(manifest.get("approval_id") or "")
+    receipt_path = root / "my-lists" / f"waterfall-experiment-{experiment_id}-approval-{approval_id}.json"
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        result["status"] = "approval_receipt_missing"
+        return result
+    if not isinstance(receipt, dict):
+        result["status"] = "approval_receipt_invalid"
+        return result
+    receipt_body = {key: value for key, value in receipt.items() if key != "approval_id"}
+    receipt_digest = hashlib.sha256(json.dumps(receipt_body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+    if (receipt_digest != approval_id or receipt.get("schema") != "dbi.waterfall-experiment-approval.v1"
+            or receipt.get("experiment_id") != experiment_id or receipt.get("field") != field
+            or receipt.get("providers") != manifest.get("providers")
+            or receipt.get("source_sha256") != manifest.get("source_sha256")
+            or receipt.get("cohort_sha256") != manifest.get("cohort_sha256")
+            or receipt.get("lead_count") != manifest.get("sample_rows")
+            or receipt.get("lead_cap") != manifest.get("sample_limit")
+            or manifest.get("schema") != "dbi.waterfall-experiment-cohort.v1"
+            or manifest.get("id") != experiment_id or manifest.get("field") != field
+            or manifest.get("approval_id") != approval_id):
+        result["status"] = "approval_or_cohort_mismatch"
+        return result
+    result["approval_id"] = approval_id
+    result["approved_combined_maximum"] = receipt.get("approved_combined_maximum")
+    result["currency"] = receipt.get("currency")
+    result["lead_count"] = receipt.get("lead_count")
+    result["variants"] = {}
+    records = manifest.get("variants") if isinstance(manifest.get("variants"), dict) else {}
+    receipt_configs = receipt.get("config_sha256") if isinstance(receipt.get("config_sha256"), dict) else {}
+    receipt_maximums = receipt.get("variant_maximums") if isinstance(receipt.get("variant_maximums"), dict) else {}
+    statuses = []
+    for variant in ("A", "B"):
+        record = records.get(variant) if isinstance(records.get(variant), dict) else {}
+        item = {"status": "unavailable", "attempted_calls": 0, "estimated_cost_by_currency": {},
+                "unknown_price_calls": 0, "unknown_price_providers": [], "leads_with_provider_attempts": 0,
+                "leads_with_field_results": 0}
+        result["variants"][variant] = item
+        relative = record.get("result_csv")
+        if (record.get("approval_id") != approval_id
+                or record.get("config_sha256") != receipt_configs.get(variant)
+                or not relative):
+            item["status"] = "variant_record_mismatch"
+            statuses.append(item["status"])
+            continue
+        path = (root / relative).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError:
+            item["status"] = "unsafe_result_path"
+            statuses.append(item["status"])
+            continue
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != record.get("result_sha256"):
+            item["status"] = "result_missing_or_hash_mismatch"
+            statuses.append(item["status"])
+            continue
+        try:
+            headers, rows = _read(path)
+        except (OSError, ValueError):
+            item["status"] = "result_unreadable"
+            statuses.append(item["status"])
+            continue
+        if len(rows) != receipt.get("lead_count") or "field_results" not in headers:
+            item["status"] = "result_cohort_mismatch"
+            statuses.append(item["status"])
+            continue
+        seen_ids = set()
+        ordered_ids = []
+        costs: dict[str, float] = defaultdict(float)
+        unknown_names = set()
+        attempt_calls = 0
+        unknown_calls = 0
+        leads_with_attempts = 0
+        valid = True
+        for row in rows:
+            lead_id = (row.get("waterfall_experiment_lead_id") or "").strip()
+            if (row.get("waterfall_experiment_id") != experiment_id
+                    or str(row.get("waterfall_experiment_variant") or "").upper() != variant
+                    or row.get("waterfall_experiment_approval_id") != approval_id
+                    or row.get("waterfall_config_sha256") != receipt_configs.get(variant)
+                    or not lead_id or lead_id in seen_ids):
+                valid = False
+                break
+            seen_ids.add(lead_id)
+            ordered_ids.append(lead_id)
+            entries = _json(row.get("field_results"))
+            if not isinstance(entries, list) or not entries:
+                valid = False
+                break
+            item["leads_with_field_results"] += 1
+            row_attempts = 0
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("schema") != "dbi.field-result.v1":
+                    continue
+                metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+                detail = metadata.get("provider_waterfall_cost")
+                providers = detail.get("providers") if isinstance(detail, dict) else None
+                if not isinstance(providers, dict):
+                    continue
+                for provider_name, attempt in providers.items():
+                    if not isinstance(attempt, dict):
+                        continue
+                    try:
+                        calls = max(0, int(attempt.get("calls", 0) or 0))
+                    except (TypeError, ValueError):
+                        continue
+                    if not calls:
+                        continue
+                    row_attempts += calls
+                    price, currency = attempt.get("estimated_cost"), attempt.get("currency")
+                    if price is None or not currency:
+                        unknown_calls += calls
+                        unknown_names.add(str(provider_name))
+                        continue
+                    try:
+                        amount = float(price)
+                    except (TypeError, ValueError):
+                        unknown_calls += calls
+                        unknown_names.add(str(provider_name))
+                        continue
+                    if not math.isfinite(amount) or amount < 0:
+                        unknown_calls += calls
+                        unknown_names.add(str(provider_name))
+                    else:
+                        costs[str(currency)] += amount
+            if row_attempts:
+                leads_with_attempts += 1
+            attempt_calls += row_attempts
+        expected_cohort = hashlib.sha256(json.dumps(ordered_ids, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+        if (not valid or len(seen_ids) != receipt.get("lead_count")
+                or expected_cohort != receipt.get("cohort_sha256")
+                or len(rows) != manifest.get("sample_rows")):
+            item["status"] = "result_metadata_mismatch"
+            statuses.append(item["status"])
+            continue
+        item.update({"status": "verified", "result_csv": relative, "lead_count": len(rows),
+                     "attempted_calls": attempt_calls,
+                     "estimated_cost_by_currency": {key: round(value, 8) for key, value in sorted(costs.items())},
+                     "unknown_price_calls": unknown_calls, "unknown_price_providers": sorted(unknown_names),
+                     "leads_with_provider_attempts": leads_with_attempts,
+                     "approved_variant_maximum": receipt_maximums.get(variant)})
+        item["known_cost_within_approved_variant_maximum"] = (
+            sum(costs.values()) <= float(item["approved_variant_maximum"]) + 1e-7
+            if len(costs) <= 1 and item["approved_variant_maximum"] is not None else None)
+        statuses.append(item["status"])
+    result["status"] = "verified" if statuses == ["verified", "verified"] else ";".join(dict.fromkeys(statuses))
+    result["combined_observed_estimated_cost_by_currency"] = {}
+    combined: dict[str, float] = defaultdict(float)
+    for item in result["variants"].values():
+        for currency, amount in item.get("estimated_cost_by_currency", {}).items():
+            combined[currency] += float(amount)
+    result["combined_observed_estimated_cost_by_currency"] = {key: round(value, 8) for key, value in sorted(combined.items())}
+    result["combined_unknown_price_calls"] = sum(item.get("unknown_price_calls", 0) for item in result["variants"].values())
+    return result
+
+
 def _send_outcome_brief(report: dict) -> str:
     def pct(value: float | None) -> str:
         return "not available" if value is None else f"{value:.1%}"
@@ -1968,13 +2138,18 @@ def _send_outcome_brief(report: dict) -> str:
     lines = ["# Waterfall experiment: Send Desk outcomes", "", f"- Engine: `{report['engine']}`",
              f"- Experiment filter: `{report.get('experiment_filter') or 'all tagged experiments'}`",
              f"- Scored at (UTC): {report['scored_at_utc']}", "",
-             "These are descriptive observations from explicitly logged Send Desk actions. They do not prove that a variant caused an outcome or that one provider is better.", ""]
+             "These are descriptive observations from explicitly logged Send Desk actions. They do not prove that a variant caused an outcome or that one provider is better.",
+             "Provider spend below is an estimate from recorded calls and configured prices, not a vendor invoice. Both A and B runs cover the full capped cohort; outreach outcomes use one assigned variant per lead, so the report does not present these amounts as cost per win.", ""]
     for cohort in report["cohorts"]:
         lines.extend([f"## Experiment `{cohort['experiment_id']}` · field `{cohort['field'] or 'unspecified'}`", "",
                       "| Variant | Assigned | Sent | Send coverage | Skipped | Unmarked | Replies | Reply rate (95% interval) | Calls booked | Booked rate (95% interval) | Wins | Win rate (95% interval) | Sample note |",
                       "|---|---:|---:|---:|---:|---:|---:|---|---:|---|---:|---|---|"])
         seeds = ", ".join(cohort["outreach_assignment_seeds"]) or "not recorded (legacy rows)"
         lines.append(f"Outreach assignment mode: `{cohort['outreach_assignment_mode']}`; seed(s): {seeds}; metadata-eligible for comparison: {cohort['comparison_eligible']}.\n")
+        run_cost = cohort.get("provider_run_cost") or {}
+        if run_cost:
+            combined = ", ".join(f"{amount:.4f} {currency}" for currency, amount in run_cost.get("combined_observed_estimated_cost_by_currency", {}).items()) or "no priced attempts recorded"
+            lines.append(f"Preflight receipt: `{run_cost.get('approval_id') or 'unavailable'}`; approved combined ceiling: {run_cost.get('approved_combined_maximum', 'unknown')} {run_cost.get('currency') or ''}; observed A+B provider attempt estimate: {combined}; unknown-price calls: {run_cost.get('combined_unknown_price_calls', 0)}. Cost audit: `{run_cost.get('status', 'unavailable')}`.\n")
         for variant in ("A", "B"):
             m = cohort["variants"].get(variant)
             if not m:
@@ -1982,6 +2157,11 @@ def _send_outcome_brief(report: dict) -> str:
             orders = "; ".join(json.dumps(order, ensure_ascii=False) if isinstance(order, (list, dict)) else str(order)
                                 for order in m["provider_orders"]) or "not recorded"
             lines.append(f"{variant} recorded provider order(s): `{orders}`. Config fingerprint(s): {', '.join(value[:12] for value in m['config_sha256s']) or 'not recorded'}. Metadata complete: {m['configuration_metadata_complete']}; consistent: {m['configuration_metadata_consistent']}.\n")
+            run = m.get("provider_run_cost") or {}
+            if run:
+                estimated = ", ".join(f"{amount:.4f} {currency}" for currency, amount in run.get("estimated_cost_by_currency", {}).items()) or "no priced attempts recorded"
+                cap_check = run.get("known_cost_within_approved_variant_maximum")
+                lines.append(f"{variant} full-cohort provider attempts: {run.get('attempted_calls', 0)} calls; estimated cost {estimated}; unknown-price calls {run.get('unknown_price_calls', 0)}; approved variant maximum {run.get('approved_variant_maximum', 'unknown')}; known cost within maximum: {cap_check if cap_check is not None else 'not comparable'}.\n")
             intervals = m["outcome_rate_95_percent_wilson_intervals"]
             def interval(key: str) -> str:
                 ci = intervals[key]
@@ -2204,6 +2384,12 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
             metric[f"{key}_rate_per_sent_lead"] = rate
             metric["outcome_rate_95_percent_wilson_intervals"][key] = _wilson(counts[key], sent)
         groups[(eid, field)]["variants"][variant] = metric
+    root = Path(__file__).resolve().parents[1]
+    for item in groups.values():
+        cost_audit = _experiment_provider_run_cost(root, item["experiment_id"], item["field"])
+        item["provider_run_cost"] = cost_audit
+        for variant, metric in item["variants"].items():
+            metric["provider_run_cost"] = cost_audit.get("variants", {}).get(variant)
     comparisons = []
     for item in groups.values():
         assignment_key = (item["experiment_id"], item["field"])
@@ -2376,6 +2562,7 @@ def score_send_outcomes(engine: str, experiment_id: str = "", out: str = "", mar
               "source": "tagged send-list rows joined to explicit Send Desk log taps by list and row ID",
               "missing_stable_lead_id_rows": missing_ids, "cohorts": list(groups.values()), "comparisons": comparisons,
               "assignment_audit_checks": assignment_audit_checks,
+              "provider_run_cost_basis": "Recorded provider API attempts multiplied by local configured cost_per_call in the receipt-bound variant CSVs; estimated charges, not vendor invoices. A and B each ran over the full capped cohort while outreach outcomes use one assigned variant per lead.",
               "sample_caution_threshold_sent_leads": minimum_sent_caution,
               "maturity_window_days": maturity_days, "maturity_as_of_date": as_of.isoformat(),
               "interpretation": "Counts deduplicate by stable experiment lead ID and include only explicit logged outcomes. When explicit outreach assignment metadata exists, its variant is validated against the experiment variant tag and its seed is reported. A/B comparisons are suppressed for cohorts mixing assigned and legacy unassigned rows or multiple/missing assignment seeds; explicitly assigned cohorts also require a readable assignment audit and reconciliation of the assigned CSV hash, local cohort record, source evidence, exact lead roster, expected counts, seed, and complete Send Desk-list coverage. Per-variant counts remain visible with the reason. Overall rates and 95% Wilson intervals are descriptive; intervals reflect binomial sampling uncertainty only. Fixed-window rates count outcomes logged from first confirmed send through the configured maturity window, only for leads whose full window has elapsed. Missing send dates are excluded from fixed-window denominators. Neither view accounts for assignment, delivery, lead mix, or other bias. The low-sample threshold is a caution flag, not a power guarantee. Overlap indicates leads appearing in both variants and can contaminate a comparison."}
