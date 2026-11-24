@@ -1183,6 +1183,8 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
                     for row_number, row in enumerate(sample_rows, 2)]
         if len(set(lead_ids)) != len(lead_ids):
             raise ValueError("The bounded experiment sample contains duplicate stable lead IDs. Deduplicate the source list before spending on either variant.")
+        # Experiment artifacts must contain precisely the cohort represented by the receipt.
+        rows = sample_rows
         source_digest = hashlib.sha256(p.read_bytes()).hexdigest()
         cohort_digest = hashlib.sha256(json.dumps(lead_ids, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
         experiment_context = {"id": experiment_id, "variant": variant, "field": experiment_field,

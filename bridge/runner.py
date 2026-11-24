@@ -28,6 +28,7 @@ import glob
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import re
 import secrets
@@ -417,6 +418,16 @@ def check_value(field: dict, value):
         except ValueError:
             raise Bad(f"{name}: not a whole number") from None
         if v < field.get("min", -10**9) or v > field.get("max", 10**9):
+            raise Bad(f"{name}: must be {field.get('min')}-{field.get('max')}")
+        return v
+    if kind in {"float", "number"}:
+        try:
+            v = float(str(value).strip())
+        except ValueError:
+            raise Bad(f"{name}: not a number") from None
+        if not math.isfinite(v):
+            raise Bad(f"{name}: must be a finite number")
+        if v < field.get("min", -1e300) or v > field.get("max", 1e300):
             raise Bad(f"{name}: must be {field.get('min')}-{field.get('max')}")
         return v
     s = str(value).strip()
