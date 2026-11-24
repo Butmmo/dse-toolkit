@@ -397,6 +397,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
               "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
               "review_action": str(result_row.get(f"{prefix}_change_action") or "")[:120],
+              "change_categories": [str(item)[:80] for item in _decode_json(result_row.get(f"{prefix}_change_categories"), [])[:10]],
               "change_evidence": str(result_row.get(f"{prefix}_change_evidence") or "")[:500],
               "snapshot": source_snapshot,
               "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
@@ -412,6 +413,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
     if len(value) > 4800:
         history = [{"checked_at": record["checked_at"], "status": record["status"], "summary": record["summary"],
                     "review_action": record["review_action"], "change_evidence": record["change_evidence"][:260],
+                    "change_categories": record["change_categories"][:8],
                     "new_source_urls": record["new_source_urls"][:2], "changed_source_urls": record["changed_source_urls"][:2],
                     "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1],
                     "snapshot": {"checked_at": source_snapshot["checked_at"], "sources": source_snapshot["sources"][:4],
