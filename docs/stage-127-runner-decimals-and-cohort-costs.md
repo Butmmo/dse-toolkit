@@ -13,3 +13,5 @@ Live A/B enrichment outputs now contain exactly the rows in the receipt-approved
 Send Desk outcome JSON and Markdown now include receipt-bound provider attempt cost summaries by variant. The scorer validates each A/B result CSV hash, approval and config IDs, row count, stable cohort fingerprint, and row metadata before summing recorded API attempts and declared configured prices. It reports unknown-price calls, the approved per-variant maximum, combined observed estimated cost, and an integrity status. The report explicitly describes these as configured-price estimates, not invoices, and explains that A/B enrichment ran on the full cohort while outreach results reflect one assigned variant per lead; it does not mislabel the figures as cost per win.
 
 Validation performed: Python compilation of the runner and enrichment modules; CLI help; catalog JSON parsing; and `git diff --check`. No paid-provider requests were made.
+
+The implementation was pushed to codex/hq-runner-id-routing and installed in the active PC runner checkout. The runner restarted and reported 182 tools online. The local packs/automation.json change was preserved.
