@@ -394,12 +394,20 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
                | {"query_rungs": list(dict.fromkeys(item["rung"] for item in query_fingerprints(source)))[:6],
                   "query_fingerprints": query_fingerprints(source)}
                for source in raw_sources[:3] if isinstance(source, dict) and source.get("url")]
+    retained_record_ids = {str(source.get("url") or ""): str(source.get("id") or "")
+                           for source in raw_sources if isinstance(source, dict) and source.get("url") and source.get("id")}
+    cue_sources = _decode_json(result_row.get(f"{prefix}_change_sources"), [])
+    if isinstance(cue_sources, list):
+        cue_sources = [{**source, "record_id": retained_record_ids.get(str(source.get("url") or ""), "")}
+                       for source in cue_sources if isinstance(source, dict)]
+    else:
+        cue_sources = []
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
               "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
               "review_action": str(result_row.get(f"{prefix}_change_action") or "")[:120],
               "change_categories": [str(item)[:80] for item in _decode_json(result_row.get(f"{prefix}_change_categories"), [])[:10]],
-              "change_sources": _decode_json(result_row.get(f"{prefix}_change_sources"), [])[:12],
+              "change_sources": cue_sources[:12],
               "change_evidence": str(result_row.get(f"{prefix}_change_evidence") or "")[:500],
               "snapshot": source_snapshot,
               "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
