@@ -899,7 +899,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
     metrics_by_rung = {str(metric.get("rung") or ""): metric for metric in (query_metrics or []) if isinstance(metric, dict)}
     old_sources_by_url = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
                           if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
-    covered_missing, uncovered_missing = set(), set()
+    covered_missing, uncovered_missing = {}, {}
     for url in missing_urls:
         source = old_sources_by_url.get(url, {})
         rungs = source.get("query_rungs") if isinstance(source.get("query_rungs"), list) else []
@@ -908,8 +908,9 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
             rungs = [fallback_rung] if fallback_rung else []
         # If several prior searches found the same source, repeat each known rung
         # before treating its absence as a meaningful recheck.
-        covered = bool(rungs) and all(metrics_by_rung.get(str(rung), {}).get("status") in ("hit", "miss") for rung in rungs)
-        (covered_missing if covered else uncovered_missing).add(url)
+        rung_states = {str(rung): str(metrics_by_rung.get(str(rung), {}).get("status") or "not repeated") for rung in rungs}
+        covered = bool(rung_states) and all(state in ("hit", "miss") for state in rung_states.values())
+        (covered_missing if covered else uncovered_missing)[url] = rung_states
     freshness_rank = {"recent": 0, "aging": 1, "stale": 2}
     previous_sources = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
                         if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
@@ -977,10 +978,12 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         freshness = str(signal.get("freshness_status") or "unknown")[:20]
         details.append(f"Source freshness changed to {freshness} ({date}); recheck current evidence — {url[:240]}")
     if not status.startswith("partial"):
-        details.extend(f"Previously returned source not found after repeating its recorded search rung(s); existence is unconfirmed: {url[:240]}"
-                       for url in sorted(covered_missing)[:3])
-        details.extend(f"Coverage not repeated for this prior source; absence is inconclusive: {url[:240]}"
-                       for url in sorted(uncovered_missing)[:3])
+        details.extend(
+            f"Not returned after repeating recorded rung(s) ({', '.join(f'{rung}={state}' for rung, state in covered_missing[url].items())}); existence is unconfirmed: {url[:240]}"
+            for url in sorted(covered_missing)[:3])
+        details.extend(
+            f"Coverage incomplete ({', '.join(f'{rung}={state}' for rung, state in uncovered_missing[url].items()) or 'no prior rung recorded'}); absence is inconclusive: {url[:240]}"
+            for url in sorted(uncovered_missing)[:3])
     return {f"{prefix}_change_action": action,
             f"{prefix}_change_evidence": "\n".join(details)[:1800]}
 
