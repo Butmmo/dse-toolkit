@@ -688,6 +688,8 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 action = str(enriched_row.get(action_field) or "").strip()
                 if action.startswith("REVIEW PRIORITY SIGNAL"):
                     category = "priority_review"
+                elif action.startswith("REVIEW SOURCE IDENTITY"):
+                    category = "identity_review"
                 elif action.startswith("REVIEW SOURCE CHANGE"):
                     category = "source_review"
                 elif action.startswith("RECHECK"):
@@ -745,7 +747,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             spend_note += " Usage-record warning: " + " ".join(brave_usage_warnings)
     monitor_note = ""
     if monitor_action_counts:
-        labels = ("priority_review", "source_review", "recheck", "incomplete", "baseline", "no_change", "other")
+        labels = ("priority_review", "identity_review", "source_review", "recheck", "incomplete", "baseline", "no_change", "other")
         summary = ", ".join(f"{label.replace('_', ' ')} {monitor_action_counts[label]}" for label in labels if monitor_action_counts.get(label))
         monitor_note = f" Signal review summary: {summary}. Open the Ledger rows for source links and details."
     return (f"FINISHED {lane} enrichment: {written} rows updated, {skipped} rows had no new values, {oversized} oversized values omitted. "

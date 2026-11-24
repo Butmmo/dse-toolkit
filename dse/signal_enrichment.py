@@ -847,7 +847,8 @@ def _presence_comparison(previous: dict | None, signals: list[dict], checked_at:
             "presence_not_returned_urls": "\n".join(not_returned) if status == "compared" else "",
             "presence_previous_checked_at": (previous or {}).get("checked_at", ""),
             "_snapshot": {"checked_at": checked_at, "sources": [
-                {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"), "title": s.get("title", "")[:240],
+                {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"),
+                 "identity_subject": s.get("identity_subject", "company"), "title": s.get("title", "")[:240],
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""), "freshness_status": s.get("freshness_status", "undated"),
                  "type": s.get("type", ""),
@@ -878,6 +879,7 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
             "herald_previous_checked_at": (previous or {}).get("checked_at", ""),
             "_snapshot": {"checked_at": checked_at, "sources": [
                 {"url": s.get("url", ""), "subject": s.get("identity_subject", "company"),
+                 "identity_subject": s.get("identity_subject", "company"),
                  "title": s.get("title", "")[:240],
                  "snippet_hash": hashlib.sha256(s.get("snippet", "").encode("utf-8")).hexdigest(),
                  "publication_date": s.get("publication_date", ""),
@@ -915,9 +917,14 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
     previous_sources = {str(item.get("url") or ""): item for item in (previous or {}).get("sources", [])
                         if isinstance(item, dict) and item.get("url")} if isinstance(previous, dict) else {}
     freshness_downgrades = set()
+    identity_changes = {}
     if status == "compared":
         for signal in signals:
             url = str(signal.get("url") or "")
+            prior_subject = str(previous_sources.get(url, {}).get("identity_subject") or previous_sources.get(url, {}).get("subject") or "")
+            current_subject = str(signal.get("identity_subject") or "")
+            if url and prior_subject in ("company", "person") and current_subject in ("company", "person") and prior_subject != current_subject:
+                identity_changes[url] = (prior_subject, current_subject)
             before = freshness_rank.get(str(previous_sources.get(url, {}).get("freshness_status") or ""))
             after = freshness_rank.get(str(signal.get("freshness_status") or ""))
             if url and before is not None and after is not None and after > before:
@@ -949,6 +956,8 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         action = "CHECK INCOMPLETE — do not treat missing sources as a signal"
     elif status in ("first_check",):
         action = "BASELINE — no earlier complete check to compare"
+    elif identity_changes:
+        action = "REVIEW SOURCE IDENTITY — confirm whether this result concerns the same subject"
     elif new_urls or changed_urls or event_deltas:
         action = "REVIEW PRIORITY SIGNAL — confirm it at the source" if lane == "herald" and (priority_event_delta or any(
             event.get("path_fit") == "priority" and event.get("url") in new_urls | changed_urls
@@ -989,6 +998,8 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         date = str(signal.get("publication_date") or "publication date unavailable")[:24]
         freshness = str(signal.get("freshness_status") or "unknown")[:20]
         details.append(f"Source freshness changed to {freshness} ({date}); recheck current evidence — {url[:240]}")
+    for url, (before, after) in sorted(identity_changes.items())[:5]:
+        details.append(f"Source subject changed from {before} to {after}; verify the company/person match — {url[:240]}")
     if not status.startswith("partial"):
         details.extend(
             f"Not returned after repeating recorded rung(s) ({', '.join(f'{rung}={state}' for rung, state in covered_missing[url].items())}); existence is unconfirmed: {url[:240]}"
