@@ -923,6 +923,7 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
             if url and before is not None and after is not None and after > before:
                 freshness_downgrades.add(url)
     event_deltas = []
+    event_no_longer_detected = []
     if lane == "herald" and isinstance(previous, dict) and isinstance(previous.get("signal_events"), list):
         prior_fits = {}
         for old_event in previous["signal_events"]:
@@ -937,6 +938,12 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
                 event_deltas.append((event, "new event cue"))
             elif event.get("path_fit") == "priority" and prior_fits[key] != "priority":
                 event_deltas.append((event, "now priority for this path"))
+        current_event_keys = {(event.get("url"), event.get("category"), event.get("subject", ""))
+                              for event in (events or []) if isinstance(event, dict) and event.get("url") and event.get("category")}
+        current_source_urls = {str(signal.get("url") or "") for signal in signals if isinstance(signal, dict) and signal.get("url")}
+        event_no_longer_detected = [old_event for old_event in previous["signal_events"]
+                                    if isinstance(old_event, dict) and old_event.get("url") in current_source_urls
+                                    and (old_event.get("url"), old_event.get("category"), old_event.get("subject", "")) not in current_event_keys]
     priority_event_delta = any(event.get("path_fit") == "priority" for event, _reason in event_deltas)
     if status.startswith("partial"):
         action = "CHECK INCOMPLETE — do not treat missing sources as a signal"
@@ -949,6 +956,8 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         )) else "REVIEW SOURCE CHANGE — confirm it at the source"
     elif freshness_downgrades:
         action = "RECHECK — source evidence has aged; verify it is still current"
+    elif event_no_longer_detected:
+        action = "RECHECK — a prior event cue was not detected in current result text"
     elif uncovered_missing:
         action = "CHECK INCOMPLETE — earlier source searches were not all repeated"
     elif covered_missing:
@@ -972,6 +981,9 @@ def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: li
         detail = f"{fit}: {reason} — {label} — {str(event.get('url') or '')[:240]}"
         if detail not in details:
             details.append(detail)
+    for event in event_no_longer_detected[:5]:
+        label = str(event.get("label") or event.get("category") or "prior event cue")[:90]
+        details.append(f"Prior cue not detected in current result text; verify the source before treating it as changed: {label} — {str(event.get('url') or '')[:240]}")
     for url in sorted(freshness_downgrades)[:5]:
         signal = signal_by_url.get(url, {})
         date = str(signal.get("publication_date") or "publication date unavailable")[:24]
