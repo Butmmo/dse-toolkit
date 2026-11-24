@@ -36,10 +36,10 @@ OUT_FIELDS = ["herald_findings", "herald_sources", "herald_checked_at", "herald_
               "outreach_subject", "outreach_body", "outreach_evidence", "outreach_evidence_detail", "outreach_personalization_basis", "outreach_model",
               "herald_role_candidates", "herald_people_candidates", "herald_signal_events", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "enrichment_target_profile", "enrichment_target_decision_maker", "enrichment_target_role", "enrichment_target_legal_form", "enrichment_target_path", "enrichment_search_strategy", "enrichment_profile", "field_results"]
 OUT_FIELDS.insert(-1, "herald_search_waterfall")
-HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at"]
+HERALD_MONITOR_FIELDS = ["herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_evidence"]
 OUT_FIELDS[-1:-1] = HERALD_MONITOR_FIELDS
 PRESENCE_FIELDS = ["presence_signals", "presence_sources", "presence_checked_at", "presence_status", "enrichment_profile",
-                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "field_results"]
+                   "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_evidence", "field_results"]
 PRESENCE_FIELDS.insert(-1, "presence_search_waterfall")
 PRESENCE_HISTORY = ROOT / "data" / "presence-history.json"
 HERALD_HISTORY = ROOT / "data" / "herald-signal-history.json"
@@ -858,6 +858,43 @@ def _herald_comparison(previous: dict | None, signals: list[dict], checked_at: s
                 for s in signals if s.get("url")][:12]}}
 
 
+def _monitor_action(lane: str, comparison: dict, signals: list[dict], events: list[dict] | None = None) -> dict:
+    """Turn a source snapshot diff into a cautious, source-linked review cue; never trigger outreach."""
+    prefix = "herald" if lane == "herald" else "presence"
+    status = str(comparison.get(f"{prefix}_comparison_status", "unknown"))
+    new_urls = {u for u in str(comparison.get(f"{prefix}_new_source_urls") or "").splitlines() if u}
+    changed_urls = {u for u in str(comparison.get(f"{prefix}_changed_source_urls") or "").splitlines() if u}
+    missing_urls = {u for u in str(comparison.get(f"{prefix}_not_returned_urls") or "").splitlines() if u}
+    if status.startswith("partial"):
+        action = "CHECK INCOMPLETE — do not treat missing sources as a signal"
+    elif status in ("first_check",):
+        action = "BASELINE — no earlier complete check to compare"
+    elif new_urls or changed_urls:
+        action = "REVIEW PRIORITY SIGNAL — confirm it at the source" if lane == "herald" and any(
+            event.get("path_fit") == "priority" and event.get("url") in new_urls | changed_urls
+            for event in (events or []) if isinstance(event, dict)
+        ) else "REVIEW SOURCE CHANGE — confirm it at the source"
+    elif missing_urls:
+        action = "RECHECK — previously returned sources were not found"
+    elif status == "compared":
+        action = "NO NEW SOURCE CHANGE"
+    else:
+        action = "NO COMPARISON AVAILABLE"
+    signal_by_url = {str(item.get("url") or ""): item for item in signals if isinstance(item, dict) and item.get("url")}
+    event_by_url = {str(item.get("url") or ""): item for item in (events or []) if isinstance(item, dict) and item.get("url")}
+    details = []
+    for url in sorted(new_urls | changed_urls)[:5]:
+        signal = signal_by_url.get(url, {})
+        event = event_by_url.get(url, {})
+        label = str(event.get("label") or event.get("category") or signal.get("title") or "Source changed")[:90]
+        fit = str(event.get("path_fit") or "public presence")
+        details.append(f"{fit}: {label} — {url[:240]}")
+    if not details and missing_urls and not status.startswith("partial"):
+        details = [f"Not returned on this complete search; existence is unconfirmed: {url[:240]}" for url in sorted(missing_urls)[:3]]
+    return {f"{prefix}_change_action": action,
+            f"{prefix}_change_evidence": "\n".join(details)[:1800]}
+
+
 def _save_signal_history(path: Path, schema: str, history: dict) -> None:
     """Keep only recent hashed lead keys and source fingerprints; never store lead contact details."""
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=PRESENCE_HISTORY_DAYS)
@@ -1363,6 +1400,7 @@ def enrich_file(source: str, engine: str = "", max_rows: int = 100, use_ai: bool
             event["path_fit"] = "priority" if category in path["priority"] else "supporting" if category in path["supporting"] else "general"
             event["path_label"] = path["label"]
             annotated_events.append(event)
+        row.update(_monitor_action("herald", comparison, signals, annotated_events))
         row["herald_signal_events"] = json.dumps({"basis": assessment["signal_events_basis"], "path_focus": {"key": selected_path or "any", "label": path["label"], "method": path["method"], "pain": path["pain"], "buyer": path["buyer"], "revenue_model": path["revenue_model"], "proof_metrics": path["proof_metrics"], "priority_categories": path["priority"], "supporting_categories": path["supporting"]}, "events": annotated_events}, ensure_ascii=False, separators=(",", ":"))
         outcome_plan = path_signals.outcome_plan(selected_path or "any")
         known_source_ids = {signal.get("id"): signal for signal in signals if signal.get("id")}
@@ -1554,6 +1592,7 @@ def enrich_presence_file(source: str, engine: str = "", max_rows: int = 100, sea
         row["presence_search_waterfall"] = json.dumps(waterfall, ensure_ascii=False, separators=(",", ":"))
         row["enrichment_profile"] = json.dumps(profile_record, ensure_ascii=False, separators=(",", ":")) if profile_record else ""
         row.update(comparison)
+        row.update(_monitor_action("presence", comparison, signals))
         result_contract = build_presence_field_results(signals, checked_at, query_metrics, search_budget, minimum_identity_score)
         result_contract = _attach_profile_results(result_contract, profile_record, signals)
         row["field_results"] = fr.merge_results(row.get("field_results"), result_contract)

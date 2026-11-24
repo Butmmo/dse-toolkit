@@ -19,8 +19,8 @@ from . import enrichment_profiles
 LANES = {"website", "herald", "presence"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
-    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
-    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_monitor_history"],
+    "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
+    "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_evidence", "presence_monitor_history"],
 }
 FULL_OUTPUTS = {
     "website": ["found_email", "email_source", "other_emails", "email_guesses", "email_check", "contact_page_url", "field_results", "enrichment_audit"],
@@ -355,6 +355,8 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
     record = {"checked_at": result_row.get(f"{prefix}_checked_at") or result_row.get("research_searched_at") or "",
               "status": result_row.get(f"{prefix}_comparison_status") or "unknown",
               "summary": str(result_row.get(f"{prefix}_change_summary") or "")[:240],
+              "review_action": str(result_row.get(f"{prefix}_change_action") or "")[:120],
+              "change_evidence": str(result_row.get(f"{prefix}_change_evidence") or "")[:500],
               "new_source_urls": [u[:220] for u in urls("new_source_urls")[:4]], "changed_source_urls": [u[:220] for u in urls("changed_source_urls")[:4]],
               "not_returned_urls": [u[:220] for u in urls("not_returned_urls")[:4]], "sources": sources}
     if not record["checked_at"]:
@@ -367,6 +369,7 @@ def _monitor_history(lane: str, result_row: dict, previous: object) -> str:
         value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
     if len(value) > 4800:
         history = [{"checked_at": record["checked_at"], "status": record["status"], "summary": record["summary"],
+                    "review_action": record["review_action"], "change_evidence": record["change_evidence"][:260],
                     "new_source_urls": record["new_source_urls"][:2], "changed_source_urls": record["changed_source_urls"][:2],
                     "not_returned_urls": record["not_returned_urls"][:2], "sources": record["sources"][:1]}]
         value = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
@@ -461,7 +464,8 @@ def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enrich
                 if header == "dse_path_ai_advice":
                     cells[key] = ""
                 continue
-            always_refresh = {history_header, advice_history_header, evidence_header, "dse_path_outcome", "dse_path_ai_advice",
+            always_refresh = {history_header, advice_history_header, evidence_header, "herald_change_action", "herald_change_evidence",
+                              "presence_change_action", "presence_change_evidence", "dse_path_outcome", "dse_path_ai_advice",
                               "dse_path_ai_advice_status", f"{lane}_comparison_status", f"{lane}_change_summary",
                               f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls",
                               f"{lane}_previous_checked_at"}
@@ -663,12 +667,12 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             output_headers = batch_headers
             new_headers = [h for h in output_headers if gridpush.norm(h) not in existing]
             evidence_header = f"{lane}_evidence_decisions"
-            monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
+            monitor_priority = [evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", f"{lane}_change_action", f"{lane}_change_evidence", f"{lane}_monitor_history", f"{lane}_comparison_status", f"{lane}_change_summary"]
             new_headers.sort(key=lambda h: monitor_priority.index(h) if h in monitor_priority else len(monitor_priority))
             remaining = max(0, 60 - len(columns))
             omitted_columns = new_headers[remaining:]
             new_headers = new_headers[:remaining]
-            added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
+            added = api.rpc("hq_grid_add_columns", {"p_grid": grid["id"], "p_cols": [{"label": h, "type": "longtext" if h in {f"{lane}_monitor_history", f"{lane}_change_evidence", evidence_header, "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_history"} else gridpush.infer_type([r.get(h, "") for r in enriched_rows])} for h in new_headers]}, tries=2) if new_headers else []
             by_label = {gridpush.norm(c["label"]): c for c in columns}
             for column in added or []:
                 by_label[gridpush.norm(column["label"])] = column
