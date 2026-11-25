@@ -1,6 +1,6 @@
 """The Client Desk: from "yes" to paid. Onboarding, invoices, delivery and payments for each client, in one place.
 
-    python dse.py client won <engine> --proposal 2026-11-14-acme-dental [--email dana@acme.com] [--address "1 Main St, Tampa FL"]
+    python dse.py client won <engine> --proposal 2026-11-14-acme-dental --deposit 50 [--option Standard] [--email dana@acme.com] [--address "1 Main St, Tampa FL"]
     python dse.py client list <engine>
     python dse.py client show <engine>/<client>
     python dse.py client done <engine>/<client> --item "Booking page" [--date 2026-11-20]      tick a deliverable or an onboarding task
@@ -10,8 +10,8 @@
 (<engine>/<client> can also be the path to the client's client.json, which is what the Citadel pickers give.)
 
 What it does, with nothing invented and nothing sent:
-  won      turns a saved proposal (engines/<engine>/proposals/<name>.json, written by the Proposal Builder) into a client: price, deposit, timeline and deliverables carry over.
-           It writes onboarding.md (a dated checklist, a welcome message in your name, a short agreement outline) and the deposit invoice.
+  won      turns an accepted service proposal into a client. Record the chosen option and agreed start-payment percentage when applicable.
+           It writes onboarding.md (a dated checklist, a welcome message in your name, a short agreement outline) and the invoice.
   done     ticks off a deliverable. The proposal's dates make late work visible in the Weekly Review.
   invoice  the final invoice (the balance of the price) or an extra one. Invoices are print-ready pages you send yourself.
   paid     records a payment against an invoice AND adds it to the Cash Desk (cash.csv), so "received" stays true without typing it twice.
@@ -186,14 +186,14 @@ def onboarding_md(slug: str, c: dict, today: dt.date) -> str:
     L += ["", "## Welcome message (you send it yourself)", "",
           f"Hi {c.get('contact') or 'there'},", "",
           f"Welcome aboard, and thank you for trusting me with {c['offer'].rstrip('.').lower() if c['offer'] else 'this project'}. Here is how we will work:", "",
-          f"1. I will send the agreement and the first invoice ({money(c['price'] * c['deposit_pct'] / 100, sym)} to start) now. Work begins {start.strftime('%B %d').replace(' 0', ' ')}, once both are done.",
+          (f"1. I will send the agreement and the first invoice ({money(c['price'] * c['deposit_pct'] / 100, sym)} to start) now. Work begins {start.strftime('%B %d').replace(' 0', ' ')}, once both are done." if c["deposit_pct"] else f"1. I will send the agreement now. The final invoice is due at the agreed completion milestone. Work begins {start.strftime('%B %d').replace(' 0', ' ')} once the agreement is in place."),
           "2. To begin I need: " + "; ".join(t["task"].lower() for t in c["onboarding"][2:5]) + ".",
           "3. Please never send passwords by email. Share access through your own password manager or tell me and I will give you a safe way.",
           "4. Send feedback in one list per milestone, so nothing gets lost. I reply within one working day.", "", sender, "",
           "## Short agreement outline (a starting point, not legal advice: have it checked before you rely on it)", "",
           f"- Parties: {sender} and {c['client']}.", f"- What I will do: {c['offer']}. Deliverables: " + "; ".join(i["name"] for i in c["items"]) + ".",
           f"- Timeline: {c['weeks']} week(s) from {start.isoformat()}, if I get what I need from you on time.",
-          f"- Price: {money(c['price'], sym)}. {c['deposit_pct']}% to start, the balance on delivery. Late payment: [your late-payment terms].",
+          f"- Price: {money(c['price'], sym)}. " + (f"{c['deposit_pct']}% at the agreed start milestone; the balance at completion." if c["deposit_pct"] else "Full payment at the agreed completion milestone.") + " Late payment: [your late-payment terms].",
           "- Changes: one round of changes per milestone is included. Anything else is quoted before I do it.",
           "- Not included: anything not listed above.", "- Ownership: the finished work is yours when it is paid for in full.",
           "- Ending early: either side can stop with written notice; work done so far is paid for.", "- Confidentiality: I keep your business information private.", ""]
@@ -215,7 +215,7 @@ def items_with_dates(items: list[str], weeks: int, start: dt.date) -> list[dict]
 
 # ------------------------------------------------------------------ actions
 
-def won(slug: str, proposal: str, email: str = "", address: str = "", today: dt.date | None = None) -> str:
+def won(slug: str, proposal: str, email: str = "", address: str = "", today: dt.date | None = None, option: str = "", deposit: int | None = None) -> str:
     load(slug)
     today = today or dt.date.today()
     prop_dir = (engine_dir(slug) / "proposals").resolve()
@@ -230,6 +230,25 @@ def won(slug: str, proposal: str, email: str = "", address: str = "", today: dt.
         have = ", ".join(sorted(p.stem for p in (engine_dir(slug) / "proposals").glob("*.json"))) if (engine_dir(slug) / "proposals").is_dir() else "none yet"
         raise ValueError(f"No saved proposal '{proposal}'. Proposals with data: {have}. Make one with: python dse.py proposal {slug} ...")
     pr = json.loads(cand.read_text(encoding="utf-8"))
+    options = pr.get("options") or []
+    selected = None
+    if options:
+        if not option:
+            raise ValueError("This proposal has multiple options. Record the client's chosen option with --option before creating the client.")
+        selected = next((o for o in options if o.get("name", "").casefold() == option.strip().casefold()), None)
+        if selected is None:
+            raise ValueError("Choose one of the options shown in the proposal: " + ", ".join(o["name"] for o in options))
+        price = float(selected["price"])
+    else:
+        if option:
+            raise ValueError("This proposal has no options; omit --option.")
+        price = float(pr["price"])
+    deposit_pct = deposit if deposit is not None else pr.get("deposit")
+    if deposit_pct is None:
+        raise ValueError("Agree the payment schedule first, then give its start-payment percentage with --deposit (0 to 100).")
+    if not 0 <= int(deposit_pct) <= 100:
+        raise ValueError("The agreed start-payment percentage must be from 0 to 100.")
+    deposit_pct = int(deposit_pct)
     cslug = slugify(pr["client"])
     folder = clients_dir(slug) / cslug
     if (folder / "client.json").exists():
@@ -239,7 +258,7 @@ def won(slug: str, proposal: str, email: str = "", address: str = "", today: dt.
     start = dt.date.fromisoformat(pr["start"])
     start = max(start, today) if start < today else start
     c = {"slug": cslug, "client": pr["client"], "contact": pr.get("contact", ""), "email": email, "address": re.sub(r"\s+", " ", address or "").strip()[:200], "engine": slug, "offer": pr["offer"],
-         "problem": pr.get("problem", ""), "cost_month": float(pr.get("cost_month") or 0), "currency": pr["currency"], "sym": SYMBOLS.get(pr["currency"], "$"), "price": float(pr["price"]), "deposit_pct": int(pr["deposit"]), "start": start.isoformat(),
+         "option": selected["name"] if selected else "", "problem": pr.get("problem", ""), "cost_month": float(pr.get("cost_month") or 0), "currency": pr["currency"], "sym": SYMBOLS.get(pr["currency"], "$"), "price": price, "deposit_pct": deposit_pct, "start": start.isoformat(),
          "weeks": int(pr["weeks"]), "created": today.isoformat(), "proposal": pr.get("stem", name), "items": items_with_dates(pr["items"], int(pr["weeks"]), start), "invoices": [], "onboarding": []}
     c["onboarding"] = [{"task": t, "by": (start + dt.timedelta(days=d)).isoformat(), "done_on": ""} for t, d in ONBOARD]
     notes = []

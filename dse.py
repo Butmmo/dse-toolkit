@@ -176,7 +176,8 @@ def main():
     vt = sub.add_parser("vet"); vt.add_argument("engine"); vt.add_argument("--offer", required=True); vt.add_argument("--url", default="")
     vt.add_argument("--commission", type=float, default=0); vt.add_argument("--ticket", type=float, default=0)
     vt.add_argument("--status", default="researching", choices=list(vetting.STATUSES)); vt.add_argument("--notes", default="")
-    vt.add_argument("--target", type=float, default=3000, help="the monthly income you want from this offer")
+    vt.add_argument("--target", type=float, default=0, help="optional monthly target in the same currency as --ticket")
+    vt.add_argument("--currency", default="", help="optional three-letter currency code for --ticket and --target")
     for q in vetting.questions():
         vt.add_argument(f"--{q['id']}", choices=["yes", "no", "unknown"], default="unknown", help=argparse.SUPPRESS)
     of = sub.add_parser("offers"); of.add_argument("engine")
@@ -185,7 +186,7 @@ def main():
     ci.add_argument("--kind", default="commission", choices=list(cashdesk.KINDS)); ci.add_argument("--note", default=""); ci.add_argument("--date", default="")
     cl = sub.add_parser("cashlog"); cl.add_argument("engine")
     cx = sub.add_parser("call"); cx.add_argument("action", choices=["prep", "after"]); cx.add_argument("engine"); cx.add_argument("--source", required=True); cx.add_argument("--row", required=True)
-    cx.add_argument("--outcome", default="follow_up", choices=list(calls.OUTCOMES)); cx.add_argument("--problem", default=""); cx.add_argument("--cost-month", type=float, default=0, dest="cost_month")
+    cx.add_argument("--outcome", default="follow_up", choices=list(calls.OUTCOMES)); cx.add_argument("--problem", default=""); cx.add_argument("--cost-month", type=float, default=0, dest="cost_month", help="optional impact estimate; use only if the person volunteered it and agreed it may be recorded")
     cx.add_argument("--price", type=float, default=0); cx.add_argument("--agreed", default=""); cx.add_argument("--stop", action="store_true"); cx.add_argument("--name", default="")
     pf_ = sub.add_parser("proof"); pf_.add_argument("action", choices=["due", "ask", "mark", "quote", "claim", "excerpt", "quotes", "withdraw", "refer", "referral", "thanked", "list"]); pf_.add_argument("engine")
     pf_.add_argument("item", nargs="?", default="", help="ASK-001, Q-001 or REF-001, where the action needs one")
@@ -211,11 +212,13 @@ def main():
     ct.add_argument("--auto", default="", choices=["", "on", "off"]); ct.add_argument("--publish", action="store_true"); ct.add_argument("--example", action="store_true")
     cd = sub.add_parser("client"); cd.add_argument("action", choices=["won", "list", "show", "done", "invoice", "paid"]); cd.add_argument("target", help="an engine (won, list) or engine/client (the rest)")
     cd.add_argument("--proposal", default=""); cd.add_argument("--email", default=""); cd.add_argument("--address", default=""); cd.add_argument("--item", default="")
+    cd.add_argument("--option", default="", help="the exact option accepted by the client, when the proposal offered choices")
+    cd.add_argument("--deposit", type=int, default=None, help="agreed start-payment percentage (0 to 100); needed if no payment schedule was set in the proposal")
     cd.add_argument("--date", default=""); cd.add_argument("--kind", default="final"); cd.add_argument("--amount", type=float, default=0); cd.add_argument("--note", default="")
     cd.add_argument("--terms", type=int, default=7); cd.add_argument("--invoice", default="")
     pr = sub.add_parser("proposal"); pr.add_argument("engine"); pr.add_argument("--client", required=True); pr.add_argument("--contact", default=""); pr.add_argument("--problem", required=True)
     pr.add_argument("--offer", required=True); pr.add_argument("--price", type=float, default=0); pr.add_argument("--deliverables", required=True); pr.add_argument("--weeks", type=int, default=3)
-    pr.add_argument("--cost-month", type=float, default=0, dest="cost_month"); pr.add_argument("--options", default=""); pr.add_argument("--deposit", type=int, default=50)
+    pr.add_argument("--cost-month", type=float, default=0, dest="cost_month", help="optional customer-provided impact estimate; enter only if the person volunteered it and agreed it may be recorded"); pr.add_argument("--options", default=""); pr.add_argument("--deposit", type=int, default=None)
     pr.add_argument("--currency", default="USD"); pr.add_argument("--excludes", default=""); pr.add_argument("--start", default=""); pr.add_argument("--quotes", action="store_true", help="add approved testimonials (their exact words, the attribution they chose)")
     pf = sub.add_parser("preflight"); pf.add_argument("target", nargs="?", default="", help="an engine (newest list) or a path to a list"); pf.add_argument("--domain", default="")
     pf.add_argument("--clean", action="store_true", help="write a copy without the blocked rows")
@@ -324,7 +327,7 @@ def main():
         print(callscore.report(a.engine, a.offer, a.outcome, a.cash, a.commission, a.talk, sc))
     elif a.cmd == "vet":
         engines.load(a.engine)
-        print(vetting.report(a.engine, a.offer, a.url, a.commission, a.ticket, a.status, a.notes, {q["id"]: getattr(a, q["id"]) for q in vetting.questions()}, a.target))
+        print(vetting.report(a.engine, a.offer, a.url, a.commission, a.ticket, a.status, a.notes, {q["id"]: getattr(a, q["id"]) for q in vetting.questions()}, a.target, currency=a.currency))
     elif a.cmd == "offers":
         engines.load(a.engine)
         print(vetting.listing(a.engine))
@@ -445,7 +448,7 @@ def main():
     elif a.cmd == "client":
         try:
             if a.action == "won":
-                print(clients.won(a.target, a.proposal, a.email, a.address))
+                print(clients.won(a.target, a.proposal, a.email, a.address, option=a.option, deposit=a.deposit))
             elif a.action == "list":
                 print(clients.listing(a.target))
             elif a.action == "show":

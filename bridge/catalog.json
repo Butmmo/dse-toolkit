@@ -1175,7 +1175,7 @@
           "label": "Currency code",
           "type": "text",
           "required": false,
-          "default": "USD",
+          "default": "",
           "max": 3,
           "pattern": "^[A-Za-z]{3}$"
         },
@@ -1813,9 +1813,9 @@
       "outputs": []
     },
     "ascent.callscore": {
-      "label": "The Ascent: score a sales call",
+      "label": "The Ascent: practice a sales conversation",
       "group": "My engines",
-      "help": "After every sales call, real or a mock you recorded, rate it honestly in eight areas (0 missed, 1 partly, 2 done well). You get your score, the two weakest areas with a 10-minute drill each, and your numbers over time: show rate, close rate, cash per call, what you earned in commission, and your score trend. Be harsh: a scorecard that flatters you teaches nothing. Based on the up-front contract, SPIN-style questions and the pause-ask-answer objection routine (HQ recipe: Prepare and run a high-ticket sales call).",
+      "help": "Rate a real or fictional practice conversation against eight participant-respecting behaviors. The score is your own reflection, not a standardized skill assessment, proof of ability, or prediction of hiring or sales. Logged call outcomes are descriptive only; commission arithmetic uses only the payment and written rate you enter, is not money received, and has no default rate. Use fictional information for practice; do not enter prospect personal or confidential data.",
       "script": "dse.py",
       "args": [
         {
@@ -1839,10 +1839,6 @@
         {
           "opt": "--commission",
           "field": "commission"
-        },
-        {
-          "opt": "--talk",
-          "field": "talk"
         },
         {
           "opt": "--a1",
@@ -1920,7 +1916,7 @@
         },
         {
           "name": "cash",
-          "label": "Cash collected ($, only if sold)",
+          "label": "Customer payment from this sale (optional; only if sold)",
           "type": "int",
           "min": 0,
           "max": 1000000,
@@ -1928,26 +1924,17 @@
         },
         {
           "name": "commission",
-          "label": "Your commission (%)",
+          "label": "Written commission rate for arithmetic only (optional; 0 if unknown)",
           "type": "int",
           "min": 0,
           "max": 100,
-          "default": 10
-        },
-        {
-          "name": "talk",
-          "label": "How much of the call did YOU talk (%)",
-          "type": "int",
-          "min": 0,
-          "max": 100,
-          "default": 40
+          "default": 0
         },
         {
           "name": "a1",
-          "label": "1. Up-front contract (time, agenda, permission, outcome)",
+          "label": "1. Agreed agenda and permission",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -1965,10 +1952,9 @@
         },
         {
           "name": "a2",
-          "label": "2. Prepared (3 facts known)",
+          "label": "2. Relevant preparation",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -1986,10 +1972,9 @@
         },
         {
           "name": "a3",
-          "label": "3. Problem questions (they talked most)",
+          "label": "3. Open questions and listening",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2007,10 +1992,9 @@
         },
         {
           "name": "a4",
-          "label": "4. Cost of the problem (money or time)",
+          "label": "4. Impact without pressure",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2028,10 +2012,9 @@
         },
         {
           "name": "a5",
-          "label": "5. Qualified (budget, decider, timing)",
+          "label": "5. Fit and constraints",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2049,10 +2032,9 @@
         },
         {
           "name": "a6",
-          "label": "6. Offer in their words",
+          "label": "6. Clear, evidence-based explanation",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2070,10 +2052,9 @@
         },
         {
           "name": "a7",
-          "label": "7. Objection handled (pause, ask, answer)",
+          "label": "7. Questions and concerns respected",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2091,10 +2072,9 @@
         },
         {
           "name": "a8",
-          "label": "8. Asked for the decision and followed up",
+          "label": "8. Participant-led ending",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2143,7 +2123,7 @@
     "ascent.vet": {
       "label": "The Ascent: vet a commission offer",
       "group": "My engines",
-      "help": "Before you give a high-ticket, commission-only offer your time, answer the questions (Yes, No or Not asked yet). You get a verdict (Walk away, Red, Amber, Unchecked, OK or Promising), the exact reasons, a ready message with the questions to put to them in writing, what to get in the contract, and what one sale and a target month would really need from you. Based on the FTC's job-scam advice (never pay for a job, earnings promises, fake checks, unverifiable employers) and practitioner guidance for commission contracts. It informs your decision; it is not legal advice. It saves the offer to your tracker.",
+      "help": "Review a sales role and offer before committing time. The checklist summarizes unanswered questions and cautions; it cannot verify the company or predict pay. It can show arithmetic from commission terms, customer payment, and an optional target you enter. No earnings or close-rate defaults are inserted. This is not legal advice. Saves the review to your offer tracker.",
       "script": "dse.py",
       "args": [
         {
@@ -2175,6 +2155,10 @@
         {
           "opt": "--target",
           "field": "target"
+        },
+        {
+          "opt": "--currency",
+          "field": "currency"
         },
         {
           "opt": "--notes",
@@ -2305,15 +2289,15 @@
         },
         {
           "name": "commission",
-          "label": "Commission they offer (%)",
+          "label": "Written commission rate (%)",
           "type": "int",
           "min": 0,
           "max": 100,
-          "default": 10
+          "default": 0
         },
         {
           "name": "ticket",
-          "label": "Price of the offer they sell ($)",
+          "label": "Customer payment used as commission base",
           "type": "int",
           "min": 0,
           "max": 1000000,
@@ -2321,11 +2305,20 @@
         },
         {
           "name": "target",
-          "label": "Monthly income you want from it ($)",
+          "label": "Optional monthly target (same currency)",
           "type": "int",
-          "min": 100,
+          "min": 0,
           "max": 100000,
-          "default": 3000
+          "default": 0
+        },
+        {
+          "name": "currency",
+          "label": "Currency code for payment and target (for example USD, CAD, GBP)",
+          "type": "text",
+          "required": false,
+          "max": 3,
+          "default": "",
+          "pattern": "^(?:[A-Za-z]{3})?$"
         },
         {
           "name": "status",
@@ -4295,9 +4288,9 @@
       "outputs": []
     },
     "dse.proposal": {
-      "label": "Proposal Builder: a one-page proposal after a good call",
+      "label": "Client Proposal Builder: service projects",
       "group": "My engines",
-      "help": "Turns what you heard on the call into a clear one-page proposal, a cover email and a follow-up, in your name. Everything comes from what you type: their problem in their own words, what you will do, your price and deliverables. If you give what the problem costs them each month, it shows the yearly cost and the payback as plain arithmetic (never a promise of results). Optionally shows three options with the middle one recommended. It saves a text file and a print-ready page (open it in a browser and save as PDF), and marks [brackets] for anything only you know. It never sends anything.",
+      "help": "Creates a neutral service-project proposal, cover email and optional follow-up draft. Options are unranked; record the client's exact choice when accepted. Enter an impact estimate only if the person volunteered it and agreed to recording; annual arithmetic is not a payback forecast. Payment milestones are left open unless agreed. No automatic expiry or follow-up date is imposed; send a follow-up only when requested or mutually agreed. The proposal marks [brackets] for facts only you know and is never sent by this tool. For service work, not employment applications or commission offers.",
       "script": "dse.py",
       "args": [
         {
@@ -4423,7 +4416,7 @@
         },
         {
           "name": "cost_month",
-          "label": "What the problem costs them each month (from the call, 0 if unknown)",
+        "label": "Optional impact estimate volunteered by the client (0 if none)",
           "type": "int",
           "required": false,
           "min": 0,
@@ -4432,7 +4425,7 @@
         },
         {
           "name": "options",
-          "label": "Optional three-way choice: Basic:800:2 pages; Standard:1500:5 pages; Premium:2800:10 pages",
+        "label": "Optional unranked choices (2 to 4): Basic:800:2 pages; Standard:1500:5 pages; Premium:2800:10 pages",
           "type": "text",
           "required": false,
           "max": 200,
@@ -4440,11 +4433,11 @@
         },
         {
           "name": "deposit",
-          "label": "Deposit to start (%)",
+        "label": "Agreed start-payment percentage (leave blank if not agreed)",
           "type": "int",
           "min": 0,
           "max": 100,
-          "default": 50
+        "hint": "Set only after payment milestones have been agreed with the client."
         },
         {
           "name": "currency",
@@ -4484,7 +4477,7 @@
     "dse.client_won": {
       "label": "Client Desk: this proposal was accepted",
       "group": "My engines",
-      "help": "Turns a saved proposal into a client: price, deposit, timeline and deliverables carry over. Writes the onboarding checklist with dates, a welcome message in your name, a short agreement outline (a starting point, not legal advice) and the deposit invoice as a print-ready page. Nothing is sent: you send the welcome message, the agreement and the invoice yourself.",
+      "help": "Turns an accepted service proposal into a client record. If options were offered, record the exact option accepted. Record the agreed start-payment percentage if the proposal left payment terms open. Creates an onboarding checklist, welcome message, agreement outline (not legal advice) and invoice. Nothing is sent by this tool. Not for employment or commission offers.",
       "script": "dse.py",
       "args": [
         {
@@ -4500,6 +4493,14 @@
           "opt": "--proposal",
           "field": "proposal"
         },
+      {
+        "opt": "--option",
+        "field": "option"
+      },
+      {
+        "opt": "--deposit",
+        "field": "deposit"
+      },
         {
           "opt": "--email",
           "field": "email"
@@ -4525,6 +4526,21 @@
           "required": true,
           "glob": "engines/*/proposals/*.json"
         },
+      {
+        "name": "option",
+        "label": "Exact option the client accepted (required only if options were shown)",
+        "type": "text",
+        "required": false,
+        "max": 60
+      },
+      {
+        "name": "deposit",
+        "label": "Agreed start-payment percentage (required if proposal has no payment terms)",
+        "type": "int",
+        "required": false,
+        "min": 0,
+        "max": 100
+      },
         {
           "name": "email",
           "label": "Their email (for the invoice, optional)",
@@ -6290,7 +6306,7 @@
     "dse.call_prep": {
       "label": "Call Desk: prepare for a booked call",
       "group": "My engines",
-      "help": "A one-page brief for a booked call, built only from your own records: what you sent, what they wrote in their own words, what their website check or enrichment found (each fact says where it came from), three facts to open with, a question plan under the five scorecard headings with their gap woven in, your up-front contract script, and what must be in hand before you speak. What is not known is listed as not known. Also creates a notes sheet. Nothing is sent.",
+      "help": "Builds a brief from your own records: what you sent, replies, and relevant sourced observations. It does not require a number of facts, and unknowns stay marked unknown. The flexible plan uses open questions, optional impact discussion, honest fit checks, permission, and a participant-led next step. It avoids forced disclosure or a required decision. Also creates a notes sheet. Nothing is sent.",
       "script": "dse.py",
       "args": [
         {
@@ -6344,9 +6360,9 @@
       ]
     },
     "dse.call_after": {
-      "label": "Call Desk: what to do the minute the call ends",
+      "label": "Call Desk: record an agreed next step",
       "group": "My engines",
-      "help": "Type what you heard (their problem in their words, the monthly cost they gave, the price, what you agreed) and get the recap message to send within 10 minutes, the scorecard command, and for a follow-up call the proposal command already filled in. A sold or lost call is written into your send log so your results stay true. Tick Stop to put them on your do-not-contact list if they asked not to be contacted. Nothing is sent.",
+      "help": "Record a short summary of the conversation and any next step they chose. A monthly impact estimate is optional and should be entered only if the person volunteered it and agreed it may be recorded. The tool can draft a recap for you to send only as agreed, provide the scorecard command, and prepare an optional proposal draft. A sold or lost outcome is written into your send log. Stop adds their address to your do-not-contact list if requested. Nothing is sent.",
       "script": "dse.py",
       "args": [
         {
@@ -6443,14 +6459,14 @@
         },
         {
           "name": "problem",
-          "label": "Their problem, in their words",
+          "label": "Their stated concern or context (optional)",
           "type": "text",
           "required": false,
           "max": 300
         },
         {
           "name": "cost_month",
-          "label": "What they said it costs them each month ($, 0 if not said)",
+          "label": "Optional monthly impact they volunteered and agreed you may record ($)",
           "type": "int",
           "required": false,
           "min": 0,
@@ -6459,7 +6475,7 @@
         },
         {
           "name": "price",
-          "label": "The price you agreed or will quote ($, 0 if not yet)",
+          "label": "Known or proposed price ($; leave 0 if not set)",
           "type": "int",
           "required": false,
           "min": 0,

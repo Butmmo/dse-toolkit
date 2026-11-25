@@ -138,16 +138,16 @@ try:
     except ValueError:
         check("a score of 3 is refused", True)
     sc = callscore.score_call([2, 2, 1, 0, 1, 2, 0, 2])
-    check("the two weakest areas are named, weakest first", [w[0] for w in sc["weakest"]] == ["cost", "objection"] and sc["pct"] == 63)
+    check("the two weakest areas are named, weakest first", [w[0] for w in sc["weakest"]] == ["impact", "concerns"] and sc["pct"] == 63)
     txt = callscore.report("zz-asc", "Acme Coaching", "sold", 3000, 10, 55, [2, 2, 1, 0, 1, 2, 0, 2])
-    check("the report coaches with a drill and warns when the prospect did not talk most", "Drill:" in txt and "talked 55%" in txt)
+    check("the report offers respectful practice feedback without a talk-time quota", "Practice:" in txt and "talk-time ratio" in callscore.AREAS[2][2] and "not a predictor" in txt)
     callscore.report("zz-asc", "Acme Coaching", "no_show", 0, 10, 0, [0] * 8)
     callscore.report("zz-asc", "Acme Coaching", "no_sale", 0, 10, 40, [1, 1, 1, 1, 1, 1, 1, 1])
     st = callscore.stats(callscore.read_calls("zz-asc"))
     check("show rate, close rate, cash per call and commission", st["calls"] == 3 and st["shown"] == 2 and st["show_rate"] == 67 and st["close_rate"] == 50 and st["cash"] == 3000 and st["earned"] == 300 and st["cash_per_call"] == 1500, str(st))
     check("a no-show is not scored", [c for c in callscore.read_calls("zz-asc") if c["outcome"] == "no_show"][0]["score"] == "")
-    check("a closed call that scored low is not praised", "Do not copy this one" in callscore.report("zz-asc", "X", "sold", 1000, 10, 30, [1, 0, 0, 0, 1, 1, 0, 1]))
-    check("fewer than 10 calls: it says it is too few to judge", "too few to judge" in txt)
+    check("a low self-score is not used to judge future outcomes", "not a predictor" in callscore.report("zz-asc", "X", "sold", 1000, 10, 30, [1, 0, 0, 0, 1, 1, 0, 1]))
+    check("fewer than 10 calls: it says there is too little history to interpret a rate", "too little history to interpret a close rate" in txt)
 
     # ------------------------------------------------------------------ the Ascent and GTM packs on sample page text
     def found(pack, cid, text):

@@ -37,13 +37,14 @@ try:
     PR.report(SLUG, "Acme Dental", "Dana", "patients cannot book online and call after hours", "Online booking that fills the calendar", 1500, "Booking page; Reminder emails; Staff training", 3, 4000, today=TODAY, start="2026-11-16")
     pj = d / "proposals" / "2026-11-14-acme-dental.json"
     pdata = json.loads(pj.read_text(encoding="utf-8"))
-    check("the proposal saves structured data", pdata["price"] == 1500 and pdata["deposit"] == 50 and pdata["items"] == ["Booking page", "Reminder emails", "Staff training"] and pdata["currency"] == "USD")
+    check("the proposal saves structured data without inventing payment terms", pdata["price"] == 1500 and pdata["deposit"] is None and pdata["items"] == ["Booking page", "Reminder emails", "Staff training"] and pdata["currency"] == "USD")
 
     # ---- won
     check("unknown proposal is explained with the ones that exist", "2026-11-14-acme-dental" in (raises(C.won, SLUG, "nope", today=TODAY) or ""))
     check("a proposal path outside the engine's proposals folder is refused", raises(C.won, SLUG, str(ROOT / "bridge" / "catalog.json"), today=TODAY) is not None)
     check("bad email refused", "email" in (raises(C.won, SLUG, "2026-11-14-acme-dental", "not-an-email", today=TODAY) or ""))
-    t = C.won(SLUG, "2026-11-14-acme-dental", "dana@acme.example", "5 Oak Ave, Tampa FL", today=TODAY)
+    check("client conversion requires agreed payment terms", "--deposit" in (raises(C.won, SLUG, "2026-11-14-acme-dental", today=TODAY) or ""))
+    t = C.won(SLUG, "2026-11-14-acme-dental", "dana@acme.example", "5 Oak Ave, Tampa FL", today=TODAY, deposit=50)
     folder = d / "clients" / "acme-dental"
     c = json.loads((folder / "client.json").read_text(encoding="utf-8"))
     check("client created from the proposal: price, deposit, start, weeks, items with due dates", c["price"] == 1500 and c["deposit_pct"] == 50 and c["start"] == "2026-11-16" and c["weeks"] == 3
@@ -140,6 +141,14 @@ try:
     g2 = RV.gather(SLUG, dt.date(2027, 3, 1))
     check("an overdue invoice appears too, with the amount still owed (900 - 100 = 800)", any(m["rank"] == 2.5 and "£800" in m["do"] and "client paid" in m["how"] for m in RV.moves(g2)), str([m["do"] for m in RV.moves(g2)]))
     check("no em dash in the onboarding, invoice or review text", all(chr(0x2014) not in x for x in (ob, inv_html, RV.build(SLUG, today=dt.date(2026, 12, 1)))))
+    # ---- acceptance with an explicit package selection
+    PR.report(SLUG, "Gamma Studio", "Gina", "the booking flow is difficult to use", "A clearer booking flow", 0, "Audit; Booking redesign", 2,
+              options="Basic:600:Audit; Plus:1200:Audit and redesign", today=TODAY, start="2026-11-16")
+    check("option proposal cannot become a client until an exact choice and payment terms are recorded", "--option" in (raises(C.won, SLUG, "2026-11-14-gamma-studio", today=TODAY, deposit=25) or ""))
+    check("unknown option choice is rejected", "Choose one of the options" in (raises(C.won, SLUG, "2026-11-14-gamma-studio", today=TODAY, option="Premium", deposit=25) or ""))
+    C.won(SLUG, "2026-11-14-gamma-studio", today=TODAY, option="Plus", deposit=25)
+    gc = json.loads((d / "clients" / "gamma-studio" / "client.json").read_text(encoding="utf-8"))
+    check("accepted option and its price carry into the client record", gc["option"] == "Plus" and gc["price"] == 1200 and gc["deposit_pct"] == 25)
 finally:
     shutil.rmtree(d, ignore_errors=True)
 

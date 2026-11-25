@@ -1,4 +1,4 @@
-"""Offer vetting for The Ascent: decide whether a commission-only high-ticket offer deserves your time, BEFORE you take calls for it.
+"""Offer vetting for The Ascent: review a sales role and commission offer before committing time.
 
     python dse.py vet <engine> --offer "Acme Coaching" --url https://acme.example --commission 10 --ticket 5000 --d_pay no --d_contract no ...
     python dse.py offers <engine>          your offer tracker, best first
@@ -11,8 +11,8 @@ Verdicts:
   UNCHECKED   three or more dealbreaker or serious questions still unknown: ask before you give more time
   OK          nothing risky, but fewer than three good signs so far
   PROMISING   nothing risky, a written agreement in hand and at least three good signs
-It also says what one sale pays you and how many calls you would need for a target month, using YOUR close rate once you have 10 calls
-logged (otherwise a clearly labelled 20% assumption). Based on the FTC's consumer advice on job scams and practitioner guidance
+It can show arithmetic from the commission terms, payment amount, currency and optional target you enter. It does not assume a
+close rate or estimate calls required. Based on the FTC's consumer advice on job scams and practitioner guidance
 for commission contracts (see dse/vetting.json). It informs your decision; it is not legal advice and it cannot see the company's records.
 """
 from __future__ import annotations
@@ -20,6 +20,8 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import math
+import re
 from pathlib import Path
 
 from . import callscore
@@ -28,8 +30,7 @@ from .common import ROOT
 HERE = Path(__file__).resolve().parent
 ENGINES = ROOT / "engines"
 STATUSES = ("researching", "applied", "interview", "active", "rejected", "walked")
-COLS = ["date", "offer", "url", "status", "verdict", "score", "commission_pct", "ticket", "flags", "unknown", "notes"]
-ASSUMED_CLOSE = 0.20
+COLS = ["date", "offer", "url", "status", "verdict", "score", "commission_pct", "ticket", "currency", "flags", "unknown", "notes"]
 
 
 def data() -> dict:
@@ -80,19 +81,22 @@ def evaluate(answers: dict[str, str]) -> dict:
     return {"verdict": verdict, "score": score, "dealbreakers": dead, "serious": serious, "cautions": caution, "unknown": unknown, "key_unknown": key_unknown, "good": good}
 
 
-def sale_math(commission_pct: float, ticket: float, target_month: float, calls: list[dict]) -> str | None:
+def sale_math(commission_pct: float, ticket: float, target_month: float, calls: list[dict], currency: str = "") -> str | None:
     if not commission_pct or not ticket:
         return None
     per_sale = ticket * commission_pct / 100
-    st = callscore.stats(calls) if calls else {}
-    shown = st.get("shown", 0)
-    if shown >= 10 and st.get("close_rate") is not None and st["close_rate"] > 0:
-        rate, basis = st["close_rate"] / 100, f"your own close rate of {st['close_rate']}% over {shown} calls"
-    else:
-        rate, basis = ASSUMED_CLOSE, "an ASSUMED close rate of 20% (log 10 calls to replace this with your own)"
-    sales = -(-target_month // per_sale)
-    return (f"One sale pays you about ${per_sale:,.0f} (${ticket:,.0f} at {commission_pct:g}%). To earn ${target_month:,.0f} a month you need about {sales:.0f} sale(s), "
-            f"which is roughly {sales / rate:.0f} calls that show up, using {basis}. Check that the company really supplies that many booked calls.")
+    code = currency.strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", code):
+        code = "currency units"
+    sale_count = math.ceil(target_month / per_sale) if target_month > 0 else None
+    result = (f"If the written agreement pays commission on one collected customer payment of {code} {ticket:,.2f}, "
+              f"the entered {commission_pct:g}% rate gives {code} {per_sale:,.2f} gross commission before refunds, reversals, fees, taxes, or expenses. "
+              "For recurring plans, count only installments the agreement explicitly makes commissionable.")
+    if sale_count is None:
+        return result + " No monthly target was entered, so no target scenario is shown."
+    return (result + f" At the optional monthly target you entered ({code} {target_month:,.2f}), the arithmetic is about {sale_count} "
+            "eligible customer payment(s). This is not an earnings forecast. No close-rate or call-volume assumption is inserted; "
+            "compare with dated records and the company's actual qualified-call supply.")
 
 
 def written_questions(res: dict, offer: str) -> str:
@@ -126,14 +130,19 @@ def save_offer(slug: str, row: dict) -> None:
         w.writerows(rows)
 
 
-def report(slug: str, offer: str, url: str, commission: float, ticket: float, status: str, notes: str, answers: dict[str, str], target_month: float = 3000,
-           today: dt.date | None = None) -> str:
+def report(slug: str, offer: str, url: str, commission: float, ticket: float, status: str, notes: str, answers: dict[str, str], target_month: float = 0,
+           today: dt.date | None = None, currency: str = "") -> str:
+    if commission < 0 or ticket < 0 or target_month < 0:
+        raise ValueError("Commission, payment base, and optional target must be zero or greater.")
+    currency = currency.strip().upper()
+    if currency and not re.fullmatch(r"[A-Z]{3}", currency):
+        raise ValueError("Use a three-letter currency code such as USD, CAD, or GBP.")
     res = evaluate(answers)
     today = today or dt.date.today()
     if res["verdict"] == "WALK AWAY" and status not in ("walked", "rejected"):
         status = "walked"
     save_offer(slug, {"date": today.isoformat(), "offer": offer, "url": url, "status": status or "researching", "verdict": res["verdict"], "score": res["score"],
-                      "commission_pct": commission, "ticket": ticket, "flags": "; ".join(q["id"] for q in res["dealbreakers"] + res["serious"] + res["cautions"]),
+                      "commission_pct": commission, "ticket": ticket, "currency": currency, "flags": "; ".join(q["id"] for q in res["dealbreakers"] + res["serious"] + res["cautions"]),
                       "unknown": ";".join(q["id"] for q in res["unknown"]), "notes": notes})
     heads = {
         "WALK AWAY": "WALK AWAY. Do not give this offer more time.",
@@ -161,11 +170,11 @@ def report(slug: str, offer: str, url: str, commission: float, ticket: float, st
         L += ["Copy this message and send it to them (their written answers are your record):", "", wq, ""]
     if res["verdict"] == "WALK AWAY":
         L += ["If you already paid or sent money, contact the company or app you used to send it right away and report it at ReportFraud.ftc.gov (US) or to your local fraud agency. Do not send more.", ""]
-    sm = sale_math(commission, ticket, target_month, callscore.read_calls(slug))
+    sm = sale_math(commission, ticket, target_month, callscore.read_calls(slug), currency)
     if sm and res["verdict"] != "WALK AWAY":
-        L += ["What the money could look like:", "  " + sm, ""]
-    L += ["Before you start, get in writing: the commission rate and what it is calculated on, the payout date, the clawback window and cap, who owns recordings, "
-          "whether you are a contractor, the company's legal name, and that you pay nothing.",
+        L += ["Entered-terms arithmetic (not an earnings forecast):", "  " + sm, ""]
+    L += ["Before you start, get in writing: the commission rate and eligible payment basis, payout date, refund and reversal rules, required expenses and who pays or reimburses them, "
+          "who owns recordings, your work status, the company's legal name, and all duties.",
           "", f"Saved to your offer tracker (python dse.py offers {slug}). Sources: FTC job-scams advice (consumer.ftc.gov/articles/job-scams) and practitioner guidance for commission contracts. "
           "This informs your decision; it is not legal advice and it cannot see the company's records."]
     return "\n".join(L)
@@ -177,5 +186,5 @@ def listing(slug: str) -> str:
         return "No offers vetted yet. Vet one with: python dse.py vet <engine> --offer \"Name\" ... (or HQ Tools: The Ascent, vet an offer)."
     order = {"PROMISING": 0, "OK": 1, "UNCHECKED": 2, "AMBER": 3, "RED": 4, "WALK AWAY": 5}
     rows.sort(key=lambda r: (order.get(r["verdict"], 9), -int(r["score"] or 0)))
-    out = [f"{r['verdict']:<10} {r['score']:>3}  {r['offer'][:30]:<30} {r['status']:<11} {('$' + r['ticket'] + ' @ ' + r['commission_pct'] + '%') if r['ticket'] else '':<16} {r['date']}" for r in rows]
+    out = [f"{r['verdict']:<10} {r['score']:>3}  {r['offer'][:30]:<30} {r['status']:<11} {(r.get('currency') or 'currency unspecified') + ' ' + r['ticket'] + ' @ ' + r['commission_pct'] + '%' if r['ticket'] else '':<28} {r['date']}" for r in rows]
     return "\n".join(out)
