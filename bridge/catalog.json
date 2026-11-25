@@ -6283,7 +6283,7 @@
     "dse.call_prep": {
       "label": "Call Desk: prepare for a booked call",
       "group": "My engines",
-      "help": "A one-page brief for a booked call, built only from your own records: what you sent, what they wrote in their own words, what their website check or enrichment found (each fact says where it came from), three facts to open with, a question plan under the five scorecard headings with their gap woven in, your up-front contract script, and what must be in hand before you speak. What is not known is listed as not known. Also creates a notes sheet. Nothing is sent.",
+      "help": "Builds a brief from your own records: what you sent, replies, and relevant sourced observations. It does not require a number of facts, and unknowns stay marked unknown. The flexible plan uses open questions, optional impact discussion, honest fit checks, permission, and a participant-led next step. It avoids forced disclosure or a required decision. Also creates a notes sheet. Nothing is sent.",
       "script": "dse.py",
       "args": [
         {
@@ -6337,9 +6337,9 @@
       ]
     },
     "dse.call_after": {
-      "label": "Call Desk: what to do the minute the call ends",
+      "label": "Call Desk: record an agreed next step",
       "group": "My engines",
-      "help": "Type what you heard (their problem in their words, the monthly cost they gave, the price, what you agreed) and get an optional recap message to send only as agreed, the scorecard command, and for a follow-up call the proposal command already filled in. A sold or lost call is written into your send log so your results stay true. Tick Stop to put them on your do-not-contact list if they asked not to be contacted. Nothing is sent.",
+      "help": "Record a short summary of the conversation and any next step they chose. A monthly impact estimate is optional and should be entered only if the person volunteered it and agreed it may be recorded. The tool can draft a recap for you to send only as agreed, provide the scorecard command, and prepare an optional proposal draft. A sold or lost outcome is written into your send log. Stop adds their address to your do-not-contact list if requested. Nothing is sent.",
       "script": "dse.py",
       "args": [
         {
@@ -6436,14 +6436,14 @@
         },
         {
           "name": "problem",
-          "label": "Their problem, in their words",
+          "label": "Their stated concern or context (optional)",
           "type": "text",
           "required": false,
           "max": 300
         },
         {
           "name": "cost_month",
-          "label": "What they said it costs them each month ($, 0 if not said)",
+          "label": "Optional monthly impact they volunteered and agreed you may record ($)",
           "type": "int",
           "required": false,
           "min": 0,
@@ -6452,7 +6452,7 @@
         },
         {
           "name": "price",
-          "label": "The price you agreed or will quote ($, 0 if not yet)",
+          "label": "Known or proposed price ($; leave 0 if not set)",
           "type": "int",
           "required": false,
           "min": 0,
