@@ -1813,9 +1813,9 @@
       "outputs": []
     },
     "ascent.callscore": {
-      "label": "The Ascent: score a sales call",
+      "label": "The Ascent: practice a sales conversation",
       "group": "My engines",
-      "help": "After every sales call, real or a mock you recorded, rate it honestly in eight areas (0 missed, 1 partly, 2 done well). You get your score, the two weakest areas with a 10-minute drill each, and your numbers over time: show rate, close rate, cash per call, what you earned in commission, and your score trend. Be harsh: a scorecard that flatters you teaches nothing. Based on the up-front contract, SPIN-style questions and the pause-ask-answer objection routine (HQ recipe: Prepare and run a high-ticket sales call).",
+      "help": "Rate a real or fictional practice conversation against eight participant-respecting behaviors. The score is your own reflection, not a standardized skill assessment, proof of ability, or prediction of hiring or sales. Logged call outcomes are descriptive only; commission arithmetic uses only the payment and written rate you enter, is not money received, and has no default rate. Use fictional information for practice; do not enter prospect personal or confidential data.",
       "script": "dse.py",
       "args": [
         {
@@ -1839,10 +1839,6 @@
         {
           "opt": "--commission",
           "field": "commission"
-        },
-        {
-          "opt": "--talk",
-          "field": "talk"
         },
         {
           "opt": "--a1",
@@ -1920,7 +1916,7 @@
         },
         {
           "name": "cash",
-          "label": "Cash collected ($, only if sold)",
+          "label": "Customer payment from this sale (optional; only if sold)",
           "type": "int",
           "min": 0,
           "max": 1000000,
@@ -1928,26 +1924,17 @@
         },
         {
           "name": "commission",
-          "label": "Your commission (%)",
+          "label": "Written commission rate for arithmetic only (optional; 0 if unknown)",
           "type": "int",
           "min": 0,
           "max": 100,
-          "default": 10
-        },
-        {
-          "name": "talk",
-          "label": "How much of the call did YOU talk (%)",
-          "type": "int",
-          "min": 0,
-          "max": 100,
-          "default": 40
+          "default": 0
         },
         {
           "name": "a1",
-          "label": "1. Up-front contract (time, agenda, permission, outcome)",
+          "label": "1. Agreed agenda and permission",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -1965,10 +1952,9 @@
         },
         {
           "name": "a2",
-          "label": "2. Prepared (3 facts known)",
+          "label": "2. Relevant preparation",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -1986,10 +1972,9 @@
         },
         {
           "name": "a3",
-          "label": "3. Problem questions (they talked most)",
+          "label": "3. Open questions and listening",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2007,10 +1992,9 @@
         },
         {
           "name": "a4",
-          "label": "4. Cost of the problem (money or time)",
+          "label": "4. Impact without pressure",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2028,10 +2012,9 @@
         },
         {
           "name": "a5",
-          "label": "5. Qualified (budget, decider, timing)",
+          "label": "5. Fit and constraints",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2049,10 +2032,9 @@
         },
         {
           "name": "a6",
-          "label": "6. Offer in their words",
+          "label": "6. Clear, evidence-based explanation",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2070,10 +2052,9 @@
         },
         {
           "name": "a7",
-          "label": "7. Objection handled (pause, ask, answer)",
+          "label": "7. Questions and concerns respected",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2091,10 +2072,9 @@
         },
         {
           "name": "a8",
-          "label": "8. Asked for the decision and followed up",
+          "label": "8. Participant-led ending",
           "type": "choice",
           "required": false,
-          "default": "1",
           "choices": [
             {
               "value": "0",
@@ -2337,8 +2317,8 @@
           "type": "text",
           "required": false,
           "max": 3,
-        "default": "",
-        "pattern": "^(?:[A-Za-z]{3})?$"
+          "default": "",
+          "pattern": "^(?:[A-Za-z]{3})?$"
         },
         {
           "name": "status",
@@ -6359,7 +6339,7 @@
     "dse.call_after": {
       "label": "Call Desk: what to do the minute the call ends",
       "group": "My engines",
-      "help": "Type what you heard (their problem in their words, the monthly cost they gave, the price, what you agreed) and get the recap message to send within 10 minutes, the scorecard command, and for a follow-up call the proposal command already filled in. A sold or lost call is written into your send log so your results stay true. Tick Stop to put them on your do-not-contact list if they asked not to be contacted. Nothing is sent.",
+      "help": "Type what you heard (their problem in their words, the monthly cost they gave, the price, what you agreed) and get an optional recap message to send only as agreed, the scorecard command, and for a follow-up call the proposal command already filled in. A sold or lost call is written into your send log so your results stay true. Tick Stop to put them on your do-not-contact list if they asked not to be contacted. Nothing is sent.",
       "script": "dse.py",
       "args": [
         {

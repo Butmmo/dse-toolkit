@@ -1,4 +1,4 @@
-"""The Call Desk: be ready for a booked call, and know what to do the minute it ends.
+"""The Call Desk: prepare for a booked call and document an agreed next step afterward.
 
     python dse.py call prep <engine> --source 2026-11-09 --row 7          a one-page brief for that lead (and a notes sheet)
     python dse.py call after <engine> --source 2026-11-09 --row 7 --outcome follow_up|sold|no_sale|no_show [--problem "..."] [--cost-month 4000] [--price 1500] [--agreed "..."] [--stop]
@@ -7,7 +7,7 @@ prep builds engines/<engine>/calls/<date>-<lead>/prep.md and notes.md from YOUR 
 words), what the website check or the enrichment found, and what you need in hand before you speak. Every fact names where it came from. Where something is not known it says "not found"
 and where to look: nothing about the lead is ever invented. The question plan follows the same five headings as your call scorecard (Situation, Problem, Cost, Result wanted, Next step).
 
-after turns what you typed into the next steps, in after.md: the follow-up message to send within 10 minutes (your recap, not a template of promises), the scorecard command to run,
+after turns what you typed into the next steps, in after.md: a recap you may send at the time and through the channel you agreed (not a template of promises), the scorecard command to run,
 and for a call that should lead to a proposal, the proposal command already filled in with what they told you. A call you won or lost is written into the send log so your results stay true.
 --stop adds them to your do-not-contact list (when they asked not to be contacted). Nothing is sent.
 """
@@ -169,13 +169,13 @@ def after(slug: str, source: str, row_id: str, outcome: str, problem: str = "", 
     L = [f"# After the call: {biz}", "", f"Outcome: {outcome.replace('_', ' ')}", ""]
     notes = []
     if outcome == "no_show":
-        L += ["## Send within the hour", f"Hi {first}, I had us down for a call today and missed you. No problem at all: here is my calendar to pick another time{': ' + (cfg.get('calendar_url') or '') if cfg.get('calendar_url') else ' (tell me a time that suits you)'}. {sender}", ""]
+        L += ["## If appropriate, offer a reschedule", f"If they invited a reschedule message, you can send: Hi {first}, I had us down for a call today and missed you. No problem. If you would like to reschedule, here is my calendar{': ' + (cfg.get('calendar_url') or '') if cfg.get('calendar_url') else ' (or tell me a time that suits you)'}. {sender}", ""]
         L += [f"Log it: python dse.py callscore {slug} --offer \"{biz}\" --outcome no_show"]
     elif outcome == "no_sale":
-        L += ["## Send within 10 minutes", f"Hi {first}, thank you for your time today and for being open with me about {problem or 'where things stand'}. I understand it is not the right fit right now" + (f" ({agreed})" if agreed else "") + f". If anything changes, you know where I am. {sender}", ""]
+        L += ["## Optional recap, if useful and welcome", f"Hi {first}, thank you for your time today. I will not follow up unless you ask me to" + (f" or as we agreed ({agreed})" if agreed else "") + f". {sender}", ""]
         L += [f"Log it: python dse.py callscore {slug} --offer \"{biz}\" --outcome no_sale --scores 1,1,1,1,1,1,1,1   (rate each area 0 to 2, honestly)"]
     else:
-        L += ["## Send within 10 minutes: your recap, in their words",
+        L += ["## Optional recap to send only as agreed",
               f"Hi {first}, thank you for the time today. Here is what I heard: " + (f"{problem}. " if problem else "[the problem, in their words]. ") + (f"You said it costs about ${cost_month:,.0f} a month. " if cost_month else "[what they said it costs per month]. ")
               + f"What we agreed: " + (f"{agreed}" if agreed else "[the next step and its date]") + f". {sender}", ""]
         if outcome == "follow_up":
