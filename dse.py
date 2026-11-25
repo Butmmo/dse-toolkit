@@ -212,11 +212,13 @@ def main():
     ct.add_argument("--auto", default="", choices=["", "on", "off"]); ct.add_argument("--publish", action="store_true"); ct.add_argument("--example", action="store_true")
     cd = sub.add_parser("client"); cd.add_argument("action", choices=["won", "list", "show", "done", "invoice", "paid"]); cd.add_argument("target", help="an engine (won, list) or engine/client (the rest)")
     cd.add_argument("--proposal", default=""); cd.add_argument("--email", default=""); cd.add_argument("--address", default=""); cd.add_argument("--item", default="")
+    cd.add_argument("--option", default="", help="the exact option accepted by the client, when the proposal offered choices")
+    cd.add_argument("--deposit", type=int, default=None, help="agreed start-payment percentage (0 to 100); needed if no payment schedule was set in the proposal")
     cd.add_argument("--date", default=""); cd.add_argument("--kind", default="final"); cd.add_argument("--amount", type=float, default=0); cd.add_argument("--note", default="")
     cd.add_argument("--terms", type=int, default=7); cd.add_argument("--invoice", default="")
     pr = sub.add_parser("proposal"); pr.add_argument("engine"); pr.add_argument("--client", required=True); pr.add_argument("--contact", default=""); pr.add_argument("--problem", required=True)
     pr.add_argument("--offer", required=True); pr.add_argument("--price", type=float, default=0); pr.add_argument("--deliverables", required=True); pr.add_argument("--weeks", type=int, default=3)
-    pr.add_argument("--cost-month", type=float, default=0, dest="cost_month", help="optional customer-provided estimate; enter only if the person volunteered it and agreed it may be recorded"); pr.add_argument("--options", default=""); pr.add_argument("--deposit", type=int, default=50)
+    pr.add_argument("--cost-month", type=float, default=0, dest="cost_month", help="optional customer-provided impact estimate; enter only if the person volunteered it and agreed it may be recorded"); pr.add_argument("--options", default=""); pr.add_argument("--deposit", type=int, default=None)
     pr.add_argument("--currency", default="USD"); pr.add_argument("--excludes", default=""); pr.add_argument("--start", default=""); pr.add_argument("--quotes", action="store_true", help="add approved testimonials (their exact words, the attribution they chose)")
     pf = sub.add_parser("preflight"); pf.add_argument("target", nargs="?", default="", help="an engine (newest list) or a path to a list"); pf.add_argument("--domain", default="")
     pf.add_argument("--clean", action="store_true", help="write a copy without the blocked rows")
@@ -446,7 +448,7 @@ def main():
     elif a.cmd == "client":
         try:
             if a.action == "won":
-                print(clients.won(a.target, a.proposal, a.email, a.address))
+                print(clients.won(a.target, a.proposal, a.email, a.address, option=a.option, deposit=a.deposit))
             elif a.action == "list":
                 print(clients.listing(a.target))
             elif a.action == "show":
