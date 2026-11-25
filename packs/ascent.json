@@ -1,7 +1,7 @@
 {
-  "label": "The Ascent (high-ticket closer)",
+  "label": "The Ascent (commission sales role research)",
   "variant": "ascent-mock-call-v1",
-  "about": "For scouting companies that sell high-ticket offers and might hire a commission closer. You scout them by hand (search, YouTube, people who already closer for them) and paste their websites. Each signal found is a reason to approach them; there is no 'gap' to fix. It mirrors the Ascent target-company score: a visible price of $3,000+, an application or booking page, closers or setters being hired, content going out. Warnings (income promises, regulated lanes) mean: read it carefully before you approach. Public pages only.",
+  "about": "For researching companies and offers while exploring sales roles. Paste public company websites you found through permitted research. Page signals are discovery clues only: they do not prove a role is open, that the company supplies leads, that the product works, or that you will earn commission. Verify the employer, role, written pay terms, duties, and local requirements before applying or contacting anyone. Public pages only.",
   "max_pages": 5,
   "pages": [
     "apply",
@@ -18,30 +18,30 @@
   ],
   "checks": [
     {
-      "id": "high_ticket",
-      "missing": "High-ticket offer ({quote})",
-      "label": "Shows a price of $3,000 or more",
+      "id": "pricing_details",
+      "missing": "Public pricing details not found",
+      "label": "Public price or payment details",
       "type": "absent",
       "scope": "text",
-      "weight": 3,
+      "weight": 0,
       "look_for": [
-        "(?P<q1>\\$\\s?(?:[3-9],\\d{3}|[1-9]\\d,\\d{3})(?:\\.\\d\\d)?)",
-        "(?P<q2>(?:investment|price|tuition|program fee)[^.$]{0,30}\\$\\s?(?:[3-9]\\d{3}|[1-9]\\d{4}))"
+        "(?P<q1>(?:price|pricing|tuition|program fee|payment plan|investment)[^.!?]{0,100}(?:\\$|USD|CAD|GBP|EUR|AUD|NZD)\\s?\\d[\\d,.]*)",
+        "(?P<q2>(?:\\$|USD|CAD|GBP|EUR|AUD|NZD)\\s?\\d[\\d,.]*[^.!?]{0,100}(?:price|pricing|tuition|program fee|payment))"
       ],
-      "gap_line": "you sell a high-ticket offer ({quote})",
+      "gap_line": "public pricing details are not clear; request the full written cost before discussing the offer",
       "signal": true
     },
     {
       "id": "apply_page",
-      "missing": "Takes sales calls ({quote})",
-      "label": "Application or booking page",
+      "missing": "Application or booking route not found ({quote})",
+      "label": "Public application or booking route",
       "type": "absent",
       "scope": "text",
       "weight": 2,
       "look_for": [
         "(?P<q1>apply (?:now|today|here)|book a (?:strategy |discovery |sales |free )?call|schedule a (?:strategy |discovery |free )?call|book your (?:call|session)|application form)"
       ],
-      "gap_line": "you take sales calls ({quote})",
+      "gap_line": "you list a public application or booking route ({quote}); I am checking whether a sales role is open",
       "signal": true
     },
     {
@@ -55,19 +55,20 @@
         "(?P<q1>(?:high[- ]ticket |remote )?(?:sales )?closers?|appointment setters?|sales (?:reps?|representatives?)|commission[- ]only)[^.]{0,80}(?:wanted|apply|hiring|join|open|looking|positions?|roles?)",
         "(?:we'?re hiring|now hiring|join our (?:sales )?team|careers|open roles)[^.]{0,200}(?P<q2>closers?|appointment setters?|sales reps?)"
       ],
-      "gap_line": "you are looking for sales help ({quote})",
+      "gap_line": "you publicly list a sales position ({quote}); I am checking whether it is still open",
       "signal": true
     },
     {
       "id": "content",
       "missing": "Publishes content",
-      "label": "Content going out (YouTube, Instagram, podcast)",
+      "label": "Public content link (not lead-flow evidence)",
       "type": "absent",
+      "weight": 0,
       "weight": 1,
       "look_for": [
         "youtube\\.com/(?:@|channel/|c/|user/)|instagram\\.com/[a-z0-9._]{2,}|podcasts?\\.apple\\.com|open\\.spotify\\.com/show|tiktok\\.com/@"
       ],
-      "gap_line": "you publish content, so there is real lead flow",
+      "gap_line": "public content is available to review; its presence does not confirm lead volume",
       "signal": true
     },
     {
@@ -97,5 +98,5 @@
       "signal": true
     }
   ],
-  "opener": "Hi {business} team, I noticed {gap_line}. I'm {sender}: I close high-ticket offers on commission only. I recorded a short mock call selling an offer like yours so you can judge my close before we talk. Want me to send it? If it's not a fit, just say so and I won't follow up."
+  "opener": "Hello {business} team. I am exploring sales roles and saw this public information: {gap_line}. Are you currently recruiting for a sales role? If not, no reply is needed and I will not follow up. If useful, I can share my actual experience or a fictional roleplay sample. {sender}"
 }

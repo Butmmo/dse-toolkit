@@ -176,7 +176,8 @@ def main():
     vt = sub.add_parser("vet"); vt.add_argument("engine"); vt.add_argument("--offer", required=True); vt.add_argument("--url", default="")
     vt.add_argument("--commission", type=float, default=0); vt.add_argument("--ticket", type=float, default=0)
     vt.add_argument("--status", default="researching", choices=list(vetting.STATUSES)); vt.add_argument("--notes", default="")
-    vt.add_argument("--target", type=float, default=3000, help="the monthly income you want from this offer")
+    vt.add_argument("--target", type=float, default=0, help="optional monthly target in the same currency as --ticket")
+    vt.add_argument("--currency", default="", help="optional three-letter currency code for --ticket and --target")
     for q in vetting.questions():
         vt.add_argument(f"--{q['id']}", choices=["yes", "no", "unknown"], default="unknown", help=argparse.SUPPRESS)
     of = sub.add_parser("offers"); of.add_argument("engine")
@@ -324,7 +325,7 @@ def main():
         print(callscore.report(a.engine, a.offer, a.outcome, a.cash, a.commission, a.talk, sc))
     elif a.cmd == "vet":
         engines.load(a.engine)
-        print(vetting.report(a.engine, a.offer, a.url, a.commission, a.ticket, a.status, a.notes, {q["id"]: getattr(a, q["id"]) for q in vetting.questions()}, a.target))
+        print(vetting.report(a.engine, a.offer, a.url, a.commission, a.ticket, a.status, a.notes, {q["id"]: getattr(a, q["id"]) for q in vetting.questions()}, a.target, currency=a.currency))
     elif a.cmd == "offers":
         engines.load(a.engine)
         print(vetting.listing(a.engine))

@@ -53,12 +53,12 @@ try:
 
     # money maths
     sm = V.sale_math(10, 5000, 3000, [])
-    check("one sale pays commission x price; assumption is labelled", "$500" in sm and "6 sale" in sm and "ASSUMED close rate of 20%" in sm, sm)
+    check("entered terms show gross commission and target arithmetic without forecasting", "currency units 500.00" in sm and "6 eligible customer payment(s)" in sm and "not an earnings forecast" in sm and "No close-rate" in sm, sm)
     callscore.report("zz-vet", "X", "sold", 3000, 10, 40, [2] * 8)
     for i in range(9):
         callscore.report("zz-vet", "X", "no_sale" if i % 2 else "sold", 1000 if not i % 2 else 0, 10, 40, [1] * 8)
     sm2 = V.sale_math(10, 5000, 3000, callscore.read_calls("zz-vet"))
-    check("with 10 logged calls it uses YOUR close rate", "your own close rate" in sm2 and "ASSUMED" not in sm2, sm2)
+    check("call history is not used to invent a forecast", "No close-rate or call-volume assumption is inserted" in sm2 and "not an earnings forecast" in sm2, sm2)
     check("no commission or price: no maths and no invention", V.sale_math(0, 5000, 3000, []) is None and V.sale_math(10, 0, 3000, []) is None)
 
     # tracker

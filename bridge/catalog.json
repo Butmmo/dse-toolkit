@@ -1175,7 +1175,7 @@
           "label": "Currency code",
           "type": "text",
           "required": false,
-          "default": "USD",
+          "default": "",
           "max": 3,
           "pattern": "^[A-Za-z]{3}$"
         },
@@ -2143,7 +2143,7 @@
     "ascent.vet": {
       "label": "The Ascent: vet a commission offer",
       "group": "My engines",
-      "help": "Before you give a high-ticket, commission-only offer your time, answer the questions (Yes, No or Not asked yet). You get a verdict (Walk away, Red, Amber, Unchecked, OK or Promising), the exact reasons, a ready message with the questions to put to them in writing, what to get in the contract, and what one sale and a target month would really need from you. Based on the FTC's job-scam advice (never pay for a job, earnings promises, fake checks, unverifiable employers) and practitioner guidance for commission contracts. It informs your decision; it is not legal advice. It saves the offer to your tracker.",
+      "help": "Review a sales role and offer before committing time. The checklist summarizes unanswered questions and cautions; it cannot verify the company or predict pay. It can show arithmetic from commission terms, customer payment, and an optional target you enter. No earnings or close-rate defaults are inserted. This is not legal advice. Saves the review to your offer tracker.",
       "script": "dse.py",
       "args": [
         {
@@ -2175,6 +2175,10 @@
         {
           "opt": "--target",
           "field": "target"
+        },
+        {
+          "opt": "--currency",
+          "field": "currency"
         },
         {
           "opt": "--notes",
@@ -2305,15 +2309,15 @@
         },
         {
           "name": "commission",
-          "label": "Commission they offer (%)",
+          "label": "Written commission rate (%)",
           "type": "int",
           "min": 0,
           "max": 100,
-          "default": 10
+          "default": 0
         },
         {
           "name": "ticket",
-          "label": "Price of the offer they sell ($)",
+          "label": "Customer payment used as commission base",
           "type": "int",
           "min": 0,
           "max": 1000000,
@@ -2321,11 +2325,20 @@
         },
         {
           "name": "target",
-          "label": "Monthly income you want from it ($)",
+          "label": "Optional monthly target (same currency)",
           "type": "int",
-          "min": 100,
+          "min": 0,
           "max": 100000,
-          "default": 3000
+          "default": 0
+        },
+        {
+          "name": "currency",
+          "label": "Currency code for payment and target (for example USD, CAD, GBP)",
+          "type": "text",
+          "required": false,
+          "max": 3,
+        "default": "",
+        "pattern": "^(?:[A-Za-z]{3})?$"
         },
         {
           "name": "status",
