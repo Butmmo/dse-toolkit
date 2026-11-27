@@ -17,13 +17,14 @@ from . import gridpush, gridrun
 from .common import LISTS, ROOT
 from . import enrichment_profiles
 
-LANES = {"website", "herald", "presence", "directors", "tech"}
+LANES = {"website", "herald", "presence", "directors", "tech", "verify"}
 OUTPUTS = {
     "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
     "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
     "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "presence_monitor_history"],
     "directors": ["director_first", "director_last", "director_role", "ch_company", "ch_number", "ch_match"],
     "tech": ["tech_platform", "tech_booking", "tech_chat", "tech_forms_crm", "tech_analytics", "tech_ads_tracking", "tech_email", "tech_payments", "tech_reviews", "tech_hosting", "tech_mobile_ready", "tech_https", "tech_structured_data", "tech_copyright_year", "tech_gaps", "tech_gap_count", "tech_status", "tech_scanned_on"],
+    "verify": ["email_verdict", "email_verdict_reason", "email_verified_at"],
 }
 FULL_OUTPUTS = {
     "website": ["found_email", "email_source", "other_emails", "email_guesses", "email_check", "contact_page_url", "field_results", "enrichment_audit"],
@@ -31,6 +32,7 @@ FULL_OUTPUTS = {
     "presence": ["presence_signals", "field_results", "presence_search_waterfall"],
     "directors": [],
     "tech": [],
+    "verify": [],
 }
 
 
@@ -82,6 +84,12 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
             search_budget=min(search_budget, 10), minimum_identity_score=minimum_identity_score,
             enrichment_profile=enrichment_profile)
         m = re.search(r"Saved: (\S+\.csv)", report)
+    elif lane == "verify":
+        from . import email_verify
+        result_path = Path(email_verify.verify_file(str(source), max_rows=limit, refresh=True,
+                                                    out=str(source.with_name(f"{source.stem}-verify.csv")),
+                                                    say=lambda *_: None))
+        m = None
     elif lane == "directors":
         from . import chdirectors
         result_path = source.with_name(f"{source.stem}-directors.csv")
@@ -92,9 +100,9 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
         result_path = Path(tech.tech_file(str(source), max_rows=limit, render=not fast_tech,
                                           out=str(source.with_name(f"{source.stem}-tech.csv"))))
         m = None
-    if lane not in ("directors", "tech") and not m:
+    if lane not in ("directors", "tech", "verify") and not m:
         raise RuntimeError("The enrichment finished but did not report its result CSV path.")
-    if lane not in ("directors", "tech"):
+    if lane not in ("directors", "tech", "verify"):
         result_path = ROOT / m.group(1)
     if not result_path.is_file():
         raise RuntimeError("The enrichment result CSV is missing from this PC.")
@@ -561,7 +569,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         overwrite: bool = False, start_row: int = 1, batch_size: int = 10, api=None, say=lambda *_: None, **options) -> str:
     if lane not in LANES:
         raise ValueError("Choose one of: " + ", ".join(sorted(LANES)) + ".")
-    lane_limit = 50 if lane in ("herald", "presence") else 200 if lane == "directors" else 500
+    lane_limit = 50 if lane in ("herald", "presence") else 200 if lane == "directors" else 100 if lane == "verify" else 500
     if not 1 <= limit <= lane_limit:
         raise ValueError(f"Process 1 to {lane_limit} {lane} grid rows per run.")
     if not isinstance(start_row, int) or start_row < 1:

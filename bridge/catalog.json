@@ -10168,6 +10168,10 @@
         {
           "flag": "--dry-run",
           "field": "dry_run"
+        },
+        {
+          "flag": "--verify",
+          "field": "verify"
         }
       ],
       "fields": [
@@ -10206,6 +10210,12 @@
         {
           "name": "fast",
           "label": "Fast (skip the hidden browser: quicker, misses sites drawn by JavaScript)",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "verify",
+          "label": "Also verify the emails found (adds a verdict, a reason and a date for each address)",
           "type": "bool",
           "default": false
         },
@@ -10276,6 +10286,72 @@
         "Separate, experiment-tagged result files and a local exact-sample record for A/B runs",
         "Conservative configured-provider spend estimate and runtime ceiling; unknown-priced providers require separate acknowledgment",
         "Enriched CSV and report"
+      ]
+    },
+    "dse.verify": {
+      "label": "Email verification: a verdict for every address",
+      "group": "Grow",
+      "help": "Checks the email addresses on a list and adds three columns: email_verdict (valid, risky, invalid or unknown), the reason in plain words, and the date checked. It reads each domain's mail servers, then asks the server about each address in one short conversation per domain. No message is ever sent. An accepted address is valid; a server that accepts every address makes its addresses risky (catch-all); an address the server says does not exist is invalid; anything this PC could not check is honestly unknown. The send-list preflight reads the verdicts: invalid addresses are blocked there, risky ones carry a warning. Free: it runs on your PC and needs no key.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "verify"
+        },
+        {
+          "field": "csv"
+        },
+        {
+          "opt": "--max",
+          "field": "max"
+        },
+        {
+          "opt": "--from",
+          "field": "sender"
+        },
+        {
+          "flag": "--refresh",
+          "field": "refresh"
+        }
+      ],
+      "fields": [
+        {
+          "name": "csv",
+          "label": "List",
+          "type": "file",
+          "required": true,
+          "glob": "my-lists/*.csv"
+        },
+        {
+          "name": "max",
+          "label": "Most rows to verify in this run",
+          "type": "int",
+          "min": 1,
+          "max": 1000,
+          "default": 200
+        },
+        {
+          "name": "sender",
+          "label": "Your sending address (optional: the check introduces itself with it, and a real sending address gets the most honest answers)",
+          "type": "text",
+          "required": false,
+          "max": 120
+        },
+        {
+          "name": "refresh",
+          "label": "Check again even if verified in the last 30 days",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 30,
+      "outputs": [
+        "my-lists/*-verified.csv"
+      ],
+      "category": "enrich",
+      "source": "The receiving domain's own mail servers, asked directly from your PC",
+      "cost": "Free. Runs on your PC, no provider and no key.",
+      "outputs_summary": [
+        "email_verdict, email_verdict_reason and email_verified_at columns added to your list"
       ]
     },
     "dse.enrich_signals": {
@@ -11214,6 +11290,10 @@
             {
               "value": "directors",
               "label": "UK: Companies House director lookup"
+            },
+            {
+              "value": "verify",
+              "label": "Email verification: a verdict for every address"
             }
           ]
         },

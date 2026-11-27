@@ -1134,7 +1134,7 @@ def import_ready(rows: list[dict], headers: list[str]) -> list[dict]:
 def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, render: bool = True, today: dt.date | None = None, pause: float = PAGE_PAUSE,
                 provider: str = "", budget: int | None = None, waterfall_config_path: str = "", dry_run: bool = False,
                 max_provider_spend: float | None = None, allow_unknown_provider_cost: bool = False,
-                experiment_approval_path: str = "") -> str:
+                experiment_approval_path: str = "", verify: bool = False) -> str:
     p = Path(src)
     if not p.is_absolute():
         p = (ROOT / src) if (ROOT / src).exists() else p
@@ -1284,6 +1284,14 @@ def enrich_file(src: str, icp: str = "", engine: str = "", max_rows: int = 100, 
         stats["waterfall_experiment"] = experiment
         if approval_receipt:
             stats["waterfall_experiment_approval_id"] = approval_receipt["approval_id"]
+    if verify:
+        from . import email_verify as _ev
+        try:
+            _vcol = _ev.find_email_column(list(headers), out_rows)
+        except ValueError:
+            _vcol = ""
+        if _vcol:
+            _ev.verify_rows(out_rows, _vcol, refresh=True, today=today)
     write_csv(out_csv, out_rows, first=list(headers))
     provider_names = ", ".join(config["providers"])
     text = summary(stats, out_rows, p.name, bud, provider_names, dry_run, provs)

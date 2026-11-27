@@ -128,6 +128,12 @@ def check_list(slug: str, path: Path) -> dict:
         reason = replies.on_dnc(slug, email, r.get("website", ""))
         if reason:
             row_issues.append(("block", f"on your do-not-contact list: {reason}"))
+        verdict = (r.get("email_verdict") or "").strip().lower()
+        verdict_reason = (r.get("email_verdict_reason") or "no reason recorded").strip()
+        if email and verdict == "invalid":
+            row_issues.append(("block", f"this email failed verification ({verdict_reason}): take it off the list or fix the address"))
+        elif email and verdict == "risky":
+            row_issues.append(("warn", f"this email is risky per verification ({verdict_reason})"))
         row_issues += check_message(r.get("opener", ""), ch)
         for qid, qtext, shortest in withdrawn:
             if proof.shares_words(qtext, r.get("opener") or "", shortest):
