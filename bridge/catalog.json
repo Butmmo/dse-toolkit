@@ -1147,11 +1147,11 @@
           "name": "color",
           "label": "Brand colour (hex)",
           "type": "text",
-          "required": true,
-          "default": "#7a1f2b",
+          "required": false,
           "max": 7,
           "pattern": "^#[0-9a-fA-F]{6}$",
-          "placeholder": "#7a1f2b"
+          "placeholder": "#7a1f2b",
+          "help": "Citadel fills this in from your Presence brand kit, so the site, your content and your outreach share one brand. Type a different colour to override it for this build only. Left empty with no brand kit, the builder uses its house colour."
         },
         {
           "name": "brief",
