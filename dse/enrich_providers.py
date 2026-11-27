@@ -157,6 +157,21 @@ def load(name: str, require_key: bool = True) -> dict:
     return cfg
 
 
+def request_body(req: dict, fill) -> dict | None:
+    """The JSON body for a POST. Most providers take a flat {field: template} map; an API whose body is
+    nested (a search query, say) can instead give one body_json template string. Placeholders are filled
+    first and the string is then read as JSON, so numbers and nested objects keep their real types."""
+    raw = req.get("body_json")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            body = json.loads(fill(raw))
+        except ValueError:
+            raise ProviderError("the provider's body_json is not valid JSON once its placeholders are filled in") from None
+        return body if isinstance(body, dict) else None
+    body = {k: fill(v) for k, v in (req.get("body") or {}).items()}
+    return body or None
+
+
 def dig(obj, path: str):
     for part in (path or "").split("."):
         if isinstance(obj, dict):
@@ -297,7 +312,7 @@ def lookup(cfg: dict, domain: str, company: str, budget: Budget, today: dt.date 
     budget.used += 1
     try:
         if req.get("method", "GET").upper() == "POST":
-            r = requests.post(req["url"], params=query if auth.get("in") == "query" else None, json={k: fill(v) for k, v in (req.get("body") or {}).items()} or None, headers=headers, timeout=20)
+            r = requests.post(req["url"], params=query if auth.get("in") == "query" else None, json=request_body(req, fill), headers=headers, timeout=20)
         else:
             r = requests.get(req["url"], params=query, headers=headers, timeout=20)
     except requests.RequestException as e:
@@ -360,7 +375,7 @@ def lookup_field(cfg: dict, field: str, identity: dict, budget: Budget, today: d
     values = {**identity, "domain": identity.get("domain", ""), "company": identity.get("company", "") or identity.get("domain", "")}
     fill = lambda value: re.sub(r"\{([a-z_]+)\}", lambda match: str(values.get(match.group(1), "")), str(value))
     query = {key: fill(value) for key, value in (req.get("query") or {}).items()}
-    body = {key: fill(value) for key, value in (req.get("body") or {}).items()}
+    body = request_body(req, fill)
     headers = {"Accept": "application/json", "User-Agent": "DSEToolkit/1.0"}
     auth = req.get("auth") or {"in": "header", "name": "Authorization", "prefix": "Bearer "}
     key = cfg["_key"]
@@ -371,7 +386,7 @@ def lookup_field(cfg: dict, field: str, identity: dict, budget: Budget, today: d
     budget.used += 1
     try:
         if req.get("method", "GET").upper() == "POST":
-            response = requests.post(req["url"], params=query if auth.get("in") == "query" else None, json=body or None, headers=headers, timeout=20)
+            response = requests.post(req["url"], params=query if auth.get("in") == "query" else None, json=body, headers=headers, timeout=20)
         else:
             response = requests.get(req["url"], params=query, headers=headers, timeout=20)
     except requests.RequestException as error:

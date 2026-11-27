@@ -1,6 +1,6 @@
 {
   "schema": "dbi.enrichment-provider-catalog.v1",
-  "reviewed_on": "2026-11-23",
+  "reviewed_on": "2026-11-27",
   "providers": [
     {
       "id": "hunter",
@@ -55,12 +55,12 @@
       "name": "People Data Labs",
       "category": "person_and_company_data",
       "fields": ["person_identity", "firmographics", "employment_history", "contact_data"],
-      "integration": "candidate",
+      "integration": "ready_byok",
       "access": "self_serve_or_sales",
       "pricing_url": "https://www.peopledatalabs.com/pricing/person",
       "docs_url": "https://docs.peopledatalabs.com/docs/",
       "data_policy_url": "https://www.peopledatalabs.com/privacy-policy",
-      "notes": "Candidate identity and firmographic provider. Confirm plan eligibility, credit deductions, coverage, and data-use terms for the intended workflow."
+      "notes": "A ready-made optional person-search adapter exists: it finds the people at a company's domain (names, job titles, profiles, and a work email when the plan includes email data) for the person_identity waterfall and the email waterfall. Charged one credit per person returned; a search that finds nobody costs nothing. Confirm your plan includes Person Search, and check coverage and data-use terms for the intended workflow."
     },
     {
       "id": "google_custom_search_json",
