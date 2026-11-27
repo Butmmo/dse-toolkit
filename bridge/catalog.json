@@ -11282,6 +11282,70 @@
       "timeout_min": 5,
       "outputs": []
     },
+    "dse.grid_dedupe": {
+      "label": "Ledgers: dedupe grid rows (merge preview)",
+      "group": "Grow",
+      "help": "Finds duplicate rows in this Ledger grid: rows that share a website domain or an email address. The oldest row stays; cells it is missing are filled from the rows it absorbs, and where two rows hold different values the oldest wins and the clash is shown, never hidden. It also flags rows whose domain or email lives in your other grids. Preview first: nothing changes until you tick Merge now and run again. Merging needs a one-time Citadel update (the grid delete-rows migration) and says so, changing nothing, until it has been run.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "grid"
+        },
+        {
+          "lit": "dedupe"
+        },
+        {
+          "field": "grid"
+        },
+        {
+          "opt": "--by",
+          "field": "by"
+        },
+        {
+          "flag": "--apply",
+          "field": "apply"
+        }
+      ],
+      "fields": [
+        {
+          "name": "grid",
+          "label": "Grid to dedupe",
+          "type": "text",
+          "required": true,
+          "max": 120
+        },
+        {
+          "name": "by",
+          "label": "Rows are duplicates when they share",
+          "type": "choice",
+          "required": true,
+          "default": "domain",
+          "choices": [
+            {
+              "value": "domain",
+              "label": "Website domain (www and page paths ignored)"
+            },
+            {
+              "value": "email",
+              "label": "Email address"
+            }
+          ]
+        },
+        {
+          "name": "apply",
+          "label": "Merge now (leave unticked to preview the merges first)",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "timeout_min": 15,
+      "outputs": [
+        {
+          "glob": "my-lists/dedupe-plan-*.json",
+          "upload": true
+        }
+      ]
+    },
     "dse.grid_enrich": {
       "label": "Ledgers: enrich grid rows live",
       "group": "Grow",
