@@ -1204,6 +1204,148 @@
         }
       ]
     },
+    "app.builds": {
+          "label": "My builds: list the websites and apps on this PC",
+          "group": "Build",
+          "help": "Lists every project the App Builder has made on this PC: its folder, name, kind, blueprint and page count. The My builds page in Citadel uses it; on its own it is the quick way to find a build's folder name.",
+          "script": "builder/build.py",
+          "args": [
+                {
+                      "lit": "list"
+                }
+          ],
+          "fields": [],
+          "timeout_min": 2,
+          "outputs": []
+    },
+    "app.build_spec": {
+          "label": "My builds: read a build's spec",
+          "group": "Build",
+          "help": "Prints a build's spec.json between markers: the screens, words, prices and products the site is made from, as data. The My builds page in Citadel reads it to fill the editing form.",
+          "script": "builder/build.py",
+          "args": [
+                {
+                      "lit": "spec"
+                },
+                {
+                      "field": "build"
+                }
+          ],
+          "fields": [
+                {
+                      "key": "build",
+                      "label": "Build folder (from My builds: list)",
+                      "type": "text",
+                      "required": true,
+                      "max": 160,
+                      "help": "The folder name of the build, exactly as the list shows it, such as acme-desk-website."
+                }
+          ],
+          "timeout_min": 2,
+          "outputs": []
+    },
+    "app.build_save": {
+          "label": "My builds: save an edited spec and rebuild the site",
+          "group": "Build",
+          "help": "Takes the edited spec from the My builds page in Citadel, checks it (website builds, known blocks, at least one page), keeps the previous spec in the build's spec-backups folder, writes the new one and rebuilds every page from it. Nothing is published: the site changes only in its folder on this PC.",
+          "script": "builder/build.py",
+          "args": [
+                {
+                      "lit": "save"
+                },
+                {
+                      "field": "build"
+                },
+                {
+                      "opt": "--spec",
+                      "field": "spec"
+                }
+          ],
+          "fields": [
+                {
+                      "key": "build",
+                      "label": "Build folder (from My builds: list)",
+                      "type": "text",
+                      "required": true,
+                      "max": 160,
+                      "help": "The folder name of the build, exactly as the list shows it, such as acme-desk-website."
+                },
+                {
+                      "key": "spec",
+                      "label": "The edited spec (sent by the My builds page)",
+                      "type": "text",
+                      "required": true,
+                      "max": 60000,
+                      "help": "The whole spec as JSON. The My builds page fills this in; it is not a field to type into by hand."
+                }
+          ],
+          "timeout_min": 5,
+          "outputs": []
+    },
+    "app.build_render": {
+          "label": "My builds: rebuild a website from its spec",
+          "group": "Build",
+          "help": "Rebuilds a website's pages from the spec.json in its folder, after the spec was edited by hand on this PC. Pages whose screens were removed are deleted. An optional new brand colour is written into the spec first.",
+          "script": "builder/build.py",
+          "args": [
+                {
+                      "lit": "render"
+                },
+                {
+                      "field": "build"
+                },
+                {
+                      "opt": "--color",
+                      "field": "color"
+                }
+          ],
+          "fields": [
+                {
+                      "key": "build",
+                      "label": "Build folder (from My builds: list)",
+                      "type": "text",
+                      "required": true,
+                      "max": 160,
+                      "help": "The folder name of the build, exactly as the list shows it, such as acme-desk-website."
+                },
+                {
+                      "key": "color",
+                      "label": "New brand colour (optional)",
+                      "type": "text",
+                      "required": false,
+                      "max": 7,
+                      "help": "Six hex digits with the #, such as #7a1f2b. Leave empty to keep the colour in the spec."
+                }
+          ],
+          "timeout_min": 5,
+          "outputs": []
+    },
+    "app.build_preview": {
+          "label": "My builds: preview a website's home page",
+          "group": "Build",
+          "help": "Rebuilds the site from its spec, then prints the home page as one self-contained file (styles and script inlined) between markers, for the preview in Citadel's My builds page. A standalone copy is also saved as preview.html in the build folder. Links to the other pages are neutralised in the preview copy only.",
+          "script": "builder/build.py",
+          "args": [
+                {
+                      "lit": "preview"
+                },
+                {
+                      "field": "build"
+                }
+          ],
+          "fields": [
+                {
+                      "key": "build",
+                      "label": "Build folder (from My builds: list)",
+                      "type": "text",
+                      "required": true,
+                      "max": 160,
+                      "help": "The folder name of the build, exactly as the list shows it, such as acme-desk-website."
+                }
+          ],
+          "timeout_min": 5,
+          "outputs": []
+    },
     "yt.plan": {
       "label": "YouTube Launchpad: plan my channel",
       "group": "YouTube",
