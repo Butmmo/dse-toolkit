@@ -1008,6 +1008,15 @@ def setup(fid: str = "", minutes: int = 25, force: bool = False, say=lambda *_: 
     a source checked recently is skipped, a failed one is retried after 3 days, and it stops cleanly when the time is up and carries on next time.
     Prints each figure as it goes (say). Nothing here sends anything or reads a social network."""
     start, budget = time.time(), max(1, minutes) * 60
+    deadline = start + budget
+
+    def out_of_time(reserve: float = 20) -> bool:
+        # The runner kills a background helper at 5 minutes, and a killed run is recorded as a
+        # failure even when it did useful work. The budget used to be checked only between
+        # figures, but one figure can hold the run for minutes: each dead source waits out its
+        # request timeouts, a download fetches whole books, and the closing feed read walks
+        # every living figure. So new work starts only when a whole piece of it still fits.
+        return time.time() > deadline - reserve
     fs = [figure(fid)] if fid else sorted(roster(), key=lambda f: (f.get("era") == "living", 0))
     ready, partial, help_, left = [], [], [], []
     for f in fs:
@@ -1016,19 +1025,26 @@ def setup(fid: str = "", minutes: int = 25, force: bool = False, say=lambda *_: 
             continue
         st = load_state()
         notes = []
+        ran_out = False
         for s in f.get("sources", []):
             key = src_key(f, s)
             v = st["verified"].get(key)
             age = _age_days((v or {}).get("checked", ""))
             if not force and v and v.get("v") == CHECK_VERSION and age <= (FRESH_OK_DAYS if v.get("ok") else FRESH_FAIL_DAYS):
                 continue
+            if out_of_time(45):
+                ran_out = True
+                break
             res = verify_source(f, s)
             st["verified"][key] = {**res, "checked": dt.date.today().isoformat(), "v": CHECK_VERSION}
             save_state(st)
             time.sleep(PAUSE)
+        if ran_out:
+            left.append(f["name"])
+            continue
         st = load_state()
         fetchable = [s for s in f.get("sources", []) if s["type"] in ("gutenberg", "wikiquote") and is_verified(f, s, st)]
-        if fetchable and (force or _index_age_days(f["id"]) > REFETCH_DAYS):
+        if fetchable and not out_of_time(90) and (force or _index_age_days(f["id"]) > REFETCH_DAYS):
             try:
                 fetch(f["id"])
             except Exception as e:                      # one figure's trouble must not stop the rest
@@ -1044,7 +1060,7 @@ def setup(fid: str = "", minutes: int = 25, force: bool = False, say=lambda *_: 
         for s, v in bad:
             help_.append(f"{f['name']} ({s['type']}): {v.get('detail', 'not checked')}")
         say(line + ("" if not bad else f"  [{len(bad)} source(s) still failing]"))
-    if feeds_any(fs):
+    if feeds_any(fs) and not out_of_time(30):
         try:
             update(fid)
         except Exception:
