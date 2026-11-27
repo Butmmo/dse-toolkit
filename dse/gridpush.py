@@ -274,6 +274,9 @@ def cli(argv: list[str]) -> int:
     if argv and argv[0] == "people":       # python dse.py grid people <grid>: first name, last name and work email for every row (dse/gridpeople.py)
         from . import gridpeople
         return gridpeople.cli(argv[1:])
+    if argv and argv[0] == "dedupe":       # python dse.py grid dedupe <grid>: duplicate rows merged, preview first (dse/grid_dedupe.py)
+        from . import grid_dedupe
+        return grid_dedupe.cli(argv[1:])
     import argparse
     ap = argparse.ArgumentParser(prog="dse.py grid")
     sub = ap.add_subparsers(dest="cmd", required=True)
