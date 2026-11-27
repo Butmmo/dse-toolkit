@@ -1030,6 +1030,47 @@
       "timeout_min": 10,
       "outputs": []
     },
+    "app.build_publish": {
+      "label": "App Builder: publish a website to Cloudflare Pages",
+      "group": "Build",
+      "help": "The guided last step for a website build: puts the site on your own Cloudflare Pages account, free, at a your-name.pages.dev address. The site files are staged exactly as they stand (Render in My builds first if you edited the words). Your Cloudflare token and account id live in two Windows user variables (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID), never in a file; without them the tool prints the short setup and the manual dashboard route instead of uploading. Only website builds publish this way.",
+      "script": "builder/publish.py",
+      "timeout": 30,
+      "args": [
+        {
+          "field": "build"
+        },
+        {
+          "opt": "--project",
+          "field": "project"
+        },
+        {
+          "flag": "--dry",
+          "field": "dry"
+        }
+      ],
+      "fields": [
+        {
+          "name": "build",
+          "label": "Build (its folder name)",
+          "type": "text",
+          "required": true,
+          "help": "The website build to publish, as listed in My builds."
+        },
+        {
+          "name": "project",
+          "label": "Pages project name (blank = the business name)",
+          "type": "text",
+          "help": "The name becomes the address: name.pages.dev. Letters, numbers and hyphens."
+        },
+        {
+          "name": "dry",
+          "label": "Stage the files only, do not upload",
+          "type": "bool",
+          "help": "Prepares the publish folder and reports, without sending anything."
+        }
+      ]
+    },
     "app.build": {
       "label": "App Builder: build any website or app",
       "group": "Build",
