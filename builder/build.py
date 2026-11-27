@@ -4,6 +4,8 @@
         --brief "Helps small agencies track client work" [--email me@x.com] [--currency USD] [--ai] [--install]
     python builder/build.py kinds         what you can build
     python builder/build.py blueprints    the ready-made starting points
+    python builder/build.py list          the builds on this PC
+    python builder/build.py render <build>   rebuild a website from its spec.json (after editing the spec, by hand or in Citadel)
 
 Kinds:      website | webapp | mobile | desktop | tv
 Blueprints: landing | dashboard | store | booking | blank
@@ -199,7 +201,7 @@ def make_spec(a) -> dict:
     if a.kind == "website":      # a static site has no database: keep what it can do alone
         screens = [{**sc, "blocks": [b for b in sc["blocks"] if b["type"] in WEBSITE_OK]} for sc in screens]
         screens = [sc for sc in screens if sc["blocks"]]
-    return {"name": name, "slug": slugify(name), "tagline": tagline,
+    return {"name": name, "slug": slugify(name), "color": a.color, "tagline": tagline,
             "description": brief or f"{name}: {tagline}", "platform": {"desktop": "desktop", "tv": "tv"}.get(a.kind, "web"),
             "currency": a.currency, "email": a.email or "", "kind": a.kind, "blueprint": a.blueprint, "screens": screens}
 
@@ -400,6 +402,138 @@ RUN = {"website": "Open `index.html`.", "webapp": "`npm install` then `npm run d
        "desktop": "`npm install` then `npm run desktop:dev`.", "tv": "`npm install` then `npm run dev` (use only the keyboard arrows)."}
 
 
+# ----------------------------------------------------------------------------- re-rendering an existing build
+
+def find_build(arg: str) -> Path:
+    p = Path(arg)
+    if not p.is_absolute() and not p.exists():
+        p = OUT / arg
+    if not (p / "spec.json").is_file():
+        sys.exit(f"No build found at {p}. List them with: python builder/build.py list")
+    return p
+
+
+def load_spec(dst: Path) -> dict:
+    try:
+        return json.loads((dst / "spec.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        sys.exit(f"That build's spec.json cannot be read: {e}")
+
+
+def render_site(dst: Path, spec: dict) -> None:
+    """Rebuild a website's pages from its spec, exactly as 'new' made them. Pages whose screens were removed are deleted."""
+    if spec.get("kind") != "website":
+        sys.exit("Only website builds re-render from their spec here. Apps keep their screens in src/spec.json and rebuild with their own project commands (see the build's README).")
+    for old in dst.glob("*.html"):
+        old.unlink()
+    build_site(dst, spec, palette(spec.get("color") or "#7a1f2b"))
+
+
+def check_spec(spec) -> dict:
+    """The rules an edited spec must pass before it may replace a build's spec. Plain words, no partial writes."""
+    if not isinstance(spec, dict):
+        sys.exit("The spec must be a JSON object.")
+    if spec.get("kind") != "website":
+        sys.exit("Spec editing covers website builds for now; this build is a " + str(spec.get("kind") or "unknown") + ".")
+    if not str(spec.get("name") or "").strip():
+        sys.exit("The spec needs the business name.")
+    screens = spec.get("screens")
+    if not isinstance(screens, list) or not screens:
+        sys.exit("The spec needs at least one screen (page).")
+    for sc in screens:
+        if not isinstance(sc, dict) or not str(sc.get("id") or "").strip() or not isinstance(sc.get("blocks"), list):
+            sys.exit("Every screen needs an id and a list of blocks.")
+        for b in sc["blocks"]:
+            if not isinstance(b, dict) or b.get("type") not in WEBSITE_OK:
+                sys.exit("A website block has an unknown type: " + str((b or {}).get("type")) + ". Website blocks are: " + ", ".join(sorted(WEBSITE_OK)) + ".")
+    return spec
+
+
+def save_spec(dst: Path, spec: dict) -> Path:
+    """Keep the previous spec, write the edited one, and rebuild the site from it."""
+    check_spec(spec)
+    keep = dst / "spec-backups"
+    keep.mkdir(exist_ok=True)
+    n = 1
+    while (keep / f"spec-{n}.json").exists():
+        n += 1
+    backup = keep / f"spec-{n}.json"
+    backup.write_text((dst / "spec.json").read_text(encoding="utf-8"), encoding="utf-8")
+    write_json(dst / "spec.json", spec)
+    render_site(dst, spec)
+    return backup
+
+
+def preview_html(dst: Path, spec: dict) -> str:
+    """The home page as one self-contained file (styles and script inlined), for the in-app preview in Citadel."""
+    render_site(dst, spec)
+    page = (dst / "index.html").read_text(encoding="utf-8")
+    css = (dst / "styles.css").read_text(encoding="utf-8")
+    js = (dst / "app.js").read_text(encoding="utf-8")
+    page = page.replace('<link rel="stylesheet" href="styles.css">', "<style>\n" + css + "\n</style>")
+    page = page.replace('<script src="app.js" defer></script>', "<script>\n" + js + "\n</script>")
+    for sc in spec["screens"]:
+        page = page.replace(f'href="{page_href(spec, sc["id"])}"', 'href="#"')
+    return page
+
+
+def cmd_list() -> int:
+    found = False
+    if OUT.exists():
+        for d in sorted(OUT.iterdir()):
+            if (d / "spec.json").is_file():
+                s = load_spec(d)
+                print(f"BUILD\t{d.name}\t{s.get('name', '')}\t{s.get('kind', '')}\t{s.get('blueprint', '')}\t{len(s.get('screens', []))}")
+                found = True
+    if not found:
+        print("No builds yet. Make one with the App Builder in HQ Tools.")
+    return 0
+
+
+def cmd_spec(a) -> int:
+    dst = find_build(a.build)
+    print("SPEC_JSON_BEGIN")
+    print(json.dumps(load_spec(dst)))
+    print("SPEC_JSON_END")
+    return 0
+
+
+def cmd_save(a) -> int:
+    dst = find_build(a.build)
+    try:
+        spec = json.loads(a.spec)
+    except ValueError as e:
+        sys.exit(f"The spec sent from Citadel is not valid JSON: {e}")
+    backup = save_spec(dst, spec)
+    print(f"Saved and rebuilt '{spec['name']}'. The previous spec is kept at {backup}.")
+    return 0
+
+
+def cmd_render(a) -> int:
+    dst = find_build(a.build)
+    spec = load_spec(dst)
+    if a.color:
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", a.color):
+            sys.exit('The colour must look like "#7a1f2b".')
+        spec["color"] = a.color
+        write_json(dst / "spec.json", spec)
+    render_site(dst, spec)
+    print(f"Rebuilt '{spec.get('name', '')}' from its spec.")
+    return 0
+
+
+def cmd_preview(a) -> int:
+    dst = find_build(a.build)
+    spec = load_spec(dst)
+    text = preview_html(dst, spec)
+    (dst / "preview.html").write_text(text, encoding="utf-8", newline="\n")
+    print("PREVIEW_HTML_BEGIN")
+    print(text)
+    print("PREVIEW_HTML_END")
+    print(f"A standalone copy is at {dst / 'preview.html'}")
+    return 0
+
+
 def write_docs(dst: Path, spec: dict, a) -> None:
     kind = a.kind
     screens = "\n".join(f"- **{s['title']}** (`{s['id']}`): " + ", ".join(b["type"] for b in s["blocks"]) for s in spec["screens"])
@@ -427,7 +561,7 @@ Built with the DSE Toolkit App Builder: **{kind}**, starting point **{a.blueprin
 
 Read `README.md` and `BUILD-BRIEF.md` first. This project was generated by the App Builder and already builds.
 
-- Kind: **{kind}**. Screens are data in `{'spec.json' if kind == 'website' else 'src/spec.json'}`; the renderer is `{'the generated .html files (rebuild them by editing the HTML directly)' if kind == 'website' else ('src/sections.tsx' if kind != 'mobile' else 'src/screens.tsx')}`.
+- Kind: **{kind}**. Screens are data in `{'spec.json' if kind == 'website' else 'src/spec.json'}`; the renderer is `{'the builder: edit spec.json (or use My builds in Citadel) and rebuild with: python builder/build.py render <this folder>' if kind == 'website' else ('src/sections.tsx' if kind != 'mobile' else 'src/screens.tsx')}`.
 - Keep it working: after every change run `{'open each page and check it' if kind == 'website' else 'npm run typecheck'}`{'' if kind == 'website' else ' and the build (`npm run build`)' if kind != 'mobile' else ''}. Do not leave it broken.
 - Data access lives only in `src/store.ts`. To add a backend, change that file, not every screen.
 - Keep the design system: colours come from CSS variables / `src/theme.ts`. Do not hard-code new colours. Keep text readable in dark mode and every control reachable by keyboard{' and by TV remote (arrow keys)' if kind == 'tv' else ''}.
@@ -585,6 +719,17 @@ def main() -> int:
     n.add_argument("--install", action="store_true")
     sub.add_parser("kinds")
     sub.add_parser("blueprints")
+    li = sub.add_parser("list")
+    sp = sub.add_parser("spec")
+    sp.add_argument("build")
+    sv = sub.add_parser("save")
+    sv.add_argument("build")
+    sv.add_argument("--spec", required=True)
+    rn = sub.add_parser("render")
+    rn.add_argument("build")
+    rn.add_argument("--color", default="")
+    pv = sub.add_parser("preview")
+    pv.add_argument("build")
     a = ap.parse_args()
     if a.cmd == "kinds":
         for k, v in KINDS.items():
@@ -594,6 +739,16 @@ def main() -> int:
         for k, v in BLUEPRINTS.items():
             print(f"{k:10} {v}")
         return 0
+    if a.cmd == "list":
+        return cmd_list()
+    if a.cmd == "spec":
+        return cmd_spec(a)
+    if a.cmd == "save":
+        return cmd_save(a)
+    if a.cmd == "render":
+        return cmd_render(a)
+    if a.cmd == "preview":
+        return cmd_preview(a)
     return cmd_new(a)
 
 
