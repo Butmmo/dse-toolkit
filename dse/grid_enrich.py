@@ -19,7 +19,7 @@ from . import enrichment_profiles
 
 LANES = {"website", "herald", "presence", "directors", "tech"}
 OUTPUTS = {
-    "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics"],
+    "website": ["best_email", "best_email_source", "email_kind", "decision_maker", "decision_maker_title", "decision_maker_source", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score", "lead_why", "enriched_on", "waterfall_metrics", "firmographics", "field_waterfall_metrics", "website_comparison_status", "website_change_summary", "website_previous_checked_at"],
     "herald": ["herald_company_findings", "herald_person_findings", "herald_signal_events", "herald_identity_summary", "herald_business_assessment", "herald_role_assessment", "herald_legal_form_assessment", "herald_checked_at", "herald_status", "herald_comparison_status", "herald_change_summary", "herald_new_source_urls", "herald_changed_source_urls", "herald_not_returned_urls", "herald_previous_checked_at", "herald_change_action", "herald_change_categories", "herald_change_sources", "herald_change_evidence", "herald_monitor_history", "herald_evidence_decisions", "dse_path_outcome", "dse_path_ai_advice", "dse_path_ai_advice_status", "dse_path_ai_advice_history", "herald_ai_review", "outreach_subject", "outreach_body", "outreach_evidence_detail"],
     "presence": ["presence_sources", "presence_checked_at", "presence_status", "presence_comparison_status", "presence_change_summary", "presence_new_source_urls", "presence_changed_source_urls", "presence_not_returned_urls", "presence_previous_checked_at", "presence_change_action", "presence_change_categories", "presence_change_sources", "presence_change_evidence", "presence_monitor_history"],
     "directors": ["director_first", "director_last", "director_role", "ch_company", "ch_number", "ch_match"],
@@ -103,7 +103,7 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
     if output_detail == "full":
         selected.extend(FULL_OUTPUTS[lane])
     history_column = f"{lane}_monitor_history"
-    if lane in ("herald", "presence") and history_column not in selected:
+    if lane in ("herald", "presence", "website") and history_column not in selected:
         selected.append(history_column)
     advice_history_column = "dse_path_ai_advice_history"
     if lane == "herald" and advice_history_column not in selected:
@@ -111,7 +111,8 @@ def _run_lane(source: Path, lane: str, engine: str, limit: int, output_detail: s
     evidence_header = f"{lane}_evidence_decisions"
     if lane in ("website", "herald", "presence") and evidence_header not in selected:
         selected.append(evidence_header)
-    selected = [h for h in selected if h in headers or h in {history_column, evidence_header, "dse_path_ai_advice_status", advice_history_column}]
+    computed = {f"{lane}_comparison_status", f"{lane}_change_summary", f"{lane}_previous_checked_at"} if lane == "website" else set()
+    selected = [h for h in selected if h in headers or h in {history_column, evidence_header, "dse_path_ai_advice_status", advice_history_column} | computed]
     return result_path, selected, rows
 
 
@@ -507,16 +508,65 @@ def _advice_history(result_row: dict, previous: object) -> str:
     return value
 
 
+WEBSITE_TRACKED = ["best_email", "decision_maker", "decision_maker_title", "phone_found", "contact_form_url", "booking_tool", "linkedin_found", "instagram_found", "facebook_found", "x_found", "youtube_found", "tech_stack", "site_description", "site_active", "mx_ok", "icp_hits", "lead_score"]
+
+
+def _website_changes(result_row: dict, data: dict, output_to_key: dict[str, str]) -> tuple[str, str, list[str]]:
+    """Compare this run's website facts with the ones already on the row: what a re-check found.
+
+    Returns (status, summary, changed field names). A row with no earlier enriched_on is a
+    first check; after that, every tracked fact that differs is named with its old and new
+    value, so a scheduled re-enrichment leaves a diff instead of overwriting quietly."""
+    def previous(header: str) -> str:
+        key = output_to_key.get(header)
+        return _cell(data.get(key)) if key else ""
+    if not previous("enriched_on"):
+        return "first check", "", []
+    changes, parts = [], []
+    for header in WEBSITE_TRACKED:
+        old, new = previous(header), _cell(result_row.get(header))
+        if old != new:
+            changes.append(header)
+            parts.append(f"{header}: {old or '(blank)'} is now {new or '(blank)'}")
+    if not changes:
+        return "no change", "Nothing changed since the last check.", []
+    summary = "; ".join(parts[:6])
+    if len(parts) > 6:
+        summary += f"; and {len(parts) - 6} more"
+    return "changed", summary[:480], changes
+
+
+def _website_monitor_history(result_row: dict, previous: object, status: str, changes: list[str]) -> str:
+    """Append this check to the row's website monitor history (the last 12 checks)."""
+    try:
+        old = json.loads(str(previous)) if previous else []
+    except (ValueError, TypeError):
+        old = []
+    if not isinstance(old, list):
+        old = []
+    old.append({"checked_at": _cell(result_row.get("enriched_on")), "status": status, "changes": changes})
+    return json.dumps(old[-12:], ensure_ascii=False, separators=(",", ":"))
+
+
 def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enriched_rows: list[dict],
                    output_headers: list[str], output_to_key: dict[str, str], overwrite: bool) -> tuple[int, int, int]:
     """Write one completed enrichment batch before the next batch starts."""
     evidence_header = f"{lane}_evidence_decisions"
     updates, skipped, oversized = [], 0, 0
+    stats: dict[str, int] = {}
     history_header = f"{lane}_monitor_history"
     advice_history_header = "dse_path_ai_advice_history"
     for source_row, result_row in zip(source_rows, enriched_rows):
         cells = {}
         data = source_row.get("data") or {}
+        computed: dict[str, str] = {}
+        row_changes: list[str] = []
+        if lane == "website":
+            w_status, w_summary, row_changes = _website_changes(result_row, data, output_to_key)
+            on_key = output_to_key.get("enriched_on")
+            computed = {"website_comparison_status": w_status, "website_change_summary": w_summary,
+                        "website_previous_checked_at": _cell(data.get(on_key)) if on_key else ""}
+            stats[w_status] = stats.get(w_status, 0) + 1
         advice_history_key = output_to_key.get(advice_history_header)
         if lane == "herald" and advice_history_key:
             result_row[advice_history_header] = _advice_history(result_row, data.get(advice_history_key))
@@ -524,7 +574,11 @@ def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enrich
             key = output_to_key.get(header)
             if not key:
                 continue
-            if header == history_header:
+            if header == history_header and lane == "website":
+                value = _website_monitor_history(result_row, data.get(key), computed.get("website_comparison_status", ""), row_changes)
+            elif header in computed:
+                value = computed[header]
+            elif header == history_header:
                 value = _monitor_history(lane, result_row, data.get(key))
             elif header == advice_history_header:
                 value = _cell(result_row.get(header))
@@ -541,6 +595,8 @@ def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enrich
                               "dse_path_ai_advice_status", f"{lane}_comparison_status", f"{lane}_change_summary",
                               f"{lane}_new_source_urls", f"{lane}_changed_source_urls", f"{lane}_not_returned_urls",
                               f"{lane}_previous_checked_at"}
+            if lane == "website":
+                always_refresh.add("enriched_on")
             if not overwrite and header not in always_refresh and data.get(key) not in (None, ""):
                 continue
             if len(value) > 5000:
@@ -554,7 +610,7 @@ def _persist_batch(api, grid_id: str, lane: str, source_rows: list[dict], enrich
     written = 0
     for offset in range(0, len(updates), 100):
         written += gridrun.save_cells(api, grid_id, updates[offset:offset + 100])
-    return written, skipped, oversized
+    return written, skipped, oversized, stats
 
 
 def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_detail: str = "essentials",
@@ -613,6 +669,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
     result_path: Path | None = None
     written = skipped = oversized = completed = 0
     monitor_action_counts: dict[str, int] = {}
+    website_counts: dict[str, int] = {}
     monitor_cue_counts: dict[str, int] = {}
     say(f"{grid.get('workbook', '')}/{grid['name']}: running {lane} enrichment on {len(source_rows)} live grid rows in batches of {batch_size}, starting at row {start_row}.")
     brave_run = lane == "herald" and str(options.get("search_provider", "duckduckgo")) == "brave"
@@ -786,7 +843,9 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
                 by_label[gridpush.norm(column["label"])] = column
             output_to_key = {h: by_label[gridpush.norm(h)]["key"] for h in output_headers if gridpush.norm(h) in by_label}
         try:
-            batch_written, batch_skipped, batch_oversized = _persist_batch(api, grid["id"], lane, batch_rows, enriched_rows, output_headers, output_to_key, overwrite)
+            batch_written, batch_skipped, batch_oversized, batch_stats = _persist_batch(api, grid["id"], lane, batch_rows, enriched_rows, output_headers, output_to_key, overwrite)
+            for w_status, w_count in batch_stats.items():
+                website_counts[w_status] = website_counts.get(w_status, 0) + w_count
         except Exception as error:
             raise RuntimeError(f"Grid enrichment stopped after {completed} rows were saved. Resume with --start-row {start_row + completed}. {str(error)[:220]}") from error
         written += batch_written
@@ -804,6 +863,11 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
         spend_note = f" Brave requests: {brave_requests_used}/{brave_request_cap} run ceiling; {cost_text}.{approval} Usage was added to this PC's provider journal."
         if brave_usage_warnings:
             spend_note += " Usage-record warning: " + " ".join(brave_usage_warnings)
+    change_note = ""
+    if lane == "website" and website_counts:
+        bits = [f"{website_counts[s]} {s}" for s in ("changed", "no change", "first check") if website_counts.get(s)]
+        if bits:
+            change_note = " Change check: " + ", ".join(bits) + ". The website change columns on each row say what moved."
     monitor_note = ""
     if monitor_action_counts:
         labels = ("priority_review", "identity_review", "match_review", "source_review", "recheck", "incomplete", "baseline", "no_change", "other")
@@ -814,7 +878,7 @@ def run(grid_ref: str, lane: str, engine: str = "", limit: int = 25, output_deta
             monitor_note += f" Cue totals (a row may have several): {cue_summary}."
     return (f"FINISHED {lane} enrichment: {written} rows updated, {skipped} rows had no new values, {oversized} oversized values omitted. "
             f"Saved {completed} rows starting at row {start_row} in {((completed + batch_size - 1) // batch_size)} batches. "
-            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}{monitor_note}\n")
+            f"Created or reused {len(output_to_key)} output columns; report saved at {result_path.relative_to(ROOT).as_posix()}.{omitted_note}{spend_note}{monitor_note}{change_note}\n")
 
 
 def cli(argv: list[str]) -> int:
