@@ -56,7 +56,7 @@ import sys
 
 from dse import VERSION
 from dse import check as chk
-from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, enrich_providers, enrichment_usage, signal_enrichment, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech, audit
+from dse import brief, crmsync, herald, presence, doctor, custom, voices, authority, books, callscore, calls, proof, cashdesk, clients, cuts, desklog, dfysync, fx, matcher, success, enrich, email_verify, enrich_providers, enrichment_usage, signal_enrichment, context_folder, goals, outreach, preflight, proposal, replies, review, vetting, engines, followups, importer, mystery, outcomes, places, podcasts, countries, cities, registers, niches, tech, audit
 
 PACK_KINDS = {
     "smb": ["dentist", "chiropractor", "physical-therapy", "optometrist", "veterinarian", "hvac", "plumber", "roofer",
@@ -272,6 +272,12 @@ def main():
     en.add_argument("--catalog", action="store_true", help="show supported, candidate, retired, and restricted enrichment providers")
     en.add_argument("--usage", action="store_true", help="show this PC's optional enrichment-provider usage estimates")
     en.add_argument("--usage-days", type=int, default=30, help="days of local provider usage to show (1 to 3650)")
+    en.add_argument("--verify", action="store_true", help="also verify the emails found (adds email_verdict, email_verdict_reason and email_verified_at)")
+    vf = sub.add_parser("verify", help="verify the emails on a list: a verdict, a reason and a date for each address")
+    vf.add_argument("source", help="a CSV with an email column")
+    vf.add_argument("--max", type=int, default=200, help="most rows to verify in this run")
+    vf.add_argument("--from", default="", dest="sender", help="the address the check introduces itself with (your sending address works best)")
+    vf.add_argument("--refresh", action="store_true", help="check again even if an address was verified in the last 30 days")
     se = sub.add_parser("signals", help="research public business/search/social signals for leads and draft email with a local AI")
     se.add_argument("source", help="CSV with a company name; city and website improve matching")
     se.add_argument("--engine", default="", help="also save the researched CSV to this engine's imports")
@@ -387,9 +393,14 @@ def main():
                 print(enrich.enrich_file(a.source, a.icp, a.engine, a.max, not a.fast, provider=a.provider, budget=a.budget,
                                          waterfall_config_path=a.waterfall_config, dry_run=a.dry_run,
                                          max_provider_spend=a.max_provider_spend, allow_unknown_provider_cost=a.allow_unknown_provider_cost,
-                                         experiment_approval_path=a.experiment_approval))
+                                         experiment_approval_path=a.experiment_approval, verify=a.verify))
             else:
                 sys.exit("Give a CSV to enrich (python dse.py enrich leads.csv), or --site https://their-site.com, or --providers.")
+        except ValueError as e:
+            sys.exit(str(e))
+    elif a.cmd == "verify":
+        try:
+            print(f"Saved: {email_verify.verify_file(a.source, max_rows=a.max, sender=a.sender, refresh=a.refresh)}")
         except ValueError as e:
             sys.exit(str(e))
     elif a.cmd == "signals":
