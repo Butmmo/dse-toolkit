@@ -55,6 +55,10 @@ T["dse.claude_status"] = tool("Claude: is my key connected?", "Setup", "Says whe
                               [{"lit": "claude"}, {"lit": "status"}, {"flag": "--test", "field": "test"}], [{"name": "test", "label": "Ask Anthropic if the key works", "type": "bool", "default": True}], 2)
 T["dse.claude_sdk"] = tool("Claude: install the package it needs", "Setup", "Installs the official `anthropic` Python package on this PC (pip install anthropic), which DBI-AI needs to use your Claude key. Safe to run again.",
                            [{"lit": "claude"}, {"lit": "sdk"}], [], 10)
+T["dse.openai_status"] = tool("ChatGPT: is my key connected?", "Setup", "Says whether your own OpenAI key is saved on this PC, and asks OpenAI whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py openai setup.",
+                              [{"lit": "openai"}, {"lit": "status"}, {"flag": "--test", "field": "test"}], [{"name": "test", "label": "Ask OpenAI if the key works", "type": "bool", "default": True}], 2)
+T["dse.gemini_status"] = tool("Gemini: is my key connected?", "Setup", "Says whether your own Google AI Studio key is saved on this PC, and asks Google whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py gemini setup.",
+                              [{"lit": "gemini"}, {"lit": "status"}, {"flag": "--test", "field": "test"}], [{"name": "test", "label": "Ask Google if the key works", "type": "bool", "default": True}], 2)
 T.pop("dse.setup_push", None)
 T["dse.setup_push"] = {"label": "Setup checklist: check now", "group": "Setup", "script": "bridge/setup_sync.py", "args": [], "fields": [], "timeout_min": 3, "outputs": [],
                        "help": "Runs the System check now and sends the result to the Setup checklist on your Dashboard (it also does this by itself every 5 minutes while the runner is on). It sends only the check's own lines: what works, what needs a fix and the fix. No files, data or keys."}

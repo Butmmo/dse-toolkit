@@ -7803,6 +7803,62 @@
       "timeout_min": 2,
       "outputs": []
     },
+    "dse.openai_status": {
+      "label": "ChatGPT: is my key connected?",
+      "group": "Setup",
+      "help": "Says whether your own OpenAI key is saved on this PC, and asks OpenAI whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py openai setup.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "openai"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "flag": "--test",
+          "field": "test"
+        }
+      ],
+      "fields": [
+        {
+          "name": "test",
+          "label": "Ask OpenAI if the key works",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.gemini_status": {
+      "label": "Gemini: is my key connected?",
+      "group": "Setup",
+      "help": "Says whether your own Google AI Studio key is saved on this PC, and asks Google whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py gemini setup.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "gemini"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "flag": "--test",
+          "field": "test"
+        }
+      ],
+      "fields": [
+        {
+          "name": "test",
+          "label": "Ask Google if the key works",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
     "dse.claude_sdk": {
       "label": "Claude: install the package it needs",
       "group": "Setup",

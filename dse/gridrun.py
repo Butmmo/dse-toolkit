@@ -44,6 +44,8 @@ MAX_CELL = {"text": 500, "longtext": 2000}
 SITE_FIELDS = ("email", "phone", "decision_maker", "decision_title", "linkedin", "instagram", "facebook", "booking", "contact_form", "tech", "description")
 MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
 CLAUDE_TIERS = {"haiku": "haiku", "sonnet": "sonnet", "claude": "sonnet", "claude:haiku": "haiku", "claude:sonnet": "sonnet", "claude:opus": "opus"}
+PROVIDER_MODELS = {"openai": "gpt-5-mini", "openai:mini": "gpt-5-mini", "openai:full": "gpt-5",
+                   "gemini": "gemini-2.5-flash", "gemini:flash": "gemini-2.5-flash", "gemini:pro": "gemini-2.5-pro"}
 OLLAMA_MODEL_RE = re.compile(r"^ollama:[A-Za-z0-9][A-Za-z0-9._:/-]{0,59}$")
 
 
@@ -51,7 +53,8 @@ def clean_model(v) -> str:
     """The model stored on an AI source, made safe. The same rules as the grid (src/lib/crm-grid.ts cleanRunModel): the values Citadel's model menu
     stores pass through, the legacy haiku/sonnet of older columns keep their meaning, and anything else becomes haiku, as before this choice existed."""
     s = str(v or "")
-    if s in ("haiku", "sonnet", "auto", "claude", "claude:haiku", "claude:sonnet", "claude:opus") or OLLAMA_MODEL_RE.match(s):
+    if s in ("haiku", "sonnet", "auto", "claude", "claude:haiku", "claude:sonnet", "claude:opus",
+             "openai", "openai:mini", "openai:full", "gemini", "gemini:flash", "gemini:pro") or OLLAMA_MODEL_RE.match(s):
         return s
     return "haiku"
 
@@ -59,6 +62,12 @@ def clean_model(v) -> str:
 def is_claude_model(m) -> bool:
     """True when this model choice is answered by Claude (and so uses the member's key and daily limit)."""
     return str(m or "") in CLAUDE_TIERS
+
+
+def provider_of(m) -> str:
+    """'openai', 'gemini' or '' for a stored model choice: which member-owned key answers it ('' for Claude and the local models)."""
+    s = str(m or "")
+    return s.split(":")[0] if s in PROVIDER_MODELS else ""
 STOP_AFTER_FAILS = 5                   # this many answers in a row failing means something is wrong (key, credit, network): stop instead of hammering
 SYSTEM = ("You fill in ONE cell of a spreadsheet for a business. Reply with ONLY the value for the cell: no explanation, no quotes, no label, no markdown. "
           "Keep it short and plain. If the information given is not enough to answer, reply with exactly: UNKNOWN")
@@ -336,6 +345,16 @@ def claude_key() -> str:
     return claudekey.current_key()
 
 
+def openai_key() -> str:
+    from . import openaikey
+    return openaikey.current_key()
+
+
+def gemini_key() -> str:
+    from . import geminikey
+    return geminikey.current_key()
+
+
 def _cost():
     import importlib.util
     p = Path(__file__).resolve().parents[1] / "chat" / "claude_cost.py"
@@ -374,6 +393,69 @@ def ask_claude(prompt: str, tier: str, key: str | None = None, http=None) -> tup
     text = "".join(b.get("text", "") for b in d.get("content", []) if isinstance(b, dict) and b.get("type") == "text").strip()
     u = d.get("usage") or {}
     return text, int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0)), str(d.get("model") or model)
+
+
+def ask_openai(prompt: str, model_value: str, key: str | None = None, http=None) -> tuple[str, int, int, str]:
+    """One question to ChatGPT with this PC's own OpenAI key. Returns (text, tokens in, tokens out, model id). Raises RuntimeError with a plain reason."""
+    key = key or openai_key()
+    if not key:
+        raise RuntimeError("ChatGPT is not connected on this PC. Run: python dse.py openai setup")
+    model = PROVIDER_MODELS.get(model_value, PROVIDER_MODELS["openai"])
+    body = json.dumps({"model": model, "max_completion_tokens": 300, "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]}).encode("utf-8")
+    headers = {"Authorization": "Bearer " + key, "content-type": "application/json"}
+    if http is None:
+        def http(url, hdrs, data):        # noqa: E306
+            req = urllib.request.Request(url, data=data, headers=hdrs, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                raise RuntimeError(f"Could not reach OpenAI ({e})") from None
+    code, raw = http("https://api.openai.com/v1/chat/completions", headers, body)
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = {}
+    if code != 200:
+        why = str((d.get("error") or {}).get("message", "")) or f"HTTP {code}"
+        raise RuntimeError(("OpenAI says: " + why)[:200].replace(key, "..."))
+    text = str(((d.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+    u = d.get("usage") or {}
+    return text, int(u.get("prompt_tokens", 0) or 0), int(u.get("completion_tokens", 0) or 0), str(d.get("model") or model)
+
+
+def ask_gemini(prompt: str, model_value: str, key: str | None = None, http=None) -> tuple[str, int, int, str]:
+    """One question to Gemini with this PC's own Google key. Returns (text, tokens in, tokens out, model id). Raises RuntimeError with a plain reason."""
+    key = key or gemini_key()
+    if not key:
+        raise RuntimeError("Gemini is not connected on this PC. Run: python dse.py gemini setup")
+    model = PROVIDER_MODELS.get(model_value, PROVIDER_MODELS["gemini"])
+    body = json.dumps({"systemInstruction": {"parts": [{"text": SYSTEM}]}, "contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"maxOutputTokens": 300}}).encode("utf-8")
+    headers = {"x-goog-api-key": key, "content-type": "application/json"}
+    if http is None:
+        def http(url, hdrs, data):        # noqa: E306
+            req = urllib.request.Request(url, data=data, headers=hdrs, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                raise RuntimeError(f"Could not reach Google ({e})") from None
+    code, raw = http(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", headers, body)
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = {}
+    if code != 200:
+        why = str((d.get("error") or {}).get("message", "")) or f"HTTP {code}"
+        raise RuntimeError(("Google says: " + why)[:200].replace(key, "..."))
+    cand = (d.get("candidates") or [{}])[0]
+    text = "".join(str(p.get("text") or "") for p in ((cand.get("content") or {}).get("parts") or []) if isinstance(p, dict)).strip()
+    u = d.get("usageMetadata") or {}
+    return text, int(u.get("promptTokenCount", 0) or 0), int(u.get("candidatesTokenCount", 0) or 0), model
 
 
 def ask_ollama(prompt: str, name: str, http=None) -> tuple[str, int, int, str]:
@@ -425,12 +507,15 @@ def resolve_model(step: dict, key_present=None) -> str:
 
 
 def ask_any(prompt: str, model: str, key: str | None = None, http=None, ollama_http=None) -> tuple[str, int, int, str]:
-    """One question to the model the member chose for the source: a local Ollama model, a Claude tier, or (as a safety net) Automatic."""
+    """One question to the model the member chose for the source: a local Ollama model, a Claude tier, a ChatGPT or Gemini model
+    on the member's own key for that provider, or (as a safety net) Automatic."""
     m = clean_model(model)
     if m.startswith("ollama:"):
         return ask_ollama(prompt, m.split(":", 1)[1], http=ollama_http)
     if m == "auto":
         return ask_any(prompt, resolve_model({"model": "auto"}, key_present=(lambda: key or claude_key())), key=key, http=http, ollama_http=ollama_http)
+    if m in PROVIDER_MODELS:
+        return (ask_openai if provider_of(m) == "openai" else ask_gemini)(prompt, m, key=key, http=http)
     return ask_claude(prompt, CLAUDE_TIERS.get(m, "haiku"), key=key, http=http)
 
 
@@ -484,6 +569,12 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
         cost = cost or _cost()
         if cost.over_limit() and not uses_site:
             raise RuntimeError(f"Today's Claude limit ({cost.limit():,} tokens, set by you) is used up. Raise it with: python dse.py claude limit <tokens>")
+    for m in resolved:
+        prov = provider_of(m or "")
+        if prov == "openai" and not openai_key():
+            raise RuntimeError("ChatGPT is not connected on this PC. Run: python dse.py openai setup")
+        if prov == "gemini" and not gemini_key():
+            raise RuntimeError("Gemini is not connected on this PC. Run: python dse.py gemini setup")
     if uses_ai:
         ask = ask or (lambda p, m: ask_any(p, m))
     if uses_site:

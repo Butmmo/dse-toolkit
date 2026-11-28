@@ -78,6 +78,26 @@ def claude_ready() -> bool:
         return False
 
 
+def has_openai_key() -> bool:
+    """An OpenAI key on this PC: in this process or saved in Windows user settings. The key itself is never read out or sent anywhere from here."""
+    return bool(os.environ.get("OPENAI_API_KEY", "").strip() or user_setting("OPENAI_API_KEY"))
+
+
+def openai_ready() -> bool:
+    """ChatGPT can be used: a key is present (no package is needed; chat.py talks to OpenAI directly)."""
+    return has_openai_key()
+
+
+def has_gemini_key() -> bool:
+    """A Google AI Studio key on this PC: in this process or saved in Windows user settings. The key itself is never read out or sent anywhere from here."""
+    return bool(os.environ.get("GEMINI_API_KEY", "").strip() or user_setting("GEMINI_API_KEY"))
+
+
+def gemini_ready() -> bool:
+    """Gemini can be used: a key is present (no package is needed; chat.py talks to Google directly)."""
+    return has_gemini_key()
+
+
 def models_info(timeout: float = 4.0, limit: int = 12) -> list[dict]:
     """Installed Ollama models with whether each reads pictures and its size: [{name, vision, size_gb}]. Asks Ollama itself."""
     out: list[dict] = []

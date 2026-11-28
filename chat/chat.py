@@ -7,6 +7,8 @@
 How it answers (best available, in this order):
   1. Claude, if you set your own ANTHROPIC_API_KEY (and `pip install anthropic`): the strongest answers. Your question
      and the matching library material are sent to Anthropic; your progress files are sent only if you ask about them. If you attached folders to an engine, a short summary of them (secrets hidden) goes with the question.
+  ChatGPT and Gemini answer only when you pick them in the model menu, with your own OPENAI_API_KEY or GEMINI_API_KEY
+  (python dse.py openai setup / python dse.py gemini setup): they are never chosen for you.
   2. Your own free Ollama model on this PC (OLLAMA_MODEL, else the best model installed, gemma3:4b before gemma3:1b).
   3. The built-in library alone (guides.json and ../howto/recipes.json), shown in full.
 In every case the answer is grounded in the library: researched guides and step-by-step recipes with sources.
@@ -281,6 +283,110 @@ def claude(q, mode="claude"):
         return ("", f"Claude was not available ({type(e).__name__}); answering with the local model.")
 
 
+# ------------------------------------------------------------------ ChatGPT and Gemini: the member's own keys, in the same pattern as Claude
+
+OPENAI_TIERS = {"mini": "gpt-5-mini", "full": "gpt-5"}                  # openai (or openai:mini) is the balanced default; openai:full is the strongest
+GEMINI_TIERS = {"flash": "gemini-2.5-flash", "pro": "gemini-2.5-pro"}   # gemini (or gemini:flash) is the fast default; gemini:pro is the strongest
+PROVIDERS = {"openai": ("OPENAI_API_KEY", OPENAI_TIERS, "mini", "ChatGPT", "python dse.py openai setup"),
+             "gemini": ("GEMINI_API_KEY", GEMINI_TIERS, "flash", "Gemini", "python dse.py gemini setup")}
+
+
+def provider_mode(mode):
+    """'openai', 'openai:full', 'gemini', 'gemini:pro' -> (provider, model id); anything else -> None."""
+    for name, (_env, tiers, default, _label, _setup) in PROVIDERS.items():
+        if mode == name:
+            return name, tiers[default]
+        if mode.startswith(name + ":") and mode[len(name) + 1:] in tiers:
+            return name, tiers[mode[len(name) + 1:]]
+    return None
+
+
+def _provider_key(env_name):
+    """The member's own provider key: this process, else the value saved in Windows user settings (a key saved after the runner started still counts)."""
+    if not os.environ.get(env_name):
+        try:
+            spec = importlib.util.spec_from_file_location("hq_ollama_model", H / "ollama_model.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            saved = mod.user_setting(env_name)
+            if saved:
+                os.environ[env_name] = saved
+        except Exception:
+            pass
+    return os.environ.get(env_name, "").strip()
+
+
+def _rest_json(url, headers, payload, timeout=180):
+    req = urllib.request.Request(url, json.dumps(payload).encode(), {**headers, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def openai(q, mode="openai"):
+    """ChatGPT, only if the student set their own OpenAI key. Returns (text, note) or None, like claude()."""
+    global LAST_USAGE
+    import time
+    started = time.time()
+    key = _provider_key("OPENAI_API_KEY")
+    if not key:
+        return None
+    model = (provider_mode(mode) or ("openai", OPENAI_TIERS["mini"]))[1]
+    try:
+        data = _rest_json("https://api.openai.com/v1/chat/completions",
+                          {"Authorization": "Bearer " + key},
+                          {"model": model, "max_completion_tokens": 2000,
+                           "messages": [{"role": "system", "content": SYSTEM + NL + "You may use up to about 600 words when the question needs depth."},
+                                        {"role": "user", "content": build_user_message(q)}]})
+        text = str(((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        if not text:
+            return None
+        used = ""
+        try:
+            u = data.get("usage") or {}
+            tin, tout = int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0)
+            LAST_USAGE = {"provider": "openai", "model": str(data.get("model") or model), "input_tokens": tin, "output_tokens": tout,
+                          "duration_ms": int((time.time() - started) * 1000)}
+            used = f" {tin + tout:,} tokens (in {tin:,}, out {tout:,})."
+        except Exception:
+            pass
+        return text, f"Answered with ChatGPT {model}, using your own OpenAI key.{used}"
+    except Exception as e:      # wrong key, no credit, offline: fall through to the local model
+        return ("", f"ChatGPT was not available ({type(e).__name__}); answering with the local model.")
+
+
+def gemini(q, mode="gemini"):
+    """Gemini, only if the student set their own Google AI Studio key. Returns (text, note) or None, like claude()."""
+    global LAST_USAGE
+    import time
+    started = time.time()
+    key = _provider_key("GEMINI_API_KEY")
+    if not key:
+        return None
+    model = (provider_mode(mode) or ("gemini", GEMINI_TIERS["flash"]))[1]
+    try:
+        data = _rest_json(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                          {"x-goog-api-key": key},
+                          {"systemInstruction": {"parts": [{"text": SYSTEM + NL + "You may use up to about 600 words when the question needs depth."}]},
+                           "contents": [{"parts": [{"text": build_user_message(q)}]}],
+                           "generationConfig": {"maxOutputTokens": 2000}})
+        cand = (data.get("candidates") or [{}])[0]
+        text = "".join(str(p.get("text") or "") for p in ((cand.get("content") or {}).get("parts") or []) if isinstance(p, dict)).strip()
+        if not text:
+            return None
+        used = ""
+        try:
+            u = data.get("usageMetadata") or {}
+            tin, tout = int(u.get("promptTokenCount") or 0), int(u.get("candidatesTokenCount") or 0)
+            LAST_USAGE = {"provider": "gemini", "model": model, "input_tokens": tin, "output_tokens": tout,
+                          "duration_ms": int((time.time() - started) * 1000)}
+            used = f" {tin + tout:,} tokens (in {tin:,}, out {tout:,})."
+        except Exception:
+            pass
+        return text, f"Answered with Gemini {model}, using your own Google key.{used}"
+    except Exception as e:      # wrong key, no credit, offline: fall through to the local model
+        return ("", f"Gemini was not available ({type(e).__name__}); answering with the local model.")
+
+
 LAST = {"error": "", "partial": False, "seconds": 0, "duration_ms": 0, "input_tokens": 0, "output_tokens": 0}
 LAST_USAGE = None
 OLLAMA_BUDGET_S = 420        # the page waits 7 minutes and the job limit is 10: stay inside both
@@ -377,7 +483,7 @@ def _guard(q):
         return None
 
 
-MODES = ("auto", "library", "claude")        # plus claude:haiku, claude:sonnet, claude:opus (see claude_cost.py)
+MODES = ("auto", "library", "claude")        # plus claude:haiku, claude:sonnet, claude:opus (see claude_cost.py) and the member's own ChatGPT and Gemini keys: openai, openai:mini, openai:full, gemini, gemini:flash, gemini:pro (see PROVIDERS)
 
 
 def installed_models():
@@ -411,7 +517,7 @@ def _answer(q, image=None, mode="auto"):
             return g + NL * 2 + "(Answered instantly by HQ's built-in rules: this chat only answers questions. It cannot see files, build, commit, push or send. No AI model was used.)"
     mode = (mode or "auto").strip()
     chosen = mode != "auto"
-    if mode == "auto" or mode.startswith("claude"):
+    if mode == "auto" or mode.startswith(("claude", "openai", "gemini")):
         OLLAMA_MODEL, MODEL_WHY = _pick_model(q)
     if mode.startswith("ollama:"):
         want = mode[7:]
@@ -419,14 +525,14 @@ def _answer(q, image=None, mode="auto"):
         if want not in have:
             return (f"The model '{want}' is not installed on this PC (installed: {', '.join(have) or 'none found: is Ollama running?'}). Pick another in the model menu, or run: ollama pull {want}")
         OLLAMA_MODEL, MODEL_WHY = want, "you chose it in DBI-AI"
-    elif mode not in MODES and not _cost().valid_mode(mode):
+    elif mode not in MODES and not _cost().valid_mode(mode) and not provider_mode(mode):
         return f"I do not know the model choice '{mode}'. Use the model menu in DBI-AI."
     if mode == "library":
         if image:
             return "Pictures need a model that can read them. Choose a local model that can (marked 'reads pictures' in the menu) or Automatic."
         return library_reply(q, "Answered from the built-in library because you chose that: the guides and recipes with sources, no AI model.")
     if image:     # pictures need a vision model on this PC
-        if mode.startswith("claude"):
+        if mode.startswith(("claude", "openai", "gemini")):
             return "Pictures are read by a local model in this version. Choose Automatic or a local model that reads pictures."
         out = ollama(q, image)
         return (out + NL * 2 + local_footer(chosen) + usage_marker("ollama", OLLAMA_MODEL, LAST["input_tokens"], LAST["output_tokens"], LAST["duration_ms"])) if out else ("I could not read the picture" + (f" ({LAST['error']})" if LAST["error"] else "") + ". Your Ollama model must support images: install gemma3:4b "
@@ -441,6 +547,13 @@ def _answer(q, image=None, mode="auto"):
             return library_reply(q, why + " Here is the built-in library answer instead.")
         if c:
             note = NL * 2 + "(" + c[1] + ")"
+    if mode.startswith(("openai", "gemini")):
+        c = (openai if mode.startswith("openai") else gemini)(q, mode)
+        if c and c[0]:
+            return c[0] + NL * 2 + "(" + c[1] + ")" + (usage_marker(LAST_USAGE["provider"], LAST_USAGE["model"], LAST_USAGE["input_tokens"], LAST_USAGE["output_tokens"], LAST_USAGE["duration_ms"]) if LAST_USAGE else "")
+        _env, _tiers, _default, label, setup = PROVIDERS[mode.split(":")[0]]
+        why = c[1] if c else f"{label} did not answer (it needs its key on this PC: {setup})."
+        return library_reply(q, why + " Here is the built-in library answer instead.")
     out = ollama(q)
     if out:
         return out + NL * 2 + local_footer(chosen) + note + usage_marker("ollama", OLLAMA_MODEL, LAST["input_tokens"], LAST["output_tokens"], LAST["duration_ms"])

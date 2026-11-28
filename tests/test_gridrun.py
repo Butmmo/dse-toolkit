@@ -378,6 +378,37 @@ check("a local-model run fills the column with no Claude key connected, asks the
       isinstance(out_o, str) and "FINISHED" in out_o and len(seen_models) >= 1 and all(m == "ollama:gemma3:4b" for m in seen_models) and ocost.recorded == [], str(out_o))
 
 
+# ---- ChatGPT and Gemini sources: the member's own key for that provider, in the Claude pattern
+check("ChatGPT and Gemini model choices survive cleaning, are not Claude models, and name their provider",
+      R.clean_model("openai") == "openai" and R.clean_model("openai:full") == "openai:full" and R.clean_model("gemini:pro") == "gemini:pro"
+      and R.clean_model("gemini:flash") == "gemini:flash" and not R.is_claude_model("openai:full") and not R.is_claude_model("gemini")
+      and R.provider_of("openai:mini") == "openai" and R.provider_of("gemini") == "gemini" and R.provider_of("claude:opus") == "" and R.provider_of("ollama:gemma3:4b") == "")
+osent = {}
+def oai_http(url, headers, data):
+    osent.update(url=url, headers=headers, body=json.loads(data))
+    return 200, json.dumps({"choices": [{"message": {"content": "gpt answer"}}], "usage": {"prompt_tokens": 21, "completion_tokens": 5}, "model": "gpt-5"})
+t, tin, tout, model = R.ask_openai("Fill this for Acme", "openai:full", key="sk-test-openai", http=oai_http)
+check("one question goes to OpenAI with the PC's own key in the header, the short system instruction and the picked model; the answer and token counts come back",
+      t == "gpt answer" and (tin, tout) == (21, 5) and model == "gpt-5" and osent["url"] == "https://api.openai.com/v1/chat/completions"
+      and osent["headers"]["Authorization"] == "Bearer sk-test-openai" and osent["body"]["model"] == "gpt-5" and "ONLY the value" in osent["body"]["messages"][0]["content"])
+gsent = {}
+def gem_http(url, headers, data):
+    gsent.update(url=url, headers=headers, body=json.loads(data))
+    return 200, json.dumps({"candidates": [{"content": {"parts": [{"text": "gemini answer"}]}}], "usageMetadata": {"promptTokenCount": 17, "candidatesTokenCount": 3}})
+t, tin, tout, model = R.ask_gemini("Fill this for Acme", "gemini:pro", key="AIza-test", http=gem_http)
+check("one question goes to Gemini with the PC's own key in the header and the picked model in the address; the answer and token counts come back",
+      t == "gemini answer" and (tin, tout) == (17, 3) and model == "gemini-2.5-pro" and "gemini-2.5-pro" in gsent["url"]
+      and gsent["headers"]["x-goog-api-key"] == "AIza-test" and "ONLY the value" in gsent["body"]["systemInstruction"]["parts"][0]["text"])
+check("ask_any sends a ChatGPT choice to OpenAI and a Gemini choice to Google",
+      R.ask_any("q?", "openai:mini", key="sk-test-openai", http=oai_http)[0] == "gpt answer"
+      and R.ask_any("q?", "gemini:flash", key="AIza-test", http=gem_http)[0] == "gemini answer")
+_orig_oai, _orig_gem = R.openai_key, R.gemini_key
+R.openai_key, R.gemini_key = (lambda: ""), (lambda: "")
+check("without the provider's key the ask refuses with how to connect it",
+      "openai setup" in str(_try(lambda: R.ask_openai("q?", "openai", http=oai_http))) and "gemini setup" in str(_try(lambda: R.ask_gemini("q?", "gemini", http=gem_http))))
+R.openai_key, R.gemini_key = _orig_oai, _orig_gem
+
+
 # ---- the tool and the command
 cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))
 t = cat["tools"]["dse.grid_run"]
