@@ -98,6 +98,16 @@ def gemini_ready() -> bool:
     return has_gemini_key()
 
 
+def has_paystack_key() -> bool:
+    """A Paystack secret key on this PC: in this process or saved in Windows user settings. The key itself is never read out or sent anywhere from here."""
+    return bool(os.environ.get("PAYSTACK_SECRET_KEY", "").strip() or user_setting("PAYSTACK_SECRET_KEY"))
+
+
+def paystack_ready() -> bool:
+    """Paystack can be used (payment links and recent payments): a key is present (no package is needed; paylinks.py talks to Paystack directly)."""
+    return has_paystack_key()
+
+
 def models_info(timeout: float = 4.0, limit: int = 12) -> list[dict]:
     """Installed Ollama models with whether each reads pictures and its size: [{name, vision, size_gb}]. Asks Ollama itself."""
     out: list[dict] = []

@@ -14,6 +14,8 @@ Run these in PowerShell opened inside the dse-toolkit folder (README: "Where to 
   python dse.py claude setup|status|sdk|remove               connect your own Claude key for the strongest DBI-AI answers (the key stays on this PC)
   python dse.py openai setup|status|remove                   connect your own ChatGPT key for DBI-AI answers (the key stays on this PC)
   python dse.py gemini setup|status|remove                   connect your own Gemini key for DBI-AI answers (the key stays on this PC)
+  python dse.py paystack setup|status|remove                 connect your own Paystack key for getting paid (the key stays on this PC)
+  python dse.py paylink create|recent                        create a payment link, or list recent payments, with your Paystack key
   python dse.py mytool list|check|save|run                  your own tools made by chaining the toolkit's tools, no code (HQ Tools, My tools)
   python dse.py studio config|draft|test|enable|publish     write your own Python tools with an AI, behind a guard and your approval (admin; off until you turn it on)
   python dse.py enrich leads.csv [--icp "words"] [--engine x] [--provider NAME]  free lead enrichment from each lead's own website (a paid provider is optional, with your own key)
@@ -97,6 +99,12 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "gemini":      # connect your own Gemini key (kept on this PC only): python dse.py gemini --help
         from dse import geminikey
         sys.exit(geminikey.run_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "paystack":    # connect your own Paystack key (kept on this PC only): python dse.py paystack --help
+        from dse import paystackkey
+        sys.exit(paystackkey.run_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "paylink":     # create a payment link or list recent payments with your Paystack key: python dse.py paylink --help
+        from dse import paylinks
+        sys.exit(paylinks.run_cli(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] in ("mytool", "studio"):      # My tools and Tool Studio take their own words, e.g. --in-city Tampa: python dse.py mytool --help
         from dse import cli_tools
         sys.exit(cli_tools.main(sys.argv[1], sys.argv[2:]))

@@ -7859,6 +7859,112 @@
       "timeout_min": 2,
       "outputs": []
     },
+    "dse.paystack_status": {
+      "label": "Paystack: is my key connected?",
+      "group": "Setup",
+      "help": "Says whether your own Paystack key is saved on this PC, and asks Paystack whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py paystack setup.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "paystack"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "flag": "--test",
+          "field": "test"
+        }
+      ],
+      "fields": [
+        {
+          "name": "test",
+          "label": "Ask Paystack if the key works",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.pay_link_create": {
+      "label": "Get paid: create a payment link",
+      "group": "Get paid",
+      "help": "Creates ONE payment page at Paystack with your own key, the amount fixed on it, and prints its link. Citadel saves the link onto the client or quote you started from. The key never leaves this PC except to Paystack itself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "paylink"
+        },
+        {
+          "lit": "create"
+        },
+        {
+          "opt": "--name",
+          "field": "name"
+        },
+        {
+          "opt": "--amount",
+          "field": "amount"
+        },
+        {
+          "opt": "--currency",
+          "field": "currency"
+        }
+      ],
+      "fields": [
+        {
+          "name": "name",
+          "label": "Name on the payment page (the client or the work)",
+          "type": "text",
+          "required": true,
+          "max": 120,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:;\\\"%+=#@_*$-]{2,1499}"
+        },
+        {
+          "name": "amount",
+          "label": "Amount (a plain number, for example 500 or 99.50)",
+          "type": "text",
+          "required": true,
+          "max": 12,
+          "pattern": "[0-9]+(\\.[0-9]{1,2})?"
+        },
+        {
+          "name": "currency",
+          "label": "Currency",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            "NGN",
+            "USD",
+            "GBP",
+            "GHS",
+            "KES",
+            "ZAR"
+          ],
+          "default": "NGN"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.pay_recent": {
+      "label": "Get paid: recent payments",
+      "group": "Get paid",
+      "help": "Lists your latest successful payments at Paystack, newest first, with amounts and references, so you can match them to unpaid invoices in Citadel and mark them paid there. It changes nothing at Paystack.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "paylink"
+        },
+        {
+          "lit": "recent"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 3,
+      "outputs": []
+    },
     "dse.claude_sdk": {
       "label": "Claude: install the package it needs",
       "group": "Setup",
@@ -11928,7 +12034,7 @@
         },
         {
           "name": "minimum_identity_score",
-          "label": "Minimum identity match score (heuristic 0–1)",
+          "label": "Minimum identity match score (heuristic 0â€“1)",
           "type": "float",
           "min": 0,
           "max": 1,
