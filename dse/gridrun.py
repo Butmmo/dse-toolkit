@@ -3,12 +3,14 @@
     python dse.py grid run <grid> <column> [--mode empty|stale|all] [--limit N] [--dry]
 
 The column has a RUN SETTING, made in Citadel (column menu > Run settings), one of:
-  ask Claude      a question written with the row's own cells in {braces}, for example   Write a one-line opener for {Company} in {City}
-                  Uses YOUR Claude key (python dse.py claude setup), paid to Anthropic by you, counted against your daily token limit (python dse.py claude limit). Claude is told to answer
+  ask an AI       a question written with the row's own cells in {braces}, for example   Write a one-line opener for {Company} in {City}
+                  The model is the one the member picked for this source in Citadel: a Claude tier (their own key, python dse.py claude setup, paid to Anthropic by them,
+                  counted against their daily token limit, python dse.py claude limit), one of their local Ollama models (free, on their PC), or Automatic (Claude Haiku when a
+                  Claude key is connected, else the PC's best local model). Older columns saved as haiku or sonnet keep meaning Claude Haiku or Sonnet. The AI is told to answer
                   with only the cell's value, or UNKNOWN when it cannot tell (the cell is then left as it is).
   read a website  one fact (best email, phone, decision maker, social link ...) read from the business's OWN public website in another column: the same free, polite reader as Lead enrichment.
 What a run does:
-  * a column can have SEVERAL sources, tried in order for each row (a waterfall): the first that gives an answer that fits the column fills the cell, so a paid Claude answer is only asked for
+  * a column can have SEVERAL sources, tried in order for each row (a waterfall): the first that gives an answer that fits the column fills the cell, so a paid answer is only asked for
     when the free website reading found nothing. Up to five.
   * mode empty (the default) works only on rows whose cell is empty; mode stale works on rows never run and still empty PLUS rows OUT OF DATE (see below); mode all ("force") redoes every row. --limit N takes only the first N (test on a few before running them all).
   * OUT-OF-DATE ROWS: a run leaves a small fingerprint on every row it fills or tries (a hash of the cells the sources read and of the sources themselves, under the key _<column key>). A row is out of date when
@@ -40,7 +42,32 @@ READ_PAGE = 500
 BATCH = 10
 MAX_CELL = {"text": 500, "longtext": 2000}
 SITE_FIELDS = ("email", "phone", "decision_maker", "decision_title", "linkedin", "instagram", "facebook", "booking", "contact_form", "tech", "description")
-MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5"}
+MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+CLAUDE_TIERS = {"haiku": "haiku", "sonnet": "sonnet", "claude": "sonnet", "claude:haiku": "haiku", "claude:sonnet": "sonnet", "claude:opus": "opus"}
+PROVIDER_MODELS = {"openai": "gpt-5-mini", "openai:mini": "gpt-5-mini", "openai:full": "gpt-5",
+                   "gemini": "gemini-2.5-flash", "gemini:flash": "gemini-2.5-flash", "gemini:pro": "gemini-2.5-pro"}
+OLLAMA_MODEL_RE = re.compile(r"^ollama:[A-Za-z0-9][A-Za-z0-9._:/-]{0,59}$")
+
+
+def clean_model(v) -> str:
+    """The model stored on an AI source, made safe. The same rules as the grid (src/lib/crm-grid.ts cleanRunModel): the values Citadel's model menu
+    stores pass through, the legacy haiku/sonnet of older columns keep their meaning, and anything else becomes haiku, as before this choice existed."""
+    s = str(v or "")
+    if s in ("haiku", "sonnet", "auto", "claude", "claude:haiku", "claude:sonnet", "claude:opus",
+             "openai", "openai:mini", "openai:full", "gemini", "gemini:flash", "gemini:pro") or OLLAMA_MODEL_RE.match(s):
+        return s
+    return "haiku"
+
+
+def is_claude_model(m) -> bool:
+    """True when this model choice is answered by Claude (and so uses the member's key and daily limit)."""
+    return str(m or "") in CLAUDE_TIERS
+
+
+def provider_of(m) -> str:
+    """'openai', 'gemini' or '' for a stored model choice: which member-owned key answers it ('' for Claude and the local models)."""
+    s = str(m or "")
+    return s.split(":")[0] if s in PROVIDER_MODELS else ""
 STOP_AFTER_FAILS = 5                   # this many answers in a row failing means something is wrong (key, credit, network): stop instead of hammering
 SYSTEM = ("You fill in ONE cell of a spreadsheet for a business. Reply with ONLY the value for the cell: no explanation, no quotes, no label, no markdown. "
           "Keep it short and plain. If the information given is not enough to answer, reply with exactly: UNKNOWN")
@@ -75,7 +102,7 @@ def clean_step(run: dict | None) -> dict | None:
         return None
     if run.get("kind") == "ai":
         prompt = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", str(run.get("prompt") or ""))).strip()[:1000]
-        return {"kind": "ai", "prompt": prompt, "model": "sonnet" if run.get("model") == "sonnet" else "haiku"} if prompt else None
+        return {"kind": "ai", "prompt": prompt, "model": clean_model(run.get("model"))} if prompt else None
     if run.get("kind") == "site":
         frm, field = re.sub(r"\s+", " ", str(run.get("from") or "")).strip()[:40], str(run.get("field") or "")
         return {"kind": "site", "from": frm, "field": field} if frm and field in SITE_FIELDS else None
@@ -318,6 +345,16 @@ def claude_key() -> str:
     return claudekey.current_key()
 
 
+def openai_key() -> str:
+    from . import openaikey
+    return openaikey.current_key()
+
+
+def gemini_key() -> str:
+    from . import geminikey
+    return geminikey.current_key()
+
+
 def _cost():
     import importlib.util
     p = Path(__file__).resolve().parents[1] / "chat" / "claude_cost.py"
@@ -358,6 +395,130 @@ def ask_claude(prompt: str, tier: str, key: str | None = None, http=None) -> tup
     return text, int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0)), str(d.get("model") or model)
 
 
+def ask_openai(prompt: str, model_value: str, key: str | None = None, http=None) -> tuple[str, int, int, str]:
+    """One question to ChatGPT with this PC's own OpenAI key. Returns (text, tokens in, tokens out, model id). Raises RuntimeError with a plain reason."""
+    key = key or openai_key()
+    if not key:
+        raise RuntimeError("ChatGPT is not connected on this PC. Run: python dse.py openai setup")
+    model = PROVIDER_MODELS.get(model_value, PROVIDER_MODELS["openai"])
+    body = json.dumps({"model": model, "max_completion_tokens": 300, "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]}).encode("utf-8")
+    headers = {"Authorization": "Bearer " + key, "content-type": "application/json"}
+    if http is None:
+        def http(url, hdrs, data):        # noqa: E306
+            req = urllib.request.Request(url, data=data, headers=hdrs, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                raise RuntimeError(f"Could not reach OpenAI ({e})") from None
+    code, raw = http("https://api.openai.com/v1/chat/completions", headers, body)
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = {}
+    if code != 200:
+        why = str((d.get("error") or {}).get("message", "")) or f"HTTP {code}"
+        raise RuntimeError(("OpenAI says: " + why)[:200].replace(key, "..."))
+    text = str(((d.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+    u = d.get("usage") or {}
+    return text, int(u.get("prompt_tokens", 0) or 0), int(u.get("completion_tokens", 0) or 0), str(d.get("model") or model)
+
+
+def ask_gemini(prompt: str, model_value: str, key: str | None = None, http=None) -> tuple[str, int, int, str]:
+    """One question to Gemini with this PC's own Google key. Returns (text, tokens in, tokens out, model id). Raises RuntimeError with a plain reason."""
+    key = key or gemini_key()
+    if not key:
+        raise RuntimeError("Gemini is not connected on this PC. Run: python dse.py gemini setup")
+    model = PROVIDER_MODELS.get(model_value, PROVIDER_MODELS["gemini"])
+    body = json.dumps({"systemInstruction": {"parts": [{"text": SYSTEM}]}, "contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"maxOutputTokens": 300}}).encode("utf-8")
+    headers = {"x-goog-api-key": key, "content-type": "application/json"}
+    if http is None:
+        def http(url, hdrs, data):        # noqa: E306
+            req = urllib.request.Request(url, data=data, headers=hdrs, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                raise RuntimeError(f"Could not reach Google ({e})") from None
+    code, raw = http(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", headers, body)
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = {}
+    if code != 200:
+        why = str((d.get("error") or {}).get("message", "")) or f"HTTP {code}"
+        raise RuntimeError(("Google says: " + why)[:200].replace(key, "..."))
+    cand = (d.get("candidates") or [{}])[0]
+    text = "".join(str(p.get("text") or "") for p in ((cand.get("content") or {}).get("parts") or []) if isinstance(p, dict)).strip()
+    u = d.get("usageMetadata") or {}
+    return text, int(u.get("promptTokenCount", 0) or 0), int(u.get("candidatesTokenCount", 0) or 0), model
+
+
+def ask_ollama(prompt: str, name: str, http=None) -> tuple[str, int, int, str]:
+    """One question to a local Ollama model on this PC (free). Returns (text, tokens in, tokens out, model name). Raises RuntimeError with a plain reason."""
+    body = json.dumps({"model": name, "stream": False, "system": SYSTEM, "messages": [{"role": "user", "content": prompt}], "options": {"num_predict": 400}}).encode("utf-8")
+    if http is None:
+        def http(url, data):        # noqa: E306
+            req = urllib.request.Request(url, data=data, headers={"content-type": "application/json"}, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                raise RuntimeError(f"Ollama is not answering on this PC ({e}). Start Ollama, or pick a different model in the column's Run settings in Citadel.") from None
+    code, raw = http("http://localhost:11434/api/chat", body)
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = {}
+    if code != 200:
+        why = str(d.get("error") or "") or f"HTTP {code}"
+        raise RuntimeError(("Ollama says: " + why)[:200])
+    text = str((d.get("message") or {}).get("content", "")).strip()
+    return text, int(d.get("prompt_eval_count", 0) or 0), int(d.get("eval_count", 0) or 0), name
+
+
+def _ollama_pick(task: str = "") -> str:
+    """The PC's best local model, by the same choice the HQ chat makes (chat/ollama_model.py)."""
+    try:
+        import importlib.util
+        p = Path(__file__).resolve().parents[1] / "chat" / "ollama_model.py"
+        spec = importlib.util.spec_from_file_location("hq_ollama_model", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.pick(task=task)[0]
+    except Exception:
+        return "gemma3:1b"
+
+
+def resolve_model(step: dict, key_present=None) -> str:
+    """The model an AI source will actually use. 'auto' becomes Claude Haiku when a Claude key is connected on this PC (cheap, and the member
+    connected Claude on purpose), else the PC's best local model. Every other stored choice is used as it stands."""
+    m = clean_model((step or {}).get("model"))
+    if m != "auto":
+        return m
+    has = key_present() if key_present else claude_key()
+    return "claude:haiku" if has else "ollama:" + _ollama_pick()
+
+
+def ask_any(prompt: str, model: str, key: str | None = None, http=None, ollama_http=None) -> tuple[str, int, int, str]:
+    """One question to the model the member chose for the source: a local Ollama model, a Claude tier, a ChatGPT or Gemini model
+    on the member's own key for that provider, or (as a safety net) Automatic."""
+    m = clean_model(model)
+    if m.startswith("ollama:"):
+        return ask_ollama(prompt, m.split(":", 1)[1], http=ollama_http)
+    if m == "auto":
+        return ask_any(prompt, resolve_model({"model": "auto"}, key_present=(lambda: key or claude_key())), key=key, http=http, ollama_http=ollama_http)
+    if m in PROVIDER_MODELS:
+        return (ask_openai if provider_of(m) == "openai" else ask_gemini)(prompt, m, key=key, http=http)
+    return ask_claude(prompt, CLAUDE_TIERS.get(m, "haiku"), key=key, http=http)
+
+
 def read_site(website: str) -> dict:
     from . import enrich
     return enrich.enrich_site(website, render=False)
@@ -393,20 +554,29 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
     rows = read_rows(api, grid["id"])
     pick = pick_rows(rows, col, columns, mode, limit)
     todo = pick["rows"]
-    kind = f"tries {len(steps)} sources in order" if len(steps) > 1 else "asks Claude" if steps[0]["kind"] == "ai" else "reads the website"
+    kind = f"tries {len(steps)} sources in order" if len(steps) > 1 else "asks an AI" if steps[0]["kind"] == "ai" else "reads the website"
     head = f"{grid.get('workbook', '')}/{grid['name']}: column '{col['label']}' {kind} for {len(todo)} of {pick['total']} rows ({'every row' if mode == 'all' else 'empty or out-of-date rows' if mode == 'stale' else 'empty rows only'}{f', first {limit}' if limit else ''}); {pick['skipped']} skipped (nothing to read){f'; {pick["outdated"]} out of date' if mode == 'stale' else ''}."
     if dry or not todo:
         return head + ("\nDry run: nothing was asked and nothing was saved.\n" if dry else "\nNothing to run.\n")
     say(head)
     uses_ai = any(st["kind"] == "ai" for st in steps)
     uses_site = any(st["kind"] == "site" for st in steps)
-    if uses_ai:
+    resolved = [resolve_model(st, key_present=key_present) if st["kind"] == "ai" else None for st in steps]
+    needs_claude = any(is_claude_model(m) for m in resolved)
+    if needs_claude:
         if not (key_present() if key_present else claude_key()):
             raise RuntimeError("Claude is not connected on this PC. Run: python dse.py claude setup")
         cost = cost or _cost()
-        ask = ask or (lambda p, tier: ask_claude(p, tier))
         if cost.over_limit() and not uses_site:
             raise RuntimeError(f"Today's Claude limit ({cost.limit():,} tokens, set by you) is used up. Raise it with: python dse.py claude limit <tokens>")
+    for m in resolved:
+        prov = provider_of(m or "")
+        if prov == "openai" and not openai_key():
+            raise RuntimeError("ChatGPT is not connected on this PC. Run: python dse.py openai setup")
+        if prov == "gemini" and not gemini_key():
+            raise RuntimeError("Gemini is not connected on this PC. Run: python dse.py gemini setup")
+    if uses_ai:
+        ask = ask or (lambda p, m: ask_any(p, m))
     if uses_site:
         site = site or read_site
     by = {norm(c["label"]): c for c in columns}
@@ -444,16 +614,17 @@ def run(grid_ref: str, col_ref: str, mode: str = "empty", limit: int = 0, dry: b
         for si, st in enumerate(steps):               # the waterfall: the first source that gives an answer that fits wins
             if not step_has_inputs(st, columns, data):
                 continue
-            if st["kind"] == "ai" and cost.over_limit():
+            if st["kind"] == "ai" and is_claude_model(resolved[si]) and cost is not None and cost.over_limit():
                 ai_blocked = True
                 continue
             try:
                 if st["kind"] == "ai":
-                    text, tin, tout, model = ask(build_prompt(st["prompt"], columns, data), st["model"])
-                    try:
-                        cost.record(model, tin, tout)
-                    except Exception:
-                        pass
+                    text, tin, tout, model = ask(build_prompt(st["prompt"], columns, data), resolved[si])
+                    if is_claude_model(resolved[si]) and cost is not None:
+                        try:
+                            cost.record(model, tin, tout)
+                        except Exception:
+                            pass
                 else:
                     src = cell_text(by[norm(st["from"])], data)
                     if src not in site_cache:

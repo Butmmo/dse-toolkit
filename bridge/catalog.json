@@ -7803,6 +7803,168 @@
       "timeout_min": 2,
       "outputs": []
     },
+    "dse.openai_status": {
+      "label": "ChatGPT: is my key connected?",
+      "group": "Setup",
+      "help": "Says whether your own OpenAI key is saved on this PC, and asks OpenAI whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py openai setup.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "openai"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "flag": "--test",
+          "field": "test"
+        }
+      ],
+      "fields": [
+        {
+          "name": "test",
+          "label": "Ask OpenAI if the key works",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.gemini_status": {
+      "label": "Gemini: is my key connected?",
+      "group": "Setup",
+      "help": "Says whether your own Google AI Studio key is saved on this PC, and asks Google whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py gemini setup.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "gemini"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "flag": "--test",
+          "field": "test"
+        }
+      ],
+      "fields": [
+        {
+          "name": "test",
+          "label": "Ask Google if the key works",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.paystack_status": {
+      "label": "Paystack: is my key connected?",
+      "group": "Setup",
+      "help": "Says whether your own Paystack key is saved on this PC, and asks Paystack whether it accepts the key (a free check). The key is never shown or sent here: type it on your PC with python dse.py paystack setup.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "paystack"
+        },
+        {
+          "lit": "status"
+        },
+        {
+          "flag": "--test",
+          "field": "test"
+        }
+      ],
+      "fields": [
+        {
+          "name": "test",
+          "label": "Ask Paystack if the key works",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "timeout_min": 2,
+      "outputs": []
+    },
+    "dse.pay_link_create": {
+      "label": "Get paid: create a payment link",
+      "group": "Get paid",
+      "help": "Creates ONE payment page at Paystack with your own key, the amount fixed on it, and prints its link. Citadel saves the link onto the client or quote you started from. The key never leaves this PC except to Paystack itself.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "paylink"
+        },
+        {
+          "lit": "create"
+        },
+        {
+          "opt": "--name",
+          "field": "name"
+        },
+        {
+          "opt": "--amount",
+          "field": "amount"
+        },
+        {
+          "opt": "--currency",
+          "field": "currency"
+        }
+      ],
+      "fields": [
+        {
+          "name": "name",
+          "label": "Name on the payment page (the client or the work)",
+          "type": "text",
+          "required": true,
+          "max": 120,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9 ,.'?&/()!:;\\\"%+=#@_*$-]{2,1499}"
+        },
+        {
+          "name": "amount",
+          "label": "Amount (a plain number, for example 500 or 99.50)",
+          "type": "text",
+          "required": true,
+          "max": 12,
+          "pattern": "[0-9]+(\\.[0-9]{1,2})?"
+        },
+        {
+          "name": "currency",
+          "label": "Currency",
+          "type": "choice",
+          "required": true,
+          "choices": [
+            "NGN",
+            "USD",
+            "GBP",
+            "GHS",
+            "KES",
+            "ZAR"
+          ],
+          "default": "NGN"
+        }
+      ],
+      "timeout_min": 3,
+      "outputs": []
+    },
+    "dse.pay_recent": {
+      "label": "Get paid: recent payments",
+      "group": "Get paid",
+      "help": "Lists your latest successful payments at Paystack, newest first, with amounts and references, so you can match them to unpaid invoices in Citadel and mark them paid there. It changes nothing at Paystack.",
+      "script": "dse.py",
+      "args": [
+        {
+          "lit": "paylink"
+        },
+        {
+          "lit": "recent"
+        }
+      ],
+      "fields": [],
+      "timeout_min": 3,
+      "outputs": []
+    },
     "dse.claude_sdk": {
       "label": "Claude: install the package it needs",
       "group": "Setup",
@@ -9015,9 +9177,9 @@
       ]
     },
     "dse.grid_run": {
-      "label": "Grids: run a column (ask Claude, or read a website, for each row)",
+      "label": "Grids: run a column (ask an AI, or read a website, for each row)",
       "group": "Grow",
-      "help": "Fills one column of a grid of your Ledgers, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: ask Claude a question about each row (uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). A column can have several sources tried in order for each row (for example the free website reading first, then Claude only for the rows it found nothing for): the first answer that fits wins. A run leaves a small fingerprint on each row it fills or tries, so 'Empty or out-of-date rows' re-runs only rows whose inputs or sources changed (values typed by hand are never touched). It works on empty rows unless you ask for another mode, and 'first N rows' lets you test on a few before running them all. Answers are saved in small batches, so Stop keeps what is done. It writes only into that one column of your own grid, through this PC's own connection to your account.",
+      "help": "Fills one column of a grid of your Ledgers, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: ask an AI a question about each row (the model picked for that source in Citadel: a free local model on this PC, or Claude, which uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). A column can have several sources tried in order for each row (for example the free website reading first, then the AI only for the rows it found nothing for): the first answer that fits wins. A run leaves a small fingerprint on each row it fills or tries, so 'Empty or out-of-date rows' re-runs only rows whose inputs or sources changed (values typed by hand are never touched). It works on empty rows unless you ask for another mode, and 'first N rows' lets you test on a few before running them all. Answers are saved in small batches, so Stop keeps what is done. It writes only into that one column of your own grid, through this PC's own connection to your account.",
       "script": "dse.py",
       "args": [
         {
@@ -11872,7 +12034,7 @@
         },
         {
           "name": "minimum_identity_score",
-          "label": "Minimum identity match score (heuristic 0–1)",
+          "label": "Minimum identity match score (heuristic 0â€“1)",
           "type": "float",
           "min": 0,
           "max": 1,

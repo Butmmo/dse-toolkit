@@ -8,10 +8,10 @@ T = c["tools"]
 T.pop("dse.grid_run", None)
 
 T["dse.grid_run"] = {
-    "label": "Grids: run a column (ask Claude, or read a website, for each row)", "group": "Grow",
+    "label": "Grids: run a column (ask an AI, or read a website, for each row)", "group": "Grow",
     "help": "Fills one column of a grid of your Ledgers, row by row, on this PC. You normally press Run column in Citadel (the column menu of a grid): this is the tool behind it. The column's run setting says what it does: "
-            "ask Claude a question about each row (uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). "
-            "A column can have several sources tried in order for each row (for example the free website reading first, then Claude only for the rows it found nothing for): the first answer that fits wins. "
+            "ask an AI a question about each row (the model picked for that source in Citadel: a free local model on this PC, or Claude, which uses your own Claude key and counts toward your daily token limit), or read one fact (best email, phone, decision maker, a social link ...) from the business's own public website (free). "
+            "A column can have several sources tried in order for each row (for example the free website reading first, then the AI only for the rows it found nothing for): the first answer that fits wins. "
             "A run leaves a small fingerprint on each row it fills or tries, so 'Empty or out-of-date rows' re-runs only rows whose inputs or sources changed (values typed by hand are never touched). "
             "It works on empty rows unless you ask for another mode, and 'first N rows' lets you test on a few before running them all. Answers are saved in small batches, so Stop keeps what is done. "
             "It writes only into that one column of your own grid, through this PC's own connection to your account.",

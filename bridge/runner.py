@@ -293,6 +293,14 @@ def ollama_info() -> dict:
         info["claude_key"] = bool(mod.has_claude_key())              # the app shows "key missing" or "package missing": yes or no only, never the key
         info["claude_sdk"] = iu.find_spec("anthropic") is not None
         info["claude_tiers"] = True                                   # this toolkit understands claude:haiku, claude:sonnet and claude:opus
+        info["openai"] = bool(mod.openai_ready())
+        info["openai_key"] = bool(mod.has_openai_key())                # yes or no only, never the key
+        info["openai_tiers"] = True                                   # this toolkit understands openai:mini and openai:full
+        info["gemini"] = bool(mod.gemini_ready())
+        info["gemini_key"] = bool(mod.has_gemini_key())                # yes or no only, never the key
+        info["gemini_tiers"] = True                                   # this toolkit understands gemini:flash and gemini:pro
+        info["paystack"] = bool(mod.paystack_ready())
+        info["paystack_key"] = bool(mod.has_paystack_key())            # yes or no only, never the key
         try:                                                          # tokens only, never money, never the key
             cs = iu.spec_from_file_location("hq_claude_cost", HERE.parent / "chat" / "claude_cost.py")
             cm = iu.module_from_spec(cs)
@@ -303,6 +311,9 @@ def ollama_info() -> dict:
     except Exception:
         info.setdefault("models", [])
         info.setdefault("claude", False)
+        info.setdefault("openai", False)
+        info.setdefault("gemini", False)
+        info.setdefault("paystack", False)
     _OLL.update(t=time.time(), v=info)
     return info
 
