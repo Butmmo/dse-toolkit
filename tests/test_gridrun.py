@@ -335,6 +335,49 @@ except ValueError as e:
     check("an unknown mode is refused", "empty, stale or all" in str(e))
 check("the command takes the stale mode", '"stale"' in (ROOT / "dse" / "gridrun.py").read_text(encoding="utf-8").split("def cli")[1])
 
+# ---- which AI answers (the member's model choice, 28 Nov 2026)
+check("the model stored on a source is cleaned like the grid cleans it: menu values pass, legacy values keep their meaning, anything else becomes haiku",
+      R.clean_model("haiku") == "haiku" and R.clean_model("sonnet") == "sonnet" and R.clean_model("auto") == "auto" and R.clean_model("claude") == "claude"
+      and R.clean_model("claude:haiku") == "claude:haiku" and R.clean_model("claude:opus") == "claude:opus" and R.clean_model("ollama:gemma3:4b") == "ollama:gemma3:4b"
+      and R.clean_model("ollama:") == "haiku" and R.clean_model("gpt") == "haiku" and R.clean_model("") == "haiku" and R.clean_model(None) == "haiku")
+check("a source can carry a local model or a Claude tier through the cleaner",
+      R.clean_step({"kind": "ai", "prompt": "q {A}", "model": "ollama:llama3.1:8b"})["model"] == "ollama:llama3.1:8b"
+      and R.clean_step({"kind": "ai", "prompt": "q {A}", "model": "claude:opus"})["model"] == "claude:opus")
+check("only Claude choices count as Claude (they use the key and the daily limit)",
+      R.is_claude_model("haiku") and R.is_claude_model("claude:opus") and R.is_claude_model("claude") and not R.is_claude_model("ollama:gemma3:4b") and not R.is_claude_model("auto"))
+
+
+def fake_ollama_http(url, data):
+    body = json.loads(data)
+    assert body["model"] == "gemma3:4b" and body["messages"][0]["content"] == "q?"
+    return 200, json.dumps({"message": {"content": " a value "}, "prompt_eval_count": 11, "eval_count": 7})
+
+
+check("a local model is asked through Ollama with the same one-cell instruction, and its answer is trimmed",
+      R.ask_ollama("q?", "gemma3:4b", http=fake_ollama_http) == ("a value", 11, 7, "gemma3:4b"))
+check("when Ollama refuses, the reason is plain",
+      "Ollama says" in str(_try(lambda: R.ask_ollama("q?", "nope", http=lambda u, d: (404, json.dumps({"error": "model 'nope' not found"}))))))
+check("ask_any sends a local choice to Ollama and a Claude tier to Claude",
+      R.ask_any("q?", "ollama:gemma3:4b", ollama_http=fake_ollama_http)[0] == "a value"
+      and R.ask_any("q?", "claude:opus", key="sk-test", http=lambda u, h, d: (200, json.dumps({"content": [{"type": "text", "text": "opus answer"}], "usage": {"input_tokens": 3, "output_tokens": 2}, "model": "claude-opus-5-5"}))) == ("opus answer", 3, 2, "claude-opus-5-5"))
+check("Automatic resolves to Claude Haiku when a key is connected, and to a local model when none is",
+      R.resolve_model({"model": "auto"}, key_present=lambda: "sk-test") == "claude:haiku"
+      and R.resolve_model({"model": "auto"}, key_present=lambda: "").startswith("ollama:")
+      and R.resolve_model({"model": "ollama:gemma3:4b"}, key_present=lambda: "") == "ollama:gemma3:4b")
+
+ogrid = dict(GRID)
+ogrid["doc"] = doc(run_ai={"kind": "ai", "prompt": "Write a one-line opener for {Company} in {City}", "model": "ollama:gemma3:4b"})
+seen_models = []
+ocost = Cost()
+try:
+    out_o = R.run("Leads", "Opener", "empty", 0, False, say=lambda m: None, api=Api(mkrows(), grid=ogrid),
+                  ask=lambda p, m: (seen_models.append(m), ("Local opener", 0, 0, m))[1], cost=ocost, key_present=lambda: "")
+except Exception as e:  # noqa: BLE001
+    out_o = f"RAISED {e}"
+check("a local-model run fills the column with no Claude key connected, asks the local model, and records no Claude tokens",
+      isinstance(out_o, str) and "FINISHED" in out_o and len(seen_models) >= 1 and all(m == "ollama:gemma3:4b" for m in seen_models) and ocost.recorded == [], str(out_o))
+
+
 # ---- the tool and the command
 cat = json.loads((ROOT / "bridge" / "catalog.json").read_text(encoding="utf-8"))
 t = cat["tools"]["dse.grid_run"]
